@@ -21,9 +21,9 @@ void main() async {
   }
 
   try {
-    await FirebaseMessagingService.instance.initialize();
+    await FirebaseMessagingService.instance.ensureFirebaseCoreInitialized();
   } catch (e) {
-    debugPrint('Firebase Web init warning: $e');
+    debugPrint('Firebase Core init warning: $e');
   }
 
   runApp(

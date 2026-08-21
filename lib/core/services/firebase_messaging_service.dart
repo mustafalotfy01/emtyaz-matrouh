@@ -12,13 +12,19 @@ class FirebaseMessagingService {
 
   static final FirebaseMessagingService instance = FirebaseMessagingService._();
 
-  bool _isInitialized = false;
+  bool _isFirebaseCoreInitialized = false;
+  bool _isMessagingInitialized = false;
+  FirebaseMessaging? _messaging;
+
   String? _fcmToken;
   String? _lastError;
   StreamSubscription<RemoteMessage>? _foregroundSubscription;
   StreamSubscription<String>? _tokenRefreshSubscription;
 
-  bool get isInitialized => _isInitialized;
+  /// Live dynamic checks against runtime Firebase status
+  bool get isFirebaseCoreInitialized => Firebase.apps.isNotEmpty || _isFirebaseCoreInitialized;
+  bool get isMessagingInitialized => _isMessagingInitialized && _messaging != null;
+  bool get isInitialized => isFirebaseCoreInitialized && isMessagingInitialized;
   String? get currentToken => _fcmToken;
   String? get lastError => _lastError;
 
@@ -29,34 +35,110 @@ class FirebaseMessagingService {
     return '${_fcmToken!.substring(0, 10)}...${_fcmToken!.substring(_fcmToken!.length - 10)} (طول الرمز: ${_fcmToken!.length} حرف)';
   }
 
-  /// Initialize Firebase Core and Firebase Messaging for Web/Mobile
-  Future<bool> initialize() async {
-    if (_isInitialized) return true;
+  /// 1. Initialize Firebase Core safely, idempotently, and handling duplicate-app gracefully
+  Future<bool> ensureFirebaseCoreInitialized() async {
+    if (kDebugMode) {
+      print('[FcmTrace] CORE_START');
+      print('[FcmTrace] CORE_APPS_BEFORE: ${Firebase.apps.map((a) => a.name).toList()}');
+    }
+
+    if (Firebase.apps.isNotEmpty) {
+      _isFirebaseCoreInitialized = true;
+      if (kDebugMode) {
+        print('[FcmTrace] CORE_APPS_AFTER: ${Firebase.apps.map((a) => a.name).toList()}');
+        print('[FcmTrace] CORE_READY: true');
+      }
+      return true;
+    }
 
     try {
-      if (Firebase.apps.isEmpty) {
-        await Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform,
-        );
+      if (kDebugMode) print('[FcmTrace] CORE_INIT_CALL');
+
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+
+      _isFirebaseCoreInitialized = Firebase.apps.isNotEmpty;
+      if (kDebugMode) {
+        print('[FcmTrace] CORE_APPS_AFTER: ${Firebase.apps.map((a) => a.name).toList()}');
+        print('[FcmTrace] CORE_READY: $_isFirebaseCoreInitialized');
+      }
+      return _isFirebaseCoreInitialized;
+    } catch (e, stack) {
+      // Handle case where app already exists in underlying JS runtime
+      if (e.toString().contains('duplicate-app') || Firebase.apps.isNotEmpty) {
+        _isFirebaseCoreInitialized = true;
+        if (kDebugMode) {
+          print('[FcmTrace] CORE_INIT duplicate-app resolved: true');
+          print('[FcmTrace] CORE_READY: true');
+        }
+        return true;
       }
 
-      _isInitialized = true;
-      _lastError = null;
-      if (kDebugMode) print('[FCM] Firebase Core initialized for Emtaz-Matrouh');
-
-      // Listen for foreground push messages
-      _setupForegroundListener();
-
-      // Listen for token refresh
-      _setupTokenRefreshListener();
-
-      return true;
-    } catch (e, stack) {
-      _lastError = 'Initialization Error: $e\n$stack';
-      if (kDebugMode) print('[FCM INIT ERROR] $e');
-      _isInitialized = false;
+      _isFirebaseCoreInitialized = false;
+      _lastError = 'Firebase Core Init Error: $e\n$stack';
+      if (kDebugMode) {
+        print('[FcmTrace] CORE_ERROR: $e');
+        print(stack);
+        print('[FcmTrace] CORE_READY: false');
+      }
       return false;
     }
+  }
+
+  /// 2. Initialize Firebase Messaging instance with zero listener blocking
+  Future<bool> ensureMessagingInitialized() async {
+    if (kDebugMode) print('[FcmTrace] MESSAGING_START');
+
+    if (_isMessagingInitialized && _messaging != null) {
+      if (kDebugMode) print('[FcmTrace] MESSAGING_READY: true (already initialized)');
+      return true;
+    }
+
+    final coreReady = await ensureFirebaseCoreInitialized();
+    if (!coreReady) {
+      if (kDebugMode) print('[FcmTrace] MESSAGING_READY: false (Core initialization failed)');
+      return false;
+    }
+
+    try {
+      if (kDebugMode) print('[FcmTrace] MESSAGING_INSTANCE_START');
+
+      _messaging = FirebaseMessaging.instance;
+      _isMessagingInitialized = true;
+
+      if (kDebugMode) {
+        print('[FcmTrace] MESSAGING_INSTANCE_CREATED');
+        print('[FcmTrace] MESSAGING_READY: true');
+      }
+    } catch (e, stack) {
+      _isMessagingInitialized = false;
+      _lastError = 'FCM Messaging Init Error: $e\n$stack';
+      if (kDebugMode) {
+        print('[FcmTrace] MESSAGING_ERROR: $e');
+        print(stack);
+        print('[FcmTrace] MESSAGING_READY: false');
+      }
+      return false;
+    }
+
+    // Attach listeners separately and non-blockingly
+    _attachListenersSafely();
+
+    return true;
+  }
+
+  /// Attach message listeners safely after instance creation
+  void _attachListenersSafely() {
+    if (kDebugMode) print('[FcmTrace] MESSAGING_LISTENER_START');
+    _setupForegroundListener();
+    _setupTokenRefreshListener();
+  }
+
+  /// Unified Idempotent Initialization
+  Future<bool> initialize() async {
+    await ensureFirebaseCoreInitialized();
+    return await ensureMessagingInitialized();
   }
 
   /// Setup foreground message listener
@@ -70,7 +152,6 @@ class FirebaseMessagingService {
         final body = message.notification?.body ?? message.data['body'] ?? 'لديك تحديث جديد';
         final route = message.data['route'] ?? '/';
 
-        // Trigger local browser push banner
         PushNotificationService.instance.showBrowserNotification(
           title: title,
           body: body,
@@ -79,7 +160,7 @@ class FirebaseMessagingService {
         );
       });
     } catch (e) {
-      if (kDebugMode) print('[FCM] Foreground listener error: $e');
+      if (kDebugMode) print('[FcmTrace] FOREGROUND_LISTENER_FAILED: $e');
     }
   }
 
@@ -87,21 +168,33 @@ class FirebaseMessagingService {
   void _setupTokenRefreshListener() {
     _tokenRefreshSubscription?.cancel();
     try {
-      _tokenRefreshSubscription = FirebaseMessaging.instance.onTokenRefresh.listen((String newToken) {
-        if (kDebugMode) print('[FCM] Token refreshed: ${newToken.substring(0, 10)}...');
-        _fcmToken = newToken;
-        _syncTokenToSupabase(newToken);
-      });
+      final messaging = _messaging;
+      if (messaging != null) {
+        _tokenRefreshSubscription = messaging.onTokenRefresh.listen((String newToken) {
+          if (kDebugMode) print('[FCM] Token refreshed: ${newToken.substring(0, 10)}...');
+          _fcmToken = newToken;
+          _syncTokenToSupabase(newToken);
+        });
+        if (kDebugMode) print('[FcmTrace] TOKEN_REFRESH_LISTENER_ATTACHED');
+      }
     } catch (e) {
-      if (kDebugMode) print('[FCM] Token refresh listener error: $e');
+      if (kDebugMode) print('[FcmTrace] TOKEN_REFRESH_LISTENER_FAILED: $e');
     }
   }
 
-  /// Request browser notification permission explicitly
+  /// Request browser notification permission explicitly (Only triggered on user gesture)
   Future<NotificationSettings?> requestPermission() async {
     try {
-      await initialize();
-      final settings = await FirebaseMessaging.instance.requestPermission(
+      if (kDebugMode) print('[FcmTrace] PERMISSION_START');
+
+      await ensureFirebaseCoreInitialized();
+      final ready = await ensureMessagingInitialized();
+      final messaging = _messaging;
+      if (!ready || messaging == null) {
+        throw StateError('Firebase Messaging instance is not initialized');
+      }
+
+      final settings = await messaging.requestPermission(
         alert: true,
         announcement: false,
         badge: true,
@@ -112,7 +205,7 @@ class FirebaseMessagingService {
       );
 
       if (kDebugMode) {
-        print('[FCM] Permission status: ${settings.authorizationStatus}');
+        print('[FcmTrace] PERMISSION_RESULT: ${settings.authorizationStatus}');
       }
 
       if (settings.authorizationStatus == AuthorizationStatus.authorized ||
@@ -123,46 +216,64 @@ class FirebaseMessagingService {
       return settings;
     } catch (e, stack) {
       _lastError = 'Permission Request Error: $e\n$stack';
-      if (kDebugMode) print('[FCM PERMISSION ERROR] $e');
+      if (kDebugMode) {
+        print('[FcmTrace] PERMISSION_ERROR: $e');
+        print(stack);
+      }
       return null;
     }
   }
 
-  /// Generate or retrieve the FCM registration token using VAPID
+  /// Generate or retrieve the FCM registration token using VAPID (On user gesture)
   Future<String?> retrieveToken({String? customVapidKey}) async {
     try {
-      await initialize();
+      if (kDebugMode) print('[FcmTrace] TOKEN_START');
+
+      await ensureFirebaseCoreInitialized();
+      final messagingReady = await ensureMessagingInitialized();
+
+      final messaging = _messaging;
+      if (!messagingReady || messaging == null) {
+        throw StateError('Firebase Messaging instance is not initialized');
+      }
 
       final vapid = customVapidKey ?? DefaultFirebaseOptions.webVapidKey;
       if (kDebugMode) {
-        print('[FCM] Retrieving FCM registration token with VAPID: $vapid');
+        final vapidPrefix = vapid.length > 10 ? '${vapid.substring(0, 10)}...' : vapid;
+        print('[FcmTrace] TOKEN_REQUEST: VAPID prefix: $vapidPrefix');
       }
 
       if (kIsWeb) {
         try {
-          _fcmToken = await FirebaseMessaging.instance.getToken(
+          _fcmToken = await messaging.getToken(
             vapidKey: vapid.isNotEmpty ? vapid : null,
           );
         } catch (e) {
-          if (kDebugMode) print('[FCM] Primary getToken warning: $e, trying fallback...');
-          _fcmToken = await FirebaseMessaging.instance.getToken();
+          if (kDebugMode) print('[FcmTrace] Primary getToken fallback: $e');
+          _fcmToken = await messaging.getToken();
         }
       } else {
-        _fcmToken = await FirebaseMessaging.instance.getToken();
+        _fcmToken = await messaging.getToken();
       }
 
       if (_fcmToken != null && _fcmToken!.isNotEmpty) {
         _lastError = null;
-        if (kDebugMode) print('[FCM SUCCESS] Real FCM Token retrieved: $maskedToken');
+        if (kDebugMode) {
+          print('[FcmTrace] TOKEN_RESULT: SUCCESS | length: ${_fcmToken!.length} | prefix: ${_fcmToken!.substring(0, 10)}...');
+        }
         await _syncTokenToSupabase(_fcmToken!);
       } else {
         _lastError = 'getToken() returned empty or null token';
+        if (kDebugMode) print('[FcmTrace] TOKEN_RESULT: FAILED: Empty token returned');
       }
 
       return _fcmToken;
     } catch (e, stack) {
       _lastError = 'FCM getToken Error: $e\n$stack';
-      if (kDebugMode) print('[FCM TOKEN ERROR] $e\n$stack');
+      if (kDebugMode) {
+        print('[FcmTrace] TOKEN_RESULT: FAILED: $e');
+        print(stack);
+      }
       return null;
     }
   }

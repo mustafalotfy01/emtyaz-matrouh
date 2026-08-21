@@ -28,8 +28,9 @@ class _FcmDebugScreenState extends ConsumerState<FcmDebugScreen> {
 
   Future<void> _checkStatus() async {
     setState(() => _isLoading = true);
-    await FirebaseMessagingService.instance.initialize();
-    setState(() => _isLoading = false);
+    await FirebaseMessagingService.instance.ensureFirebaseCoreInitialized();
+    await FirebaseMessagingService.instance.ensureMessagingInitialized();
+    if (mounted) setState(() => _isLoading = false);
   }
 
   @override
@@ -76,8 +77,8 @@ class _FcmDebugScreenState extends ConsumerState<FcmDebugScreen> {
                 _buildStatusRow(
                   context,
                   'Firebase initialized:',
-                  fcm.isInitialized ? 'PASS ✓' : 'FAIL ✕',
-                  fcm.isInitialized ? AppColors.success : AppColors.danger,
+                  fcm.isFirebaseCoreInitialized ? 'PASS ✓' : 'FAIL ✕',
+                  fcm.isFirebaseCoreInitialized ? AppColors.success : AppColors.danger,
                 ),
                 const Divider(height: 10),
 
@@ -94,8 +95,8 @@ class _FcmDebugScreenState extends ConsumerState<FcmDebugScreen> {
                 _buildStatusRow(
                   context,
                   'Firebase Messaging initialized:',
-                  fcm.isInitialized ? 'PASS ✓' : 'FAIL ✕',
-                  fcm.isInitialized ? AppColors.success : AppColors.danger,
+                  fcm.isMessagingInitialized ? 'PASS ✓' : 'FAIL ✕',
+                  fcm.isMessagingInitialized ? AppColors.success : AppColors.danger,
                 ),
                 const Divider(height: 10),
 
@@ -119,6 +120,14 @@ class _FcmDebugScreenState extends ConsumerState<FcmDebugScreen> {
                   context,
                   'FCM Token:',
                   hasToken ? 'GENERATED ✓' : 'FAILED / NOT GENERATED',
+                  hasToken ? AppColors.success : AppColors.warning,
+                ),
+                const Divider(height: 10),
+
+                _buildStatusRow(
+                  context,
+                  'Token Storage:',
+                  hasToken ? 'SYNCED TO SUPABASE ✓' : 'NOT SYNCED',
                   hasToken ? AppColors.success : AppColors.warning,
                 ),
                 const Divider(height: 10),
@@ -239,12 +248,18 @@ class _FcmDebugScreenState extends ConsumerState<FcmDebugScreen> {
             color: AppColors.primaryTeal,
             onPressed: () async {
               setState(() => _isLoading = true);
+              await fcm.ensureFirebaseCoreInitialized();
+              await fcm.ensureMessagingInitialized();
               await fcm.requestPermission();
               final token = await fcm.retrieveToken();
-              setState(() {
-                _isLoading = false;
-                _statusLog = token != null ? 'تم توليد الرمز بنجاح ومزامنته مع السيرفر ✅' : 'لم يتم توليد الرمز، يرجى مراجعة تفاصيل الخطأ بالأعلى';
-              });
+              if (mounted) {
+                setState(() {
+                  _isLoading = false;
+                  _statusLog = token != null
+                      ? 'تم توليد الرمز بنجاح ومزامنته مع السيرفر ✅'
+                      : 'لم يتم توليد الرمز، يرجى مراجعة تفاصيل الخطأ بالأعلى';
+                });
+              }
             },
           ),
 
