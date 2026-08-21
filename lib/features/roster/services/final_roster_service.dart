@@ -26,7 +26,7 @@ class FinalRosterService {
   static Future<RosterMonth> getFinalRosterMonth(int month, int year) async {
     if (SupabaseService.isInitialized) {
       try {
-        final res = await SupabaseService.adminClient
+        final res = await SupabaseService.client
             .from('rosters')
             .select()
             .eq('month', month)
@@ -70,7 +70,7 @@ class FinalRosterService {
 
     if (SupabaseService.isInitialized) {
       try {
-        final res = await SupabaseService.adminClient
+        final res = await SupabaseService.client
             .from('roster_entries')
             .select('*, profiles!roster_entries_student_id_fkey(full_name), departments(name_ar)')
             .eq('roster_id', dbRosterUuid)
@@ -103,13 +103,14 @@ class FinalRosterService {
 
     if (SupabaseService.isInitialized) {
       try {
-        final res = await SupabaseService.adminClient
+        final res = await SupabaseService.client
             .from('roster_entries')
             .select('*, profiles!roster_entries_student_id_fkey(full_name), departments(name_ar)')
+            .eq('roster_id', dbRosterUuid)
             .eq('student_id', studentId)
             .order('shift_date', ascending: true);
 
-        if (res is List && res.isNotEmpty) {
+        if (res.isNotEmpty) {
           final list = res.map((r) => RosterEntry.fromJson(r)).toList();
           _finalRosterMemory[key] = list;
           if (kDebugMode) {
@@ -137,7 +138,7 @@ class FinalRosterService {
     if (SupabaseService.isInitialized) {
       try {
         // 1. Update rosters table status
-        await SupabaseService.adminClient.from('rosters').update({
+        await SupabaseService.client.from('rosters').update({
           'status': 'published',
           'is_published': true,
           'published_at': DateTime.now().toIso8601String(),
@@ -157,7 +158,7 @@ class FinalRosterService {
           }
           final distinctEntries = byDate.values.toList();
 
-          await SupabaseService.adminClient
+          await SupabaseService.client
               .from('roster_entries')
               .delete()
               .eq('student_id', studentId)
@@ -178,13 +179,13 @@ class FinalRosterService {
               };
             }).toList();
 
-            await SupabaseService.adminClient.from('roster_entries').insert(payload);
+            await SupabaseService.client.from('roster_entries').insert(payload);
           }
         }
 
         // 3. Record Audit Log
         try {
-          await SupabaseService.adminClient.from('audit_logs').insert({
+          await SupabaseService.client.from('audit_logs').insert({
             'user_id': (leaderId.contains('-') && leaderId.length > 20) ? leaderId : null,
             'action_type': 'roster_published',
             'entity_name': 'rosters',
@@ -231,7 +232,7 @@ class FinalRosterService {
 
     if (SupabaseService.isInitialized) {
       try {
-        await SupabaseService.adminClient
+        await SupabaseService.client
             .from('roster_entries')
             .delete()
             .eq('student_id', studentId)
@@ -252,12 +253,12 @@ class FinalRosterService {
             };
           }).toList();
 
-          await SupabaseService.adminClient.from('roster_entries').insert(payload);
+          await SupabaseService.client.from('roster_entries').insert(payload);
         }
 
         // Audit Log
         try {
-          await SupabaseService.adminClient.from('audit_logs').insert({
+          await SupabaseService.client.from('audit_logs').insert({
             'user_id': (leaderId.contains('-') && leaderId.length > 20) ? leaderId : null,
             'action_type': 'final_roster_modified',
             'entity_name': 'roster_entries',

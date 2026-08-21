@@ -67,7 +67,7 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
     state = state.copyWith(isLoading: true, errorMessage: null);
 
     try {
-      final res = await SupabaseService.adminClient
+      final res = await SupabaseService.client
           .from('notifications')
           .select()
           .eq('user_id', user.id)
@@ -178,7 +178,7 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
 
     if (SupabaseService.isInitialized) {
       try {
-        await SupabaseService.adminClient
+        await SupabaseService.client
             .from('notifications')
             .update({'is_read': true})
             .eq('id', notificationId)
@@ -198,7 +198,7 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
 
     if (SupabaseService.isInitialized) {
       try {
-        await SupabaseService.adminClient
+        await SupabaseService.client
             .from('notifications')
             .update({'is_read': true})
             .eq('user_id', user.id);

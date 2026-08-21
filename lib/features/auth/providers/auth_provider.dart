@@ -138,35 +138,37 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return false;
     }
 
-    // 1. Check in-memory local registered accounts first
-    final localMatch = _registeredStudentsRegistry.where(
-      (s) => s.universityCode == input || s.email.toLowerCase() == input.toLowerCase() || s.nationalId == input,
-    ).firstOrNull;
+    // 1. Check in-memory local registered accounts in debug/test mode only
+    if (kDebugMode) {
+      final localMatch = _registeredStudentsRegistry.where(
+        (s) => s.universityCode == input || s.email.toLowerCase() == input.toLowerCase() || s.nationalId == input,
+      ).firstOrNull;
 
-    if (localMatch != null) {
-      if (expectedRole != null && localMatch.role != expectedRole) {
-        state = state.copyWith(
-          isLoading: false,
-          error: 'أنت تحاول الدخول في دور خاطئ! هذا الحساب مسجل كـ (${localMatch.role.displayNameAr}) وليس (${expectedRole.displayNameAr}).',
-        );
-        return false;
-      }
-      if (localMatch.role == UserRole.student && !localMatch.isApproved) {
-        String err = 'حسابك ما زال (قيد المراجعة والاعتماد) من قبل المنسق. يرجى الانتظار حتى اعتماده.';
-        if (localMatch.registrationStatus == RegistrationStatus.rejected) {
-          err = 'تم رفض طلب التسجيل من قبل المنسق. سبب الرفض: ${localMatch.rejectionReason ?? "غير محدد"}';
-        } else if (localMatch.registrationStatus == RegistrationStatus.suspended) {
-          err = 'تم إيقاف هذا الحساب مؤقتاً من قبل الإدارة.';
+      if (localMatch != null) {
+        if (expectedRole != null && localMatch.role != expectedRole) {
+          state = state.copyWith(
+            isLoading: false,
+            error: 'أنت تحاول الدخول في دور خاطئ! هذا الحساب مسجل كـ (${localMatch.role.displayNameAr}) وليس (${expectedRole.displayNameAr}).',
+          );
+          return false;
         }
-        state = state.copyWith(
-          isLoading: false,
-          error: err,
-        );
-        return false;
+        if (localMatch.role == UserRole.student && !localMatch.isApproved) {
+          String err = 'حسابك ما زال (قيد المراجعة والاعتماد) من قبل المنسق. يرجى الانتظار حتى اعتماده.';
+          if (localMatch.registrationStatus == RegistrationStatus.rejected) {
+            err = 'تم رفض طلب التسجيل من قبل المنسق. سبب الرفض: ${localMatch.rejectionReason ?? "غير محدد"}';
+          } else if (localMatch.registrationStatus == RegistrationStatus.suspended) {
+            err = 'تم إيقاف هذا الحساب مؤقتاً من قبل الإدارة.';
+          }
+          state = state.copyWith(
+            isLoading: false,
+            error: err,
+          );
+          return false;
+        }
+        state = state.copyWith(user: localMatch, isLoading: false, error: null);
+        await _saveUserToCache(localMatch);
+        return true;
       }
-      state = state.copyWith(user: localMatch, isLoading: false, error: null);
-      await _saveUserToCache(localMatch);
-      return true;
     }
 
     // 2. Try Supabase Auth
@@ -331,11 +333,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
             ..['is_approved'] = false
             ..['registration_status'] = 'pending';
 
-          await SupabaseService.adminClient.from('profiles').upsert(newProfileMap);
+          await SupabaseService.client.from('profiles').upsert(newProfileMap);
 
           // Create In-App Notification for Leaders & Admins
           try {
-            final leaders = await SupabaseService.adminClient
+            final leaders = await SupabaseService.client
                 .from('profiles')
                 .select('id')
                 .inFilter('role', ['leader', 'super_admin']);
@@ -350,7 +352,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
                 'created_at': DateTime.now().toIso8601String(),
               }).toList();
 
-              await SupabaseService.adminClient.from('notifications').insert(notifPayload);
+              await SupabaseService.client.from('notifications').insert(notifPayload);
             }
           } catch (notifErr) {
             if (kDebugMode) print('Notification creation error: $notifErr');

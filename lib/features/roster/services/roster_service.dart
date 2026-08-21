@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/services/supabase_service.dart';
+import '../../../core/utils/app_date_utils.dart';
 import '../../auth/models/user_profile.dart';
 import '../../auth/providers/auth_provider.dart';
-import '../models/department.dart';
 import '../models/roster_entry.dart';
 import '../models/roster_month.dart';
 import '../models/roster_preference.dart';
@@ -204,7 +204,7 @@ class RosterService {
     // 1. Try Supabase by studentId first (Source of Truth)
     if (SupabaseService.isInitialized) {
       try {
-        final res = await SupabaseService.adminClient
+        final res = await SupabaseService.client
             .from('roster_preferences')
             .select()
             .eq('student_id', studentId)
@@ -272,7 +272,7 @@ class RosterService {
             'roster_id': dbRosterUuid,
           }).toList();
 
-          await SupabaseService.adminClient
+          await SupabaseService.client
               .from('roster_preferences')
               .upsert(
                 payload,
@@ -357,7 +357,7 @@ class RosterService {
             'roster_id': dbRosterUuid,
           }).toList();
 
-          await SupabaseService.adminClient
+          await SupabaseService.client
               .from('roster_preferences')
               .upsert(
                 payload,
@@ -369,7 +369,7 @@ class RosterService {
               '${p.preferenceDate.year.toString().padLeft(4, '0')}-${p.preferenceDate.month.toString().padLeft(2, '0')}-${p.preferenceDate.day.toString().padLeft(2, '0')}').toList();
           if (currentDates.isNotEmpty) {
             try {
-              await SupabaseService.adminClient
+              await SupabaseService.client
                   .from('roster_preferences')
                   .delete()
                   .eq('student_id', studentId)
@@ -380,7 +380,7 @@ class RosterService {
 
         // Audit log
         try {
-          await SupabaseService.adminClient.from('audit_logs').insert({
+          await SupabaseService.client.from('audit_logs').insert({
             'user_id': studentId.contains('-') ? studentId : null,
             'action_type': 'preference_submitted',
             'entity_name': 'roster_preferences',
@@ -418,7 +418,7 @@ class RosterService {
 
     if (SupabaseService.isInitialized) {
       try {
-        final res = await SupabaseService.adminClient
+        final res = await SupabaseService.client
             .from('roster_preferences')
             .update({'status': 'draft'})
             .eq('student_id', studentId)
@@ -426,7 +426,7 @@ class RosterService {
 
         // Audit log
         try {
-          await SupabaseService.adminClient.from('audit_logs').insert({
+          await SupabaseService.client.from('audit_logs').insert({
             'user_id': leaderId.contains('-') ? leaderId : null,
             'action_type': 'preference_reopened',
             'entity_name': 'roster_preferences',
@@ -490,7 +490,7 @@ class RosterService {
     // 3. Always fetch latest from Supabase profiles
     if (SupabaseService.isInitialized) {
       try {
-        final res = await SupabaseService.adminClient
+        final res = await SupabaseService.client
             .from('profiles')
             .select()
             .eq('role', 'student')
@@ -511,7 +511,7 @@ class RosterService {
     final Map<String, List<RosterEntry>> dbEntriesByStudent = {};
     if (SupabaseService.isInitialized) {
       try {
-        final res = await SupabaseService.adminClient
+        final res = await SupabaseService.client
             .from('roster_entries')
             .select('*, profiles!roster_entries_student_id_fkey(full_name), departments(name_ar)')
             .eq('roster_id', dbRosterUuid);
@@ -689,15 +689,15 @@ class RosterService {
 
     if (SupabaseService.isInitialized) {
       try {
-        final existingRows = await SupabaseService.adminClient
+        final existingRows = await SupabaseService.client
             .from('roster_entries')
             .select('id')
             .eq('student_id', studentId)
             .eq('roster_id', dbRosterUuid);
 
-        final beforeCount = (existingRows is List) ? existingRows.length : 0;
+        final beforeCount = (existingRows as List).length;
 
-        await SupabaseService.adminClient
+        await SupabaseService.client
             .from('roster_entries')
             .delete()
             .eq('student_id', studentId)
@@ -709,7 +709,7 @@ class RosterService {
               'roster_id': dbRosterUuid,
               'student_id': studentId,
               'department_id': sanitizeDepartmentId(e.departmentId),
-              'shift_date': '${e.shiftDate.year.toString().padLeft(4, '0')}-${e.shiftDate.month.toString().padLeft(2, '0')}-${e.shiftDate.day.toString().padLeft(2, '0')}',
+              'shift_date': AppDateUtils.toIsoDate(e.shiftDate),
               'shift_type': e.shiftType.name,
               'status': e.status.name == 'pending' ? 'approved' : e.status.name,
               'approved_by': (approvedBy.contains('-') && approvedBy.length > 20) ? approvedBy : null,
@@ -717,7 +717,7 @@ class RosterService {
             };
           }).toList();
 
-          final inserted = await SupabaseService.adminClient
+          final inserted = await SupabaseService.client
               .from('roster_entries')
               .insert(payload)
               .select();
@@ -729,7 +729,7 @@ class RosterService {
 
         // Audit log
         try {
-          await SupabaseService.adminClient.from('audit_logs').insert({
+          await SupabaseService.client.from('audit_logs').insert({
             'user_id': (approvedBy.contains('-') && approvedBy.length > 20) ? approvedBy : null,
             'action_type': 'roster_assignment_saved',
             'entity_name': 'roster_entries',
@@ -773,20 +773,20 @@ class RosterService {
       try {
         final dbRosterUuid = await getRosterUuid(_currentMonthState.month, _currentMonthState.year);
 
-        await SupabaseService.adminClient.from('rosters').update({
+        await SupabaseService.client.from('rosters').update({
           'status': 'published',
           'is_published': true,
           'published_at': DateTime.now().toIso8601String(),
           'published_by': (leaderId.contains('-') && leaderId.length > 20) ? leaderId : null,
         }).eq('id', dbRosterUuid);
 
-        await SupabaseService.adminClient.from('roster_entries').update({
+        await SupabaseService.client.from('roster_entries').update({
           'status': 'published',
         }).eq('roster_id', dbRosterUuid);
 
         // Audit log
         try {
-          await SupabaseService.adminClient.from('audit_logs').insert({
+          await SupabaseService.client.from('audit_logs').insert({
             'user_id': leaderId.contains('-') ? leaderId : null,
             'action_type': 'roster_published',
             'entity_name': 'rosters',
@@ -822,18 +822,18 @@ class RosterService {
       try {
         final dbRosterUuid = await getRosterUuid(_currentMonthState.month, _currentMonthState.year);
 
-        await SupabaseService.adminClient.from('rosters').update({
+        await SupabaseService.client.from('rosters').update({
           'status': 'open',
           'is_published': false,
           'published_at': null,
         }).eq('id', dbRosterUuid);
 
-        await SupabaseService.adminClient.from('roster_entries').update({
+        await SupabaseService.client.from('roster_entries').update({
           'status': 'approved',
         }).eq('roster_id', dbRosterUuid);
 
         try {
-          await SupabaseService.adminClient.from('audit_logs').insert({
+          await SupabaseService.client.from('audit_logs').insert({
             'user_id': leaderId.contains('-') ? leaderId : null,
             'action_type': 'roster_unlocked_for_editing',
             'entity_name': 'rosters',
@@ -859,7 +859,7 @@ class RosterService {
 
     if (SupabaseService.isInitialized) {
       try {
-        final res = await SupabaseService.adminClient
+        final res = await SupabaseService.client
             .from('roster_entries')
             .select('*, profiles!roster_entries_student_id_fkey(full_name), departments(name_ar)')
             .eq('student_id', studentId)

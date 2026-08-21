@@ -5,7 +5,6 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../models/roster_entry.dart';
 import '../providers/roster_provider.dart';
-import '../../auth/providers/auth_provider.dart';
 
 class ShiftRequestModal extends ConsumerStatefulWidget {
   final DateTime initialDate;
@@ -30,7 +29,6 @@ class _ShiftRequestModalState extends ConsumerState<ShiftRequestModal> {
   @override
   Widget build(BuildContext context) {
     final depts = ref.watch(departmentsProvider);
-    final currentUser = ref.watch(authProvider).user;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -138,18 +136,6 @@ class _ShiftRequestModalState extends ConsumerState<ShiftRequestModal> {
               text: 'إرسال طلب الشيفت',
               icon: Icons.send,
               onPressed: () {
-                final dept = depts.firstWhere((d) => d.id == _selectedDeptId);
-                final newEntry = RosterEntry(
-                  id: 'ros-${DateTime.now().millisecondsSinceEpoch}',
-                  studentId: currentUser?.id ?? 'student-001',
-                  studentName: currentUser?.fullName ?? 'أحمد محمود',
-                  departmentId: dept.id,
-                  departmentName: dept.nameAr,
-                  shiftDate: _selectedDate,
-                  shiftType: _selectedShift,
-                  status: ShiftStatus.pending,
-                );
-
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('تم تقديم طلب الشيفت بنجاح وقيد مراجعة المنسق')),

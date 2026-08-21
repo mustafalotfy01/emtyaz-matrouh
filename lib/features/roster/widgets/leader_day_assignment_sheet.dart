@@ -4,7 +4,6 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/widgets/custom_card.dart';
 import '../../auth/models/user_profile.dart';
-import '../models/department.dart';
 import '../models/roster_entry.dart';
 import '../models/roster_preference.dart';
 import '../models/student_roster_summary.dart';

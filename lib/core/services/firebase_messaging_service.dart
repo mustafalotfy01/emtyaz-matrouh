@@ -186,7 +186,7 @@ class FirebaseMessagingService {
 
       // 2. Upsert into push_subscriptions table if exists
       try {
-        await SupabaseService.adminClient.from('push_subscriptions').upsert({
+        await SupabaseService.client.from('push_subscriptions').upsert({
           'user_id': user.id,
           'endpoint': 'fcm:$token',
           'platform': platform,
@@ -207,7 +207,7 @@ class FirebaseMessagingService {
       if (_fcmToken != null && SupabaseService.isInitialized) {
         final user = SupabaseService.client.auth.currentUser;
         if (user != null) {
-          await SupabaseService.adminClient
+          await SupabaseService.client
               .from('push_subscriptions')
               .update({'is_active': false})
               .eq('user_id', user.id)

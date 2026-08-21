@@ -31,15 +31,6 @@ class SupabaseService {
     return Supabase.instance.client;
   }
 
-  static SupabaseClient? _adminClient;
-  static SupabaseClient get adminClient {
-    _adminClient ??= SupabaseClient(
-      AppConfig.supabaseUrl,
-      AppConfig.supabaseServiceRoleKey,
-    );
-    return _adminClient!;
-  }
-
   static User? get currentUser => client.auth.currentUser;
   static bool get isLoggedIn => currentUser != null;
 }

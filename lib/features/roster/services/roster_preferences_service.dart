@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/services/supabase_service.dart';
+import '../../../core/utils/app_date_utils.dart';
 import '../../auth/models/user_profile.dart';
-import '../models/roster_month.dart';
 import '../models/roster_preference.dart';
 
 /// Dedicated Service for Student Preferences (اقتراح الروستر / مسودة التفضيلات)
@@ -15,7 +15,7 @@ class RosterPreferencesService {
   static List<RosterPreference> normalizePreferences(List<RosterPreference> list) {
     final Map<String, RosterPreference> byDate = {};
     for (final p in list) {
-      final dateKey = '${p.preferenceDate.year.toString().padLeft(4, '0')}-${p.preferenceDate.month.toString().padLeft(2, '0')}-${p.preferenceDate.day.toString().padLeft(2, '0')}';
+      final dateKey = AppDateUtils.toIsoDate(p.preferenceDate);
       byDate[dateKey] = p; // latest selection strictly replaces old selection
     }
     final sorted = byDate.values.toList();
@@ -27,7 +27,7 @@ class RosterPreferencesService {
   static Future<String> getCanonicalRosterUuid(int month, int year) async {
     if (SupabaseService.isInitialized) {
       try {
-        final res = await SupabaseService.adminClient
+        final res = await SupabaseService.client
             .from('rosters')
             .select('id')
             .eq('month', month)
@@ -39,7 +39,7 @@ class RosterPreferencesService {
         }
 
         final defaultUuid = '00000000-0000-0000-0000-${year.toString().padLeft(4, '0')}${month.toString().padLeft(2, '0')}000000';
-        final inserted = await SupabaseService.adminClient.from('rosters').insert({
+        final inserted = await SupabaseService.client.from('rosters').insert({
           'id': defaultUuid,
           'title': 'روستر شهر $month $year',
           'month': month,
@@ -95,7 +95,7 @@ class RosterPreferencesService {
     // 1. Query Supabase
     if (SupabaseService.isInitialized) {
       try {
-        final res = await SupabaseService.adminClient
+        final res = await SupabaseService.client
             .from('roster_preferences')
             .select()
             .eq('student_id', studentId)
@@ -162,7 +162,7 @@ class RosterPreferencesService {
           'roster_id': dbRosterUuid,
         }).toList();
 
-        await SupabaseService.adminClient
+        await SupabaseService.client
             .from('roster_preferences')
             .upsert(
               payload,
@@ -246,7 +246,7 @@ class RosterPreferencesService {
             'roster_id': dbRosterUuid,
           }).toList();
 
-          await SupabaseService.adminClient
+          await SupabaseService.client
               .from('roster_preferences')
               .upsert(
                 payload,
@@ -258,7 +258,7 @@ class RosterPreferencesService {
               '${p.preferenceDate.year.toString().padLeft(4, '0')}-${p.preferenceDate.month.toString().padLeft(2, '0')}-${p.preferenceDate.day.toString().padLeft(2, '0')}').toList();
           if (currentDates.isNotEmpty) {
             try {
-              await SupabaseService.adminClient
+              await SupabaseService.client
                   .from('roster_preferences')
                   .delete()
                   .eq('student_id', studentId)
@@ -269,7 +269,7 @@ class RosterPreferencesService {
 
         // Audit log
         try {
-          await SupabaseService.adminClient.from('audit_logs').insert({
+          await SupabaseService.client.from('audit_logs').insert({
             'user_id': studentId.contains('-') ? studentId : null,
             'action_type': 'preference_submitted',
             'entity_name': 'roster_preferences',
@@ -307,13 +307,13 @@ class RosterPreferencesService {
 
     if (SupabaseService.isInitialized) {
       try {
-        await SupabaseService.adminClient
+        await SupabaseService.client
             .from('roster_preferences')
             .update({'status': 'draft'})
             .eq('student_id', studentId);
 
         try {
-          await SupabaseService.adminClient.from('audit_logs').insert({
+          await SupabaseService.client.from('audit_logs').insert({
             'user_id': leaderId.contains('-') ? leaderId : null,
             'action_type': 'preference_reopened',
             'entity_name': 'roster_preferences',

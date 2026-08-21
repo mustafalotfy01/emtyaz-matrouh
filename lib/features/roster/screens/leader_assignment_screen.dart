@@ -6,8 +6,6 @@ import '../../../core/localization/app_localizations.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/custom_card.dart';
 import '../../auth/models/user_profile.dart';
-import '../../auth/providers/auth_provider.dart';
-import '../models/department.dart';
 import '../models/roster_entry.dart';
 import '../models/roster_preference.dart';
 import '../models/student_roster_summary.dart';
@@ -35,7 +33,6 @@ class _LeaderAssignmentScreenState extends ConsumerState<LeaderAssignmentScreen>
   int get _nightCount => _workingShifts.where((s) => s.shiftType == ShiftType.night).length;
   int get _longCount => _workingShifts.where((s) => s.shiftType == ShiftType.long).length;
   int get _morningCount => _workingShifts.where((s) => s.shiftType == ShiftType.morning).length;
-  int get _eveningCount => _workingShifts.where((s) => s.shiftType == ShiftType.evening).length;
   int get _totalCount => _workingShifts.length;
 
   List<String> _getValidationWarnings(AppLocalizations l10n) {

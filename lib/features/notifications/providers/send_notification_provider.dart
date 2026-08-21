@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/services/fcm_sender_service.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../auth/models/user_profile.dart';
@@ -133,7 +134,7 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
   Future<void> fetchDepartments() async {
     if (!SupabaseService.isInitialized) return;
     try {
-      final data = await SupabaseService.adminClient
+      final data = await SupabaseService.client
           .from('departments')
           .select('id, name_ar, name_en')
           .eq('is_active', true)
@@ -151,7 +152,7 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
   Future<void> fetchApprovedStudents() async {
     if (!SupabaseService.isInitialized) return;
     try {
-      final data = await SupabaseService.adminClient
+      final data = await SupabaseService.client
           .from('profiles')
           .select()
           .eq('role', 'student')
@@ -219,77 +220,49 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
     state = state.copyWith(isSending: true, errorMessage: null, successMessage: null);
 
     try {
-      // 1. Resolve Target Student IDs
-      List<String> targetStudentIds = [];
-      switch (state.audienceType) {
-        case NotificationAudienceType.allStudents:
-          targetStudentIds = state.availableStudents.map((s) => s.id).toList();
-          break;
-        case NotificationAudienceType.groupA:
-          targetStudentIds = state.availableStudents
-              .where((s) => s.studentGroup == StudentGroup.groupA)
-              .map((s) => s.id)
-              .toList();
-          break;
-        case NotificationAudienceType.groupB:
-          targetStudentIds = state.availableStudents
-              .where((s) => s.studentGroup == StudentGroup.groupB)
-              .map((s) => s.id)
-              .toList();
-          break;
-        case NotificationAudienceType.department:
-          targetStudentIds = state.availableStudents.map((s) => s.id).toList();
-          break;
-        case NotificationAudienceType.specificStudents:
-          targetStudentIds = state.selectedStudentIds.toList();
-          break;
-      }
+      final audienceTypeStr = state.audienceType.toDbString();
+      final audienceValueStr = state.audienceType == NotificationAudienceType.department
+          ? state.selectedDepartmentId
+          : (state.audienceType == NotificationAudienceType.groupA
+              ? 'A'
+              : (state.audienceType == NotificationAudienceType.groupB ? 'B' : null));
 
-      if (targetStudentIds.isEmpty && state.availableStudents.isNotEmpty) {
-        targetStudentIds = [state.availableStudents.first.id];
-      }
+      final specificIds = state.audienceType == NotificationAudienceType.specificStudents
+          ? state.selectedStudentIds.toList()
+          : null;
 
-      if (targetStudentIds.isEmpty) {
+      // ────────────────────────────────────────────────────────────────────────
+      // SECURE SERVER-SIDE BROADCAST DISPATCH
+      // ────────────────────────────────────────────────────────────────────────
+      final result = await FcmSenderService.instance.broadcastServerNotification(
+        audienceType: audienceTypeStr,
+        audienceValue: audienceValueStr,
+        specificStudentIds: specificIds,
+        title: state.title.trim(),
+        body: state.body.trim(),
+        notificationType: state.notificationType,
+        targetRoute: state.targetRoute,
+        metadata: {
+          'sender_id': user.id,
+          'sender_name': user.fullName,
+          'sender_role': user.role.toDbString(),
+        },
+      );
+
+      if (!result.success) {
         state = state.copyWith(
           isSending: false,
-          errorMessage: 'لم يتم العثور على طلاب مستهدفين لإرسال الإشعار إليهم',
+          errorMessage: result.errorMessage ?? 'فشل إرسال الإشعار من الخادم',
         );
         return false;
       }
 
-      // 2. Insert In-App Notifications for each recipient in Supabase (using exact valid columns)
-      if (SupabaseService.isInitialized) {
-        final notifPayload = targetStudentIds.map((id) => {
-          'user_id': id,
-          'title': state.title.trim(),
-          'message': state.body.trim(),
-          'type': state.notificationType,
-          'is_read': false,
-        }).toList();
-
-        final insertRes = await SupabaseService.adminClient
-            .from('notifications')
-            .insert(notifPayload)
-            .select();
-
-        if (kDebugMode) {
-          print('[SendNotificationNotifier] Supabase inserted ${insertRes.length} in-app notification records');
-        }
-      }
-
-      // 3. Trigger native browser notification
+      // Trigger local sender notification feedback
       PushNotificationService.instance.showBrowserNotification(
         title: state.title.trim(),
         body: state.body.trim(),
         route: state.targetRoute,
       );
-
-      final audienceTypeStr = state.audienceType.toDbString();
-      final audienceValueStr = state.audienceType == NotificationAudienceType.department
-          ? state.selectedDepartmentName
-          : (state.audienceType == NotificationAudienceType.groupA
-              ? 'A'
-              : (state.audienceType == NotificationAudienceType.groupB ? 'B' : null));
 
       final newCampaign = NotificationCampaign(
         id: 'camp-${DateTime.now().millisecondsSinceEpoch}',
@@ -301,9 +274,9 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
         title: state.title.trim(),
         body: state.body.trim(),
         type: state.notificationType,
-        recipientCount: targetStudentIds.length,
-        deviceCount: targetStudentIds.length,
-        successCount: targetStudentIds.length,
+        recipientCount: result.recipientCount,
+        deviceCount: result.tokensFound,
+        successCount: result.recipientCount,
         failureCount: 0,
         createdAt: DateTime.now(),
       );
@@ -314,7 +287,7 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
         body: '',
         selectedStudentIds: const {},
         campaignsHistory: [newCampaign, ...state.campaignsHistory],
-        successMessage: 'تم إرسال الإشعار بنجاح وحفظه في سجلات ${targetStudentIds.length} طالبًا ✅',
+        successMessage: 'تم إرسال الإشعار بنجاح وحفظه في سجلات ${result.recipientCount} طالبًا ✅',
       );
 
       return true;

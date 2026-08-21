@@ -21,7 +21,7 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
         try {
           // Fetch reviewer names for audit logs
           try {
-            final reviewersData = await SupabaseService.adminClient
+            final reviewersData = await SupabaseService.client
                 .from('profiles')
                 .select('id, full_name, role');
             for (final r in reviewersData) {
@@ -37,7 +37,7 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
             }
           } catch (_) {}
 
-          final data = await SupabaseService.adminClient
+          final data = await SupabaseService.client
               .from('profiles')
               .select()
               .eq('role', 'student')
@@ -45,7 +45,7 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
 
           Map<String, double> userGpas = {};
           try {
-            final authUsers = await SupabaseService.adminClient.auth.admin.listUsers();
+            final authUsers = await SupabaseService.client.auth.admin.listUsers();
             for (final u in authUsers) {
               final g = u.userMetadata?['gpa'];
               if (g != null) {
@@ -109,7 +109,7 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
 
       if (SupabaseService.isInitialized) {
         try {
-          await SupabaseService.adminClient.from('profiles').update({
+          await SupabaseService.client.from('profiles').update({
             'registration_status': 'approved',
             'is_approved': true,
             'reviewed_by': reviewerId,
@@ -118,7 +118,7 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
           }).or('id.eq.$studentId,university_code.eq.$studentId');
 
           // Audit Log
-          await SupabaseService.adminClient.from('audit_logs').insert({
+          await SupabaseService.client.from('audit_logs').insert({
             'user_id': reviewerId,
             'action_type': 'REGISTRATION_APPROVED',
             'entity_name': 'profiles',
@@ -166,7 +166,7 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
 
       if (SupabaseService.isInitialized) {
         try {
-          await SupabaseService.adminClient.from('profiles').update({
+          await SupabaseService.client.from('profiles').update({
             'registration_status': 'rejected',
             'is_approved': false,
             'reviewed_by': reviewerId,
@@ -175,7 +175,7 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
           }).or('id.eq.$studentId,university_code.eq.$studentId');
 
           // Audit Log
-          await SupabaseService.adminClient.from('audit_logs').insert({
+          await SupabaseService.client.from('audit_logs').insert({
             'user_id': reviewerId,
             'action_type': 'REGISTRATION_REJECTED',
             'entity_name': 'profiles',
@@ -223,7 +223,7 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
 
       if (SupabaseService.isInitialized) {
         try {
-          await SupabaseService.adminClient.from('profiles').update({
+          await SupabaseService.client.from('profiles').update({
             'registration_status': 'pending',
             'is_approved': false,
             'reviewed_by': reviewerId,
@@ -232,7 +232,7 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
           }).or('id.eq.$studentId,university_code.eq.$studentId');
 
           // Audit Log
-          await SupabaseService.adminClient.from('audit_logs').insert({
+          await SupabaseService.client.from('audit_logs').insert({
             'user_id': reviewerId,
             'action_type': 'REGISTRATION_RETURNED_TO_PENDING',
             'entity_name': 'profiles',
@@ -278,26 +278,26 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
       if (SupabaseService.isInitialized) {
         try {
           // Safe cascade deletions
-          await SupabaseService.adminClient.from('roster_entries').delete().eq('student_id', studentId);
-          await SupabaseService.adminClient.from('roster_preferences').delete().eq('student_id', studentId);
-          await SupabaseService.adminClient.from('notifications').delete().eq('user_id', studentId);
-          await SupabaseService.adminClient.from('attendance').delete().eq('student_id', studentId);
-          await SupabaseService.adminClient.from('quiz_answers').delete().eq('student_id', studentId);
-          await SupabaseService.adminClient.from('quiz_attempts').delete().eq('student_id', studentId);
-          await SupabaseService.adminClient.from('evaluations').delete().eq('student_id', studentId);
-          await SupabaseService.adminClient.from('cases').delete().eq('student_id', studentId);
-          await SupabaseService.adminClient.from('disciplinary_actions').delete().eq('student_id', studentId);
+          await SupabaseService.client.from('roster_entries').delete().eq('student_id', studentId);
+          await SupabaseService.client.from('roster_preferences').delete().eq('student_id', studentId);
+          await SupabaseService.client.from('notifications').delete().eq('user_id', studentId);
+          await SupabaseService.client.from('attendance').delete().eq('student_id', studentId);
+          await SupabaseService.client.from('quiz_answers').delete().eq('student_id', studentId);
+          await SupabaseService.client.from('quiz_attempts').delete().eq('student_id', studentId);
+          await SupabaseService.client.from('evaluations').delete().eq('student_id', studentId);
+          await SupabaseService.client.from('cases').delete().eq('student_id', studentId);
+          await SupabaseService.client.from('disciplinary_actions').delete().eq('student_id', studentId);
           
           // Delete from profiles
-          await SupabaseService.adminClient.from('profiles').delete().or('id.eq.$studentId,university_code.eq.$studentId');
+          await SupabaseService.client.from('profiles').delete().or('id.eq.$studentId,university_code.eq.$studentId');
 
           // Delete from Auth if valid UUID
           try {
-            await SupabaseService.adminClient.auth.admin.deleteUser(studentId);
+            await SupabaseService.client.auth.admin.deleteUser(studentId);
           } catch (_) {}
 
           // Audit Log
-          await SupabaseService.adminClient.from('audit_logs').insert({
+          await SupabaseService.client.from('audit_logs').insert({
             'user_id': reviewerId,
             'action_type': 'STUDENT_PERMANENTLY_DELETED',
             'entity_name': 'profiles',
