@@ -94,6 +94,9 @@ class FcmSenderService {
       final res = await SupabaseService.client.functions.invoke(
         'broadcast-notification',
         body: payload,
+        headers: {
+          'apikey': AppConfig.supabaseAnonKey,
+        },
       );
 
       debugPrint('[PROD_PUSH] CALL_FINISHED');

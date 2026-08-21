@@ -8,29 +8,13 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 
-const ALLOWED_ORIGINS = [
-  "http://localhost:8090",
-  "http://localhost:8080",
-  "http://localhost:3000",
-  "http://127.0.0.1:8090",
-  "http://127.0.0.1:8080",
-  "http://127.0.0.1:3000",
-  "https://emtaz-matrouh.vercel.app",
-];
-
 function getCorsHeaders(req: Request) {
-  const origin = req.headers.get("origin") || "";
-  const isAllowed =
-    ALLOWED_ORIGINS.includes(origin) ||
-    origin.startsWith("http://localhost:") ||
-    origin.startsWith("http://127.0.0.1:") ||
-    origin.endsWith(".vercel.app");
-  const allowedOrigin = isAllowed ? origin : (ALLOWED_ORIGINS[0] || "*");
+  const origin = req.headers.get("origin") || "*";
 
   return {
-    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, ttl",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Methods": "POST, OPTIONS, GET",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -141,9 +125,9 @@ serve(async (req) => {
   console.log("[EDGE_BROADCAST] POST_REQUEST");
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "https://zlxumwvygqcxhareknul.supabase.co";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const authHeader = req.headers.get("Authorization");
+    const authHeader = req.headers.get("Authorization") || "";
 
     if (!authHeader) {
       console.warn("[EDGE_BROADCAST] Missing Authorization header");
@@ -153,16 +137,16 @@ serve(async (req) => {
       });
     }
 
-    // 2. Initialize Clients
-    const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY") ?? "", {
-      global: { headers: { Authorization: authHeader } },
+    // 2. Initialize Admin Client
+    const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { persistSession: false },
     });
 
-    const adminClient = createClient(supabaseUrl, supabaseServiceKey);
-
-    // 3. Authenticate Caller
+    // 3. Authenticate Caller using JWT token
     console.log("[EDGE_BROADCAST] AUTH_CHECK_START");
-    const { data: { user }, error: userError } = await userClient.auth.getUser();
+    const jwt = authHeader.replace(/^Bearer\s+/i, "");
+    const { data: { user }, error: userError } = await adminClient.auth.getUser(jwt);
+
     if (userError || !user) {
       console.warn("[EDGE_BROADCAST] Invalid JWT token:", userError);
       return new Response(JSON.stringify({ error: "Unauthorized: Invalid JWT token" }), {
@@ -415,7 +399,7 @@ serve(async (req) => {
           fcmStatus = fcmRes.status;
           fcmBody = await fcmRes.text();
         } else {
-          // Fallback WebPush endpoint delivery
+          // Direct WebPush endpoint delivery
           const directRes = await fetch(`https://fcm.googleapis.com/fcm/send/${fcmToken}`, {
             method: "POST",
             headers: {
