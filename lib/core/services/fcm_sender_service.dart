@@ -58,7 +58,7 @@ class FcmSenderService {
         final refreshRes = await SupabaseService.client.auth.refreshSession();
         session = refreshRes.session;
       } catch (e) {
-        debugPrint('[EDGE_CLIENT] Session refresh note: $e');
+        debugPrint('[PROD_PUSH] Session refresh note: $e');
       }
     }
 
@@ -83,21 +83,21 @@ class FcmSenderService {
         if (metadata != null) 'metadata': metadata,
       };
 
-      final functionsUrl = '${AppConfig.supabaseUrl}/functions/v1/broadcast-notification';
-      final maskedUrl = functionsUrl.length > 25
-          ? '${functionsUrl.substring(0, 20)}...${functionsUrl.substring(functionsUrl.length - 12)}'
-          : functionsUrl;
+      final host = Uri.tryParse(AppConfig.supabaseUrl)?.host ?? 'zlxumwvygqcxhareknul.supabase.co';
 
       debugPrint('──────────────────────────────────────────────────');
-      debugPrint('[EDGE_CLIENT] INVOKE_START');
-      debugPrint('[EDGE_CLIENT] FUNCTION_NAME = broadcast-notification');
-      debugPrint('[EDGE_CLIENT] INVOKE_URL = $maskedUrl');
+      debugPrint('[PROD_PUSH] FUNCTION_CALL_START');
+      debugPrint('[PROD_PUSH] FUNCTION_NAME = broadcast-notification');
+      debugPrint('[PROD_PUSH] SUPABASE_HOST = $host');
 
       // 2. Invoke Supabase Edge Function with caller's JWT token
       final res = await SupabaseService.client.functions.invoke(
         'broadcast-notification',
         body: payload,
       );
+
+      debugPrint('[PROD_PUSH] CALL_FINISHED');
+      debugPrint('[PROD_PUSH] STATUS = ${res.status}');
 
       if (res.status == 200) {
         final data = res.data is Map ? Map<String, dynamic>.from(res.data) : {};
@@ -115,9 +115,7 @@ class FcmSenderService {
             (data['push_delivered_count'] as num?)?.toInt() ?? 0;
         final pushFailedCount = (data['pushFailed'] as num?)?.toInt() ?? 0;
 
-        debugPrint('[EDGE_CLIENT] INVOKE_SUCCESS');
-        debugPrint('[EDGE_CLIENT] STATUS = ${res.status}');
-        debugPrint('[EDGE_CLIENT] RESPONSE = recipients: $recipientCount, inApp: $inAppCount, push: $pushDeliveredCount, pushFailed: $pushFailedCount');
+        debugPrint('[PROD_PUSH] RESPONSE = recipients: $recipientCount, inApp: $inAppCount, push: $pushDeliveredCount, pushFailed: $pushFailedCount');
 
         return BroadcastExecutionResult(
           success: true,
@@ -131,9 +129,8 @@ class FcmSenderService {
         );
       } else {
         final errorMsg = res.data?['error']?.toString() ?? 'Server error status: ${res.status}';
-        debugPrint('[EDGE_CLIENT] INVOKE_FAILED');
-        debugPrint('[EDGE_CLIENT] ERROR_TYPE = HttpErrorStatus_${res.status}');
-        debugPrint('[EDGE_CLIENT] ERROR = $errorMsg');
+        debugPrint('[PROD_PUSH] ERROR_TYPE = HttpErrorStatus_${res.status}');
+        debugPrint('[PROD_PUSH] ERROR_MESSAGE = $errorMsg');
 
         return BroadcastExecutionResult(
           success: false,
@@ -141,24 +138,43 @@ class FcmSenderService {
         );
       }
     } on FunctionException catch (e, st) {
-      debugPrint('[EDGE_CLIENT] INVOKE_FAILED');
-      debugPrint('[EDGE_CLIENT] ERROR_TYPE = FunctionException (status: ${e.status})');
-      debugPrint('[EDGE_CLIENT] ERROR = ${e.details ?? e.reasonPhrase ?? e}');
-      debugPrint('[EDGE_CLIENT] STACK = $st');
+      debugPrint('[PROD_PUSH] CALL_FINISHED');
+      debugPrint('[PROD_PUSH] STATUS = ${e.status}');
+      debugPrint('[PROD_PUSH] ERROR_TYPE = FunctionException (HTTP ${e.status})');
+      debugPrint('[PROD_PUSH] ERROR_MESSAGE = ${e.details ?? e.reasonPhrase ?? e}');
+      debugPrint('[PROD_PUSH] STACK = $st');
+
+      String readableMsg;
+      if (e.status == 401) {
+        readableMsg = 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجددًا (401 Unauthorized)';
+      } else if (e.status == 403) {
+        readableMsg = 'ليس لديك صلاحية إرسال إشعارات كمسؤول أو قائد (403 Forbidden)';
+      } else if (e.status == 404) {
+        readableMsg = 'دالة الإشعارات غير موجودة على الخادم (404 Not Found)';
+      } else if (e.status == 500) {
+        readableMsg = 'حدث خطأ داخلي في خادم الإشعارات (500 Internal Server Error): ${e.details ?? ""}';
+      } else {
+        readableMsg = e.details?.toString() ?? e.reasonPhrase ?? 'فشل استدعاء الخادم لإرسال الإشعار (HTTP ${e.status})';
+      }
 
       return BroadcastExecutionResult(
         success: false,
-        errorMessage: e.details?.toString() ?? e.reasonPhrase ?? 'فشل استدعاء الخادم لإرسال الإشعار',
+        errorMessage: readableMsg,
       );
     } catch (e, st) {
-      debugPrint('[EDGE_CLIENT] INVOKE_FAILED');
-      debugPrint('[EDGE_CLIENT] ERROR_TYPE = ${e.runtimeType}');
-      debugPrint('[EDGE_CLIENT] ERROR = $e');
-      debugPrint('[EDGE_CLIENT] STACK = $st');
+      debugPrint('[PROD_PUSH] CALL_FINISHED');
+      debugPrint('[PROD_PUSH] ERROR_TYPE = ${e.runtimeType}');
+      debugPrint('[PROD_PUSH] ERROR_MESSAGE = $e');
+      debugPrint('[PROD_PUSH] STACK = $st');
+
+      String readableMsg = e.toString();
+      if (readableMsg.contains('Failed to fetch') || readableMsg.contains('ClientException')) {
+        readableMsg = 'تعذر الاتصال بخادم الإشعارات السحابي (Network/CORS Fetch Error). يرجى التحقق من اتصال الإنترنت.';
+      }
 
       return BroadcastExecutionResult(
         success: false,
-        errorMessage: e.toString(),
+        errorMessage: readableMsg,
       );
     }
   }

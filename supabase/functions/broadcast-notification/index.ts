@@ -20,7 +20,11 @@ const ALLOWED_ORIGINS = [
 
 function getCorsHeaders(req: Request) {
   const origin = req.headers.get("origin") || "";
-  const isAllowed = ALLOWED_ORIGINS.includes(origin) || origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:");
+  const isAllowed =
+    ALLOWED_ORIGINS.includes(origin) ||
+    origin.startsWith("http://localhost:") ||
+    origin.startsWith("http://127.0.0.1:") ||
+    origin.endsWith(".vercel.app");
   const allowedOrigin = isAllowed ? origin : (ALLOWED_ORIGINS[0] || "*");
 
   return {
