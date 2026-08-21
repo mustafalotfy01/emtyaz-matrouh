@@ -296,17 +296,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             if (mounted) setState(() {});
                           } else {
                             // Show test browser notification
-                            PushNotificationService.instance.showBrowserNotification(
+                            await PushNotificationService.instance.showBrowserNotification(
                               title: 'امتياز مطروح (FCM)',
                               body: 'تم اختبار الإشعارات الفورية بنجاح على جهازك! 🎉',
                               route: '/notifications',
                             );
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                backgroundColor: AppColors.success,
-                                content: Text(l10n.isArabic ? 'تم إرسال إشعار تجريبي بنجاح ✅' : 'Test notification sent ✅'),
-                              ),
-                            );
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  backgroundColor: AppColors.success,
+                                  content: Text(l10n.isArabic ? 'تم إرسال إشعار تجريبي بنجاح ✅' : 'Test notification sent ✅'),
+                                ),
+                              );
+                            }
                           }
                         },
                       ),

@@ -6,4 +6,4 @@ String getPermissionStatusImpl() => 'unsupported';
 
 Future<String> requestPermissionImpl() async => 'denied';
 
-bool showBrowserNotificationImpl(String title, String body, String route) => false;
+Future<bool> showBrowserNotificationImpl(String title, String body, String route) async => false;

@@ -185,6 +185,7 @@ class _SendNotificationScreenState extends ConsumerState<SendNotificationScreen>
   }
 
   void _showConfirmationDialog(BuildContext context, SendNotificationState state, AppLocalizations l10n) {
+    debugPrint('[REAL_BROADCAST] CONFIRMATION_DIALOG_OPENED');
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -257,22 +258,42 @@ class _SendNotificationScreenState extends ConsumerState<SendNotificationScreen>
                   icon: const Icon(Icons.send, size: 16, color: Colors.white),
                   label: const Text('تأكيد الإرسال', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   onPressed: () async {
+                    debugPrint('[REAL_BROADCAST] CONFIRM_BUTTON_CLICKED');
+
                     final messenger = ScaffoldMessenger.of(context);
+                    messenger.showSnackBar(
+                      const SnackBar(
+                        duration: Duration(milliseconds: 1000),
+                        content: Text('جاري إرسال الإشعار...'),
+                      ),
+                    );
+
                     final success = await ref
                         .read(sendNotificationProvider.notifier)
                         .broadcastNotification();
 
-                    Navigator.pop(ctx);
+                    final latestState = ref.read(sendNotificationProvider);
+                    if (ctx.mounted) {
+                      Navigator.pop(ctx);
+                    }
+
                     if (success) {
                       _titleController.clear();
                       _bodyController.clear();
                       messenger.showSnackBar(
-                        const SnackBar(
+                        SnackBar(
                           backgroundColor: AppColors.success,
-                          content: Text('تم إرسال الإشعار بنجاح لجميع الطلاب المستهدفين ✅'),
+                          content: Text(latestState.successMessage ?? 'تم إرسال الإشعار بنجاح لجميع الطلاب المستهدفين ✅'),
                         ),
                       );
                       _tabController.animateTo(1); // Switch to History
+                    } else {
+                      messenger.showSnackBar(
+                        SnackBar(
+                          backgroundColor: AppColors.danger,
+                          content: Text(latestState.errorMessage ?? 'فشل إرسال الإشعار: حدث خطأ أثناء الإرسال ✕'),
+                        ),
+                      );
                     }
                   },
                 ),
@@ -702,12 +723,17 @@ class _SendNotificationScreenState extends ConsumerState<SendNotificationScreen>
                 icon: Icons.send_rounded,
                 color: AppColors.primaryTeal,
                 onPressed: () {
+                  debugPrint('========== REAL BROADCAST BUTTON CLICKED ==========');
+                  debugPrint('[REAL_BROADCAST] onPressed ENTERED');
+
                   if (_titleController.text.trim().isEmpty || _bodyController.text.trim().isEmpty) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('يرجى ملء العنوان ونص الرسالة أولاً')),
                     );
                     return;
                   }
+
+                  debugPrint('[REAL_BROADCAST] OPENING_CONFIRMATION_DIALOG');
                   _showConfirmationDialog(context, state, l10n);
                 },
               ),

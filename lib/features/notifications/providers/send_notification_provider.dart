@@ -202,17 +202,32 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
 
   Future<bool> broadcastNotification() async {
     final user = _ref.read(authProvider).user;
+
+    debugPrint('══════════════════════════════════════════════════');
+    debugPrint('[REAL_BROADCAST] PROVIDER_ENTERED');
+    debugPrint('[EDGE_CLIENT] BROWSER_ORIGIN = ${kIsWeb ? Uri.base.origin : "native"}');
+    debugPrint('[REAL_BROADCAST] AUTHENTICATED: ${user != null}');
+    debugPrint('[REAL_BROADCAST] USER_ID: ${user != null ? "${user.id.substring(0, 8)}..." : "none"}');
+    debugPrint('[REAL_BROADCAST] ROLE: ${user?.role.toDbString() ?? "none"}');
+    debugPrint('[REAL_BROADCAST] TITLE: ${state.title}');
+    debugPrint('[REAL_BROADCAST] MESSAGE: ${state.body}');
+    debugPrint('[REAL_BROADCAST] AUDIENCE: ${state.audienceType.toDbString()}');
+    debugPrint('[REAL_BROADCAST] SELECTED_USERS_COUNT: ${state.selectedStudentIds.length}');
+
     if (user == null) {
+      debugPrint('[REAL_BROADCAST] RETURN_REASON = NOT_AUTHENTICATED');
       state = state.copyWith(errorMessage: 'يجب تسجيل الدخول بحساب مسؤول أو قائد لإرسال الإشعارات');
       return false;
     }
 
     if (state.title.trim().isEmpty) {
+      debugPrint('[REAL_BROADCAST] RETURN_REASON = EMPTY_TITLE');
       state = state.copyWith(errorMessage: 'يرجى كتابة عنوان الإشعار');
       return false;
     }
 
     if (state.body.trim().isEmpty) {
+      debugPrint('[REAL_BROADCAST] RETURN_REASON = EMPTY_MESSAGE');
       state = state.copyWith(errorMessage: 'يرجى كتابة نص الرسالة');
       return false;
     }
@@ -220,6 +235,8 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
     state = state.copyWith(isSending: true, errorMessage: null, successMessage: null);
 
     try {
+      debugPrint('[REAL_BROADCAST] TARGET_RESOLUTION_START');
+
       final audienceTypeStr = state.audienceType.toDbString();
       final audienceValueStr = state.audienceType == NotificationAudienceType.department
           ? state.selectedDepartmentId
@@ -227,14 +244,27 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
               ? 'A'
               : (state.audienceType == NotificationAudienceType.groupB ? 'B' : null));
 
-      final specificIds = state.audienceType == NotificationAudienceType.specificStudents
-          ? state.selectedStudentIds.toList()
-          : null;
+      List<String>? specificIds;
+      if (state.audienceType == NotificationAudienceType.specificStudents) {
+        specificIds = state.selectedStudentIds.toList();
+        if (specificIds.isEmpty) {
+          debugPrint('[REAL_BROADCAST] RETURN_REASON = NO_TARGETS');
+          state = state.copyWith(
+            isSending: false,
+            errorMessage: 'يرجى اختيار طالب واحد على الأقل لإرسال الإشعار إليه',
+          );
+          return false;
+        }
+      }
+
+      debugPrint('[REAL_BROADCAST] TARGET_RESOLUTION_FINISHED');
 
       // ────────────────────────────────────────────────────────────────────────
-      // SECURE SERVER-SIDE BROADCAST DISPATCH
+      // SECURE EDGE FUNCTION INVOCATION (Server-Side Owned DB Insert & Push)
       // ────────────────────────────────────────────────────────────────────────
-      final result = await FcmSenderService.instance.broadcastServerNotification(
+      debugPrint('[REAL_BROADCAST] EDGE_FUNCTION_CALL_START');
+
+      final edgeResult = await FcmSenderService.instance.broadcastServerNotification(
         audienceType: audienceTypeStr,
         audienceValue: audienceValueStr,
         specificStudentIds: specificIds,
@@ -249,21 +279,27 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
         },
       );
 
-      if (!result.success) {
+      debugPrint('[REAL_BROADCAST] EDGE_FUNCTION_CALL_FINISHED');
+      debugPrint('[REAL_BROADCAST] EDGE_FUNCTION_STATUS = ${edgeResult.success ? "200 OK" : "FAILED"}');
+      debugPrint('[REAL_BROADCAST] EDGE_FUNCTION_RESPONSE = recipients: ${edgeResult.recipientCount}, inApp: ${edgeResult.inAppCount}, push: ${edgeResult.pushDeliveredCount}, pushFailed: ${edgeResult.pushFailedCount}');
+
+      if (!edgeResult.success) {
+        debugPrint('[REAL_BROADCAST] RETURN_REASON = EDGE_FUNCTION_FAILED');
         state = state.copyWith(
           isSending: false,
-          errorMessage: result.errorMessage ?? 'فشل إرسال الإشعار من الخادم',
+          errorMessage: edgeResult.errorMessage ?? 'فشل إرسال الإشعار عبر الخادم',
         );
         return false;
       }
 
-      // Trigger local sender notification feedback
+      // Trigger local sender notification preview if applicable
       PushNotificationService.instance.showBrowserNotification(
         title: state.title.trim(),
         body: state.body.trim(),
         route: state.targetRoute,
       );
 
+      final totalDelivered = edgeResult.inAppCount > 0 ? edgeResult.inAppCount : edgeResult.recipientCount;
       final newCampaign = NotificationCampaign(
         id: 'camp-${DateTime.now().millisecondsSinceEpoch}',
         senderId: user.id,
@@ -274,12 +310,19 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
         title: state.title.trim(),
         body: state.body.trim(),
         type: state.notificationType,
-        recipientCount: result.recipientCount,
-        deviceCount: result.tokensFound,
-        successCount: result.recipientCount,
-        failureCount: 0,
+        recipientCount: totalDelivered,
+        deviceCount: edgeResult.tokensFound > 0 ? edgeResult.tokensFound : totalDelivered,
+        successCount: edgeResult.pushDeliveredCount > 0 ? edgeResult.pushDeliveredCount : totalDelivered,
+        failureCount: edgeResult.pushFailedCount,
         createdAt: DateTime.now(),
       );
+
+      final String successMsg;
+      if (edgeResult.pushDeliveredCount > 0) {
+        successMsg = 'تم إرسال الإشعار بنجاح لـ $totalDelivered طالب وإرسال Push إلى ${edgeResult.pushDeliveredCount} جهاز ✅';
+      } else {
+        successMsg = 'تم حفظ الإشعار لـ $totalDelivered طالب بنجاح في التطبيق ✅';
+      }
 
       state = state.copyWith(
         isSending: false,
@@ -287,13 +330,17 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
         body: '',
         selectedStudentIds: const {},
         campaignsHistory: [newCampaign, ...state.campaignsHistory],
-        successMessage: 'تم إرسال الإشعار بنجاح وحفظه في سجلات ${result.recipientCount} طالبًا ✅',
+        successMessage: successMsg,
       );
 
       return true;
-    } catch (e) {
-      if (kDebugMode) print('[SendNotificationNotifier] broadcast error: $e');
-      state = state.copyWith(isSending: false, errorMessage: 'حدث خطأ أثناء إرسال الإشعار: $e');
+    } catch (e, stack) {
+      debugPrint('[REAL_BROADCAST_ERROR] $e');
+      debugPrintStack(stackTrace: stack);
+      state = state.copyWith(
+        isSending: false,
+        errorMessage: 'حدث خطأ غير متوقع أثناء إرسال الإشعار: $e',
+      );
       return false;
     }
   }

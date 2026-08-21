@@ -1,32 +1,33 @@
-// ==============================================================================
 // Supabase Edge Function: broadcast-notification
-// Project: Emtaz-Matrouh / Matrouh Internship
-//
-// Description:
-// Secure Server-Side Notification Broadcaster for Leaders and Administrators.
-// Handles both In-App Notification insertion (Path A) and FCM Push Dispatch (Path B).
-//
-// SECURITY:
-// - Verifies caller JWT and enforces Leader/Supervisor/Admin role from profiles table.
-// - Uses SUPABASE_SERVICE_ROLE_KEY strictly server-side.
-// - Tokens are never logged in full.
-// ==============================================================================
+// Securely handles Leader/Admin notification broadcasts:
+// 1. Validates Caller Authentication & Role (leader / super_admin / evaluating_doctor)
+// 2. Inserts In-App Notification records in public.notifications using server-side Service Role
+// 3. Dispatches Web Push Notifications to targeted student FCM tokens
+// All private keys and service role credentials remain 100% on the server.
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
+
+const ALLOWED_ORIGINS = [
+  "http://localhost:8090",
+  "http://localhost:8080",
+  "http://localhost:3000",
+  "http://127.0.0.1:8090",
+  "http://127.0.0.1:8080",
+  "http://127.0.0.1:3000",
+  "https://emtaz-matrouh.vercel.app",
+];
 
 function getCorsHeaders(req: Request) {
-  const origin = req.headers.get("origin") ?? "*";
-  const allowedOrigins = [
-    "https://emtaz-matrouh.vercel.app",
-    "http://localhost:",
-    "http://127.0.0.1:",
-  ];
-  const isAllowed = allowedOrigins.some((o) => origin.startsWith(o)) || origin === "*";
+  const origin = req.headers.get("origin") || "";
+  const isAllowed = ALLOWED_ORIGINS.includes(origin) || origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:");
+  const allowedOrigin = isAllowed ? origin : (ALLOWED_ORIGINS[0] || "*");
+
   return {
-    "Access-Control-Allow-Origin": isAllowed ? origin : "https://emtaz-matrouh.vercel.app",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, ttl",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Max-Age": "86400",
   };
 }
 
@@ -44,10 +45,17 @@ interface BroadcastPayload {
 serve(async (req) => {
   const corsHeaders = getCorsHeaders(req);
 
-  // 1. Handle CORS Preflight
+  console.log("[EDGE_BROADCAST] REQUEST_RECEIVED");
+  console.log(`[EDGE_BROADCAST] METHOD = ${req.method}`);
+  console.log(`[EDGE_BROADCAST] ORIGIN = ${req.headers.get("origin") || "none"}`);
+
+  // 1. Handle CORS Preflight immediately before authentication or payload parsing
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    console.log("[EDGE_BROADCAST] PREFLIGHT_REQUEST (OPTIONS 200 OK)");
+    return new Response("ok", { status: 200, headers: corsHeaders });
   }
+
+  console.log("[EDGE_BROADCAST] POST_REQUEST");
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
@@ -55,6 +63,7 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
 
     if (!authHeader) {
+      console.warn("[EDGE_BROADCAST] Missing Authorization header");
       return new Response(JSON.stringify({ error: "Missing Authorization header" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -69,15 +78,19 @@ serve(async (req) => {
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
     // 3. Authenticate Caller
+    console.log("[EDGE_BROADCAST] AUTH_CHECK_START");
     const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) {
+      console.warn("[EDGE_BROADCAST] Invalid JWT token:", userError);
       return new Response(JSON.stringify({ error: "Unauthorized: Invalid JWT token" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    console.log("[EDGE_BROADCAST] AUTH_OK");
 
     // 4. Verify Leader / Admin Role from profiles table
+    console.log("[EDGE_BROADCAST] ROLE_CHECK_START");
     const { data: callerProfile, error: profileError } = await adminClient
       .from("profiles")
       .select("id, full_name, role, is_approved, registration_status")
@@ -85,16 +98,20 @@ serve(async (req) => {
       .single();
 
     if (profileError || !callerProfile) {
+      console.warn("[EDGE_BROADCAST] Caller profile not found:", profileError);
       return new Response(JSON.stringify({ error: "Forbidden: Caller profile not found" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    console.log(`[EDGE_BROADCAST] ROLE = ${callerProfile.role}`);
+
     const allowedRoles = ["leader", "super_admin", "evaluating_doctor"];
     const isApproved = callerProfile.is_approved === true || callerProfile.registration_status === "approved";
 
     if (!allowedRoles.includes(callerProfile.role) || !isApproved) {
+      console.warn(`[EDGE_BROADCAST] Role not permitted: role=${callerProfile.role}, isApproved=${isApproved}`);
       return new Response(
         JSON.stringify({ error: "Forbidden: Only approved Leaders, Supervisors, and Admins can broadcast notifications." }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -113,6 +130,7 @@ serve(async (req) => {
     }
 
     // 6. Resolve Target Recipients
+    console.log("[EDGE_BROADCAST] TARGET_RESOLUTION_START");
     let targetStudentIds: string[] = [];
 
     if (audience_type === "ALL_STUDENTS") {
@@ -159,6 +177,8 @@ serve(async (req) => {
       targetStudentIds = (validStudents ?? []).map((s) => s.id);
     }
 
+    console.log(`[EDGE_BROADCAST] TARGET_COUNT = ${targetStudentIds.length}`);
+
     if (targetStudentIds.length === 0) {
       return new Response(JSON.stringify({ error: "No eligible recipient students found." }), {
         status: 400,
@@ -167,50 +187,79 @@ serve(async (req) => {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // PATH A: Insert In-App Notifications in Supabase
+    // PATH A: Insert In-App Notifications in Supabase (Service Role Owned)
     // ──────────────────────────────────────────────────────────────────────────
-    const inAppRecords = targetStudentIds.map((id) => ({
-      user_id: id,
+    console.log("[EDGE_BROADCAST] DB_INSERT_START");
+    const inAppRows = targetStudentIds.map((studentId) => ({
+      user_id: studentId,
       title: title.trim(),
       message: body.trim(),
       type: notification_type || "GENERAL",
       is_read: false,
+      created_at: new Date().toISOString(),
     }));
 
-    const { data: insertedRows, error: insertError } = await adminClient
-      .from("notifications")
-      .insert(inAppRecords)
-      .select("id");
-
-    if (insertError) {
-      console.error("[EDGE FUNCTION] In-App Notification insert error:", insertError);
-      return new Response(JSON.stringify({ error: "Failed to create in-app notification records", details: insertError.message }), {
+    let inAppInserted = 0;
+    const { error: insertError } = await adminClient.from("notifications").insert(inAppRows);
+    if (!insertError) {
+      inAppInserted = inAppRows.length;
+      console.log(`[EDGE_BROADCAST] DB_INSERT_SUCCESS`);
+      console.log(`[EDGE_BROADCAST] DB_INSERT_COUNT = ${inAppInserted}`);
+    } else {
+      console.error("[EDGE_BROADCAST] DB_INSERT_FAILED");
+      console.error("[EDGE_BROADCAST] DB_ERROR = ", insertError);
+      return new Response(JSON.stringify({ error: `Database insert failed: ${insertError.message}` }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // PATH B: Dispatch Push Notifications via FCM
+    // PATH B: Dispatch FCM Web Push Notifications
     // ──────────────────────────────────────────────────────────────────────────
+    console.log("[EDGE_BROADCAST] TOKEN_LOOKUP_START");
     let pushSuccessCount = 0;
+    let pushFailedCount = 0;
     let tokensFound = 0;
 
     for (const recipientId of targetStudentIds) {
       try {
-        const { data: userData, error: userFetchError } = await adminClient.auth.admin.getUserById(recipientId);
-        if (userFetchError || !userData?.user) continue;
+        const maskedId = recipientId.length > 8 ? `${recipientId.substring(0, 8)}...` : recipientId;
 
-        const fcmToken = userData.user.user_metadata?.fcm_token;
+        // Check user_metadata first, then push_subscriptions table
+        let fcmToken: string | undefined;
+
+        const { data: userData } = await adminClient.auth.admin.getUserById(recipientId);
+        if (userData?.user?.user_metadata?.fcm_token) {
+          fcmToken = userData.user.user_metadata.fcm_token;
+        }
+
+        if (!fcmToken) {
+          const { data: subData } = await adminClient
+            .from("push_subscriptions")
+            .select("endpoint")
+            .eq("user_id", recipientId)
+            .eq("is_active", true)
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (subData?.endpoint?.startsWith("fcm:")) {
+            fcmToken = subData.endpoint.replace("fcm:", "");
+          }
+        }
+
         if (!fcmToken || typeof fcmToken !== "string" || fcmToken.trim().length === 0) {
-          console.log(`[EDGE FCM TRACE] User ${recipientId}: No FCM token registered`);
+          console.log(`[EDGE_BROADCAST] TOKEN_FOUND = false for ${maskedId}`);
+          pushFailedCount++;
           continue;
         }
 
         tokensFound++;
-        console.log(`[EDGE FCM TRACE] User ${recipientId}: FCM token present (length: ${fcmToken.length})`);
+        console.log(`[EDGE_BROADCAST] TOKEN_FOUND = true for ${maskedId}`);
 
         // Send to FCM Web Push Endpoint
+        console.log("[EDGE_BROADCAST] FCM_SEND_START");
         const fcmRes = await fetch(`https://fcm.googleapis.com/fcm/send/${fcmToken}`, {
           method: "POST",
           headers: {
@@ -232,30 +281,32 @@ serve(async (req) => {
 
         if (fcmRes.status === 200 || fcmRes.status === 201) {
           pushSuccessCount++;
-          console.log(`[EDGE FCM TRACE] Push delivered successfully to user ${recipientId}`);
+          console.log(`[EDGE_BROADCAST] FCM_SUCCESS = ${maskedId}`);
         } else {
-          console.warn(`[EDGE FCM TRACE] FCM status ${fcmRes.status} for user ${recipientId}`);
+          pushFailedCount++;
+          const respText = await fcmRes.text();
+          console.warn(`[EDGE_BROADCAST] FCM_FAILED = ${fcmRes.status}: ${respText}`);
         }
       } catch (fcmErr) {
-        console.error(`[EDGE FCM TRACE] Exception sending push to ${recipientId}:`, fcmErr);
+        pushFailedCount++;
+        console.error(`[EDGE_BROADCAST] FCM_FAILED = exception:`, fcmErr);
       }
     }
 
     return new Response(
       JSON.stringify({
         success: true,
-        recipient_count: targetStudentIds.length,
-        in_app_count: insertedRows?.length ?? 0,
-        tokens_found: tokensFound,
-        push_delivered_count: pushSuccessCount,
-        sender: callerProfile.full_name,
-        created_at: new Date().toISOString(),
+        recipients: targetStudentIds.length,
+        inAppInserted: inAppInserted,
+        pushSent: pushSuccessCount,
+        pushFailed: pushFailedCount,
+        tokensFound: tokensFound,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err: any) {
-    console.error("[EDGE FUNCTION ERROR]:", err);
-    return new Response(JSON.stringify({ error: err.message || "Internal Server Error" }), {
+    console.error("[EDGE_BROADCAST] Top-level handler exception:", err);
+    return new Response(JSON.stringify({ error: err.message || "Internal server error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

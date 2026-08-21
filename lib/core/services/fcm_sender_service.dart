@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../constants/app_config.dart';
 import 'supabase_service.dart';
 
 class BroadcastExecutionResult {
@@ -8,6 +9,7 @@ class BroadcastExecutionResult {
   final int inAppCount;
   final int tokensFound;
   final int pushDeliveredCount;
+  final int pushFailedCount;
   final String? errorMessage;
 
   BroadcastExecutionResult({
@@ -16,6 +18,7 @@ class BroadcastExecutionResult {
     this.inAppCount = 0,
     this.tokensFound = 0,
     this.pushDeliveredCount = 0,
+    this.pushFailedCount = 0,
     this.errorMessage,
   });
 }
@@ -57,12 +60,15 @@ class FcmSenderService {
         if (metadata != null) 'metadata': metadata,
       };
 
-      if (kDebugMode) {
-        print('──────────────────────────────────────────────────');
-        print('[SECURE LEADER BROADCAST] Calling Edge Function: broadcast-notification');
-        print('[SECURE LEADER BROADCAST] Audience: $audienceType');
-        print('[SECURE LEADER BROADCAST] Title: ${title.trim()}');
-      }
+      final functionsUrl = '${AppConfig.supabaseUrl}/functions/v1/broadcast-notification';
+      final maskedUrl = functionsUrl.length > 25
+          ? '${functionsUrl.substring(0, 20)}...${functionsUrl.substring(functionsUrl.length - 12)}'
+          : functionsUrl;
+
+      debugPrint('──────────────────────────────────────────────────');
+      debugPrint('[EDGE_CLIENT] INVOKE_START');
+      debugPrint('[EDGE_CLIENT] FUNCTION_NAME = broadcast-notification');
+      debugPrint('[EDGE_CLIENT] INVOKE_URL = $maskedUrl');
 
       // 1. Invoke Supabase Edge Function with caller's JWT token
       final res = await SupabaseService.client.functions.invoke(
@@ -72,15 +78,19 @@ class FcmSenderService {
 
       if (res.status == 200) {
         final data = res.data is Map ? Map<String, dynamic>.from(res.data) : {};
-        final recipientCount = (data['recipient_count'] as num?)?.toInt() ?? 0;
-        final inAppCount = (data['in_app_count'] as num?)?.toInt() ?? 0;
-        final tokensFound = (data['tokens_found'] as num?)?.toInt() ?? 0;
-        final pushDeliveredCount = (data['push_delivered_count'] as num?)?.toInt() ?? 0;
+        final recipientCount = (data['recipients'] as num?)?.toInt() ??
+            (data['recipient_count'] as num?)?.toInt() ?? 0;
+        final inAppCount = (data['inAppInserted'] as num?)?.toInt() ??
+            (data['in_app_count'] as num?)?.toInt() ?? 0;
+        final tokensFound = (data['tokensFound'] as num?)?.toInt() ??
+            (data['tokens_found'] as num?)?.toInt() ?? 0;
+        final pushDeliveredCount = (data['pushSent'] as num?)?.toInt() ??
+            (data['push_delivered_count'] as num?)?.toInt() ?? 0;
+        final pushFailedCount = (data['pushFailed'] as num?)?.toInt() ?? 0;
 
-        if (kDebugMode) {
-          print('[SECURE LEADER BROADCAST] Status: 200 OK');
-          print('[SECURE LEADER BROADCAST] Recipients: $recipientCount | In-App: $inAppCount | Push: $pushDeliveredCount');
-        }
+        debugPrint('[EDGE_CLIENT] INVOKE_SUCCESS');
+        debugPrint('[EDGE_CLIENT] STATUS = ${res.status}');
+        debugPrint('[EDGE_CLIENT] RESPONSE = recipients: $recipientCount, inApp: $inAppCount, push: $pushDeliveredCount, pushFailed: $pushFailedCount');
 
         return BroadcastExecutionResult(
           success: true,
@@ -88,30 +98,35 @@ class FcmSenderService {
           inAppCount: inAppCount,
           tokensFound: tokensFound,
           pushDeliveredCount: pushDeliveredCount,
+          pushFailedCount: pushFailedCount,
         );
       } else {
         final errorMsg = res.data?['error']?.toString() ?? 'Server error status: ${res.status}';
-        if (kDebugMode) {
-          print('[SECURE LEADER BROADCAST] Edge Function Error: $errorMsg');
-        }
+        debugPrint('[EDGE_CLIENT] INVOKE_FAILED');
+        debugPrint('[EDGE_CLIENT] ERROR_TYPE = HttpErrorStatus_${res.status}');
+        debugPrint('[EDGE_CLIENT] ERROR = $errorMsg');
 
         return BroadcastExecutionResult(
           success: false,
           errorMessage: errorMsg,
         );
       }
-    } on FunctionException catch (e) {
-      if (kDebugMode) {
-        print('[SECURE LEADER BROADCAST] Function Exception: ${e.details} (status: ${e.status})');
-      }
+    } on FunctionException catch (e, st) {
+      debugPrint('[EDGE_CLIENT] INVOKE_FAILED');
+      debugPrint('[EDGE_CLIENT] ERROR_TYPE = FunctionException (status: ${e.status})');
+      debugPrint('[EDGE_CLIENT] ERROR = ${e.details ?? e.reasonPhrase ?? e}');
+      debugPrint('[EDGE_CLIENT] STACK = $st');
+
       return BroadcastExecutionResult(
         success: false,
-        errorMessage: e.details?.toString() ?? 'فشل الاتصال بالخادم لإرسال الإشعار',
+        errorMessage: e.details?.toString() ?? e.reasonPhrase ?? 'فشل استدعاء الخادم لإرسال الإشعار',
       );
-    } catch (e) {
-      if (kDebugMode) {
-        print('[SECURE LEADER BROADCAST] Unexpected Exception: $e');
-      }
+    } catch (e, st) {
+      debugPrint('[EDGE_CLIENT] INVOKE_FAILED');
+      debugPrint('[EDGE_CLIENT] ERROR_TYPE = ${e.runtimeType}');
+      debugPrint('[EDGE_CLIENT] ERROR = $e');
+      debugPrint('[EDGE_CLIENT] STACK = $st');
+
       return BroadcastExecutionResult(
         success: false,
         errorMessage: e.toString(),

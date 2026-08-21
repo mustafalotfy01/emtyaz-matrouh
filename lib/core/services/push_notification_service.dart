@@ -43,13 +43,13 @@ class PushNotificationService {
   }
 
   /// Show native browser/device push notification
-  bool showBrowserNotification({
+  Future<bool> showBrowserNotification({
     required String title,
     required String body,
     String route = '/',
     Map<String, dynamic>? metadata,
-  }) {
+  }) async {
     if (!kIsWeb) return false;
-    return showBrowserNotificationImpl(title, body, route);
+    return await showBrowserNotificationImpl(title, body, route);
   }
 }

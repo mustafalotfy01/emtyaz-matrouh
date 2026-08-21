@@ -8,6 +8,7 @@ import '../../../core/services/firebase_messaging_service.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/custom_card.dart';
+import '../../auth/providers/auth_provider.dart';
 
 class FcmDebugScreen extends ConsumerStatefulWidget {
   const FcmDebugScreen({super.key});
@@ -266,21 +267,89 @@ class _FcmDebugScreenState extends ConsumerState<FcmDebugScreen> {
           const SizedBox(height: 10),
 
           CustomButton(
-            text: 'إرسال إشعار تجريبي محلي للجهاز 🚀',
+            text: 'إرسال إشعار تجريبي للجهاز 🚀',
             icon: Icons.send_to_mobile,
             color: AppColors.accentCyan,
-            onPressed: () {
-              push.showBrowserNotification(
-                title: 'امتياز مطروح (FCM Test)',
-                body: 'تم اختبار نظام التنبيهات الفورية بنجاح على هذا الجهاز! 🎉',
-                route: '/notifications',
-              );
+            onPressed: () async {
+              final auth = ref.read(authProvider);
+              final user = auth.user;
+              final fcmToken = fcm.currentToken;
+
+              if (kDebugMode) {
+                print('──────────────────────────────────────────────────');
+                print('[TEST_PUSH] BUTTON_CLICKED');
+                print('[TEST_PUSH] AUTHENTICATED: ${user != null}');
+                print('[TEST_PUSH] USER_ID: ${user?.id ?? "none"}');
+                print('[TEST_PUSH] USER_ROLE: ${user?.role.name ?? "none"}');
+                print('[TEST_PUSH] FCM_TOKEN_EXISTS: ${fcmToken != null && fcmToken.isNotEmpty}');
+                print('[TEST_PUSH] TOKEN_LENGTH: ${fcmToken?.length ?? 0}');
+                print('[TEST_PUSH] CALLING_PUSH_SERVICE');
+              }
+
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  backgroundColor: AppColors.success,
-                  content: Text('تم إرسال الإشعار التجريبي للجهاز ✅'),
+                  duration: Duration(milliseconds: 800),
+                  content: Text('جاري إرسال الإشعار...'),
                 ),
               );
+
+              try {
+                final success = await push.showBrowserNotification(
+                  title: 'امتياز مطروح (FCM Test)',
+                  body: 'تم اختبار نظام التنبيهات الفورية بنجاح على هذا الجهاز! 🎉',
+                  route: '/notifications',
+                );
+
+                if (kDebugMode) {
+                  print('[TEST_PUSH] PUSH_SERVICE_RETURNED: $success');
+                }
+
+                if (mounted) {
+                  if (success) {
+                    if (kDebugMode) print('[TEST_PUSH] SUCCESS');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        backgroundColor: AppColors.success,
+                        content: Text('تم إرسال الإشعار بنجاح ✅'),
+                      ),
+                    );
+                    setState(() {
+                      _statusLog = 'تم إرسال الإشعار التجريبي للجهاز بنجاح ✅';
+                    });
+                  } else {
+                    final perm = push.getPermissionStatus();
+                    final reason = perm != PushPermissionStatus.granted
+                        ? 'إذن الإشعارات غير مفعل ($perm)'
+                        : 'فشل استدعاء ServiceWorker/Notification API';
+                    if (kDebugMode) print('[TEST_PUSH] ERROR: $reason');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        backgroundColor: AppColors.danger,
+                        content: Text('فشل إرسال الإشعار: $reason ✕'),
+                      ),
+                    );
+                    setState(() {
+                      _statusLog = 'فشل إرسال الإشعار: $reason ✕';
+                    });
+                  }
+                }
+              } catch (e, st) {
+                if (kDebugMode) {
+                  print('[TEST_PUSH_ERROR] $e');
+                  print(st);
+                }
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: AppColors.danger,
+                      content: Text('فشل إرسال الإشعار: $e ✕'),
+                    ),
+                  );
+                  setState(() {
+                    _statusLog = 'فشل إرسال الإشعار: $e ✕';
+                  });
+                }
+              }
             },
           ),
 
