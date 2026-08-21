@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="إمتياز مطروح — تطبيق إدارة ومتابعة طلاب سنة الامتياز للتمريض بمستشفى مطروح العام">
+  <meta name="theme-color" content="#0E7C8C">
+
+  <!-- PWA / iOS Home Screen -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="إمتياز مطروح">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="icons/Icon-512.png">
+
+  <!-- PWA Splash Screens (iOS) -->
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+
+  <title>إمتياز مطروح — تطبيق التمريض</title>
+
+  <!-- Cairo Font for Web rendering -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      font-family: 'Cairo', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+    }
+  </style>
+
+  <!--
+    Google Maps JavaScript API — Web Platform
+    ══════════════════════════════════════════
+    IMPORTANT: Replace YOUR_WEB_MAPS_API_KEY_HERE with your actual Web API key.
+
+    Security setup in Google Cloud Console:
+      1. Application restrictions → HTTP referrers (websites)
+      2. Allowed referrers:
+           http://localhost:*/*
+           https://localhost:*/*
+           https://yourdomain.com/*
+      3. API restrictions → Maps JavaScript API ONLY
+      4. Do NOT enable Places, Directions, Routes, Geocoding, etc.
+
+    This key is visible in HTML source — HTTP referrer restriction is the security layer.
+    For stricter security, use a Maps backend proxy (optional future enhancement).
+  -->
+  <script
+    src="https://maps.googleapis.com/maps/api/js?key=YOUR_WEB_MAPS_API_KEY_HERE"
+    defer>
+  </script>
+</head>
+  <script>
+    // Register Service Worker for PWA and Firebase Cloud Messaging (Root Scope)
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' }).then(function (registration) {
+          console.log('[FCM-PWA] ServiceWorker registered with root scope:', registration.scope);
+        }).catch(function (error) {
+          console.warn('[FCM-PWA] ServiceWorker registration warning:', error);
+          // Fallback registration for relative paths
+          navigator.serviceWorker.register('firebase-messaging-sw.js');
+        });
+      });
+
+      // Listen for navigation messages from Service Worker
+      navigator.serviceWorker.addEventListener('message', function (event) {
+        if (event.data && event.data.type === 'NAVIGATE_TO_ROUTE' && event.data.route) {
+          window.location.hash = '#' + event.data.route;
+        }
+      });
+    }
+
+    // Helper functions exposed for Flutter Web Push integration
+    window.MatrouhPush = {
+      isIosSafariNonStandalone: function() {
+        const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        const isStandalone = window.navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+        return isIos && !isStandalone;
+      },
+      isPushSupported: function() {
+        return ('Notification' in window) && ('serviceWorker' in navigator);
+      },
+      getPermissionStatus: function() {
+        if (!('Notification' in window)) return 'unsupported';
+        return Notification.permission; // 'default', 'granted', 'denied'
+      },
+      requestPermission: async function() {
+        if (!('Notification' in window)) return 'unsupported';
+        const permission = await Notification.requestPermission();
+        return permission;
+      },
+      ensureFcmServiceWorkerReady: async function() {
+        if (!('serviceWorker' in navigator)) return null;
+        try {
+          const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' });
+          await navigator.serviceWorker.ready;
+          return reg.scope;
+        } catch (e) {
+          console.warn('[FCM] ensureFcmServiceWorkerReady error:', e);
+          return null;
+        }
+      },
+      showBrowserNotification: function(title, body, route) {
+        if ('Notification' in window && Notification.permission === 'granted') {
+          if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.ready.then(function(reg) {
+              reg.showNotification(title, {
+                body: body,
+                icon: '/icons/Icon-192.png',
+                badge: '/icons/Icon-192.png',
+                data: { route: route || '/' },
+                vibrate: [200, 100, 200]
+              });
+            });
+          } else {
+            const notif = new Notification(title, {
+              body: body,
+              icon: '/icons/Icon-192.png',
+              data: { route: route || '/' }
+            });
+            notif.onclick = function() {
+              window.focus();
+              if (route) window.location.hash = '#' + route;
+            };
+          }
+          return true;
+        }
+        return false;
+      }
+    };
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
