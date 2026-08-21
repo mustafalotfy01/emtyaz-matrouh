@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/firebase_options.dart';
 import 'push_notification_service.dart';
 import 'supabase_service.dart';
@@ -176,7 +177,14 @@ class FirebaseMessagingService {
 
       final platform = kIsWeb ? (PushNotificationService.instance.isIosSafariNonStandalone() ? 'ios_pwa' : 'web') : defaultTargetPlatform.name;
 
-      // Upsert into push_subscriptions table
+      // 1. Update Auth User Metadata
+      try {
+        await SupabaseService.client.auth.updateUser(
+          UserAttributes(data: {'fcm_token': token, 'platform': platform}),
+        );
+      } catch (_) {}
+
+      // 2. Upsert into push_subscriptions table if exists
       try {
         await SupabaseService.adminClient.from('push_subscriptions').upsert({
           'user_id': user.id,
