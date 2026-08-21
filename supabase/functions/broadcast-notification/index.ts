@@ -2,7 +2,7 @@
 // Securely handles Leader/Admin notification broadcasts:
 // 1. Validates Caller Authentication & Role (leader / super_admin / evaluating_doctor)
 // 2. Inserts In-App Notification records in public.notifications using server-side Service Role
-// 3. Dispatches Web Push Notifications to targeted student FCM tokens
+// 3. Dispatches Web Push Notifications to targeted student FCM tokens via FCM HTTP v1
 // All private keys and service role credentials remain 100% on the server.
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -40,6 +40,85 @@ interface BroadcastPayload {
   notification_type?: string;
   target_route?: string;
   metadata?: Record<string, any>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GOOGLE OAUTH2 ACCESS TOKEN GENERATOR FOR FCM HTTP v1
+// ─────────────────────────────────────────────────────────────────────────────
+function base64UrlEncode(str: string | Uint8Array): string {
+  let binary = "";
+  if (typeof str === "string") {
+    const bytes = new TextEncoder().encode(str);
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+  } else {
+    for (let i = 0; i < str.byteLength; i++) {
+      binary += String.fromCharCode(str[i]);
+    }
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function pemToArrayBuffer(pem: string): ArrayBuffer {
+  const b64Lines = pem.replace(/-----BEGIN[ A-Z_-]+-----/g, "").replace(/-----END[ A-Z_-]+-----/g, "").replace(/\s+/g, "");
+  const b64 = atob(b64Lines);
+  const u8 = new Uint8Array(b64.length);
+  for (let i = 0; i < b64.length; i++) {
+    u8[i] = b64.charCodeAt(i);
+  }
+  return u8.buffer;
+}
+
+async function getGoogleOAuth2AccessToken(clientEmail: string, privateKeyPem: string): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "RS256", typ: "JWT" };
+  const claimSet = {
+    iss: clientEmail,
+    scope: "https://www.googleapis.com/auth/firebase.messaging",
+    aud: "https://oauth2.googleapis.com/token",
+    exp: now + 3600,
+    iat: now,
+  };
+
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedClaimSet = base64UrlEncode(JSON.stringify(claimSet));
+  const unsignedToken = `${encodedHeader}.${encodedClaimSet}`;
+
+  // Import Private Key (PKCS8)
+  const binaryDer = pemToArrayBuffer(privateKeyPem);
+  const cryptoKey = await crypto.subtle.importKey(
+    "pkcs8",
+    binaryDer,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+
+  const signature = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    cryptoKey,
+    new TextEncoder().encode(unsignedToken)
+  );
+
+  const signedJwt = `${unsignedToken}.${base64UrlEncode(new Uint8Array(signature))}`;
+
+  // Exchange JWT for Access Token
+  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: signedJwt,
+    }),
+  });
+
+  const tokenData = await tokenRes.json();
+  if (!tokenRes.ok || !tokenData.access_token) {
+    throw new Error(`Google OAuth2 Error: ${JSON.stringify(tokenData)}`);
+  }
+
+  return tokenData.access_token;
 }
 
 serve(async (req) => {
@@ -168,7 +247,6 @@ serve(async (req) => {
       targetStudentIds = (students ?? []).map((s) => s.id);
 
     } else if (audience_type === "SPECIFIC_STUDENTS" && Array.isArray(specific_student_ids)) {
-      // Validate that provided IDs belong to actual students
       const { data: validStudents } = await adminClient
         .from("profiles")
         .select("id")
@@ -187,7 +265,7 @@ serve(async (req) => {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // PATH A: Insert In-App Notifications in Supabase (Service Role Owned)
+    // PATH A: Insert In-App Notifications in Supabase (Server-Side Owned)
     // ──────────────────────────────────────────────────────────────────────────
     console.log("[EDGE_BROADCAST] DB_INSERT_START");
     const inAppRows = targetStudentIds.map((studentId) => ({
@@ -215,12 +293,33 @@ serve(async (req) => {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // PATH B: Dispatch FCM Web Push Notifications
+    // PATH B: Dispatch FCM Web Push Notifications via FCM HTTP v1
     // ──────────────────────────────────────────────────────────────────────────
     console.log("[EDGE_BROADCAST] TOKEN_LOOKUP_START");
     let pushSuccessCount = 0;
     let pushFailedCount = 0;
     let tokensFound = 0;
+    let tokensMissing = 0;
+    let fcmAttempts = 0;
+
+    const firebaseProjectId = Deno.env.get("FIREBASE_PROJECT_ID") || "emtaz-matrouh";
+    let firebaseOAuthToken: string | null = null;
+
+    // Load Service Account if provided in Supabase Secrets
+    const serviceAccountJson = Deno.env.get("FIREBASE_SERVICE_ACCOUNT");
+    const clientEmail = Deno.env.get("FIREBASE_CLIENT_EMAIL");
+    const privateKey = Deno.env.get("FIREBASE_PRIVATE_KEY");
+
+    try {
+      if (serviceAccountJson) {
+        const sa = JSON.parse(serviceAccountJson);
+        firebaseOAuthToken = await getGoogleOAuth2AccessToken(sa.client_email, sa.private_key);
+      } else if (clientEmail && privateKey) {
+        firebaseOAuthToken = await getGoogleOAuth2AccessToken(clientEmail, privateKey.replace(/\\n/g, "\n"));
+      }
+    } catch (authErr) {
+      console.warn("[EDGE_BROADCAST] Google OAuth2 Token Generation Note:", authErr);
+    }
 
     for (const recipientId of targetStudentIds) {
       try {
@@ -235,57 +334,125 @@ serve(async (req) => {
         }
 
         if (!fcmToken) {
-          const { data: subData } = await adminClient
-            .from("push_subscriptions")
-            .select("endpoint")
-            .eq("user_id", recipientId)
-            .eq("is_active", true)
-            .order("updated_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
+          try {
+            const { data: subData } = await adminClient
+              .from("push_subscriptions")
+              .select("endpoint")
+              .eq("user_id", recipientId)
+              .eq("is_active", true)
+              .order("updated_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
 
-          if (subData?.endpoint?.startsWith("fcm:")) {
-            fcmToken = subData.endpoint.replace("fcm:", "");
-          }
+            if (subData?.endpoint?.startsWith("fcm:")) {
+              fcmToken = subData.endpoint.replace("fcm:", "");
+            }
+          } catch (_) {}
         }
 
         if (!fcmToken || typeof fcmToken !== "string" || fcmToken.trim().length === 0) {
           console.log(`[EDGE_BROADCAST] TOKEN_FOUND = false for ${maskedId}`);
-          pushFailedCount++;
+          tokensMissing++;
           continue;
         }
 
         tokensFound++;
-        console.log(`[EDGE_BROADCAST] TOKEN_FOUND = true for ${maskedId}`);
+        fcmAttempts++;
+        console.log(`[EDGE_BROADCAST] TOKEN_FOUND = true for ${maskedId} (length: ${fcmToken.length})`);
+        console.log(`[EDGE_BROADCAST] FCM_REQUEST_START for ${maskedId}`);
 
-        // Send to FCM Web Push Endpoint
-        console.log("[EDGE_BROADCAST] FCM_SEND_START");
-        const fcmRes = await fetch(`https://fcm.googleapis.com/fcm/send/${fcmToken}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "TTL": "86400",
-          },
-          body: JSON.stringify({
-            title: title.trim(),
-            body: body.trim(),
-            data: {
-              route: target_route || "/",
-              type: notification_type || "GENERAL",
-              sender_id: user.id,
-              sender_name: callerProfile.full_name,
-              ...metadata,
+        let fcmStatus = 0;
+        let fcmBody = "";
+
+        if (firebaseOAuthToken) {
+          // Send via FCM HTTP v1
+          const httpV1Payload = {
+            message: {
+              token: fcmToken,
+              notification: {
+                title: title.trim(),
+                body: body.trim(),
+              },
+              webpush: {
+                notification: {
+                  title: title.trim(),
+                  body: body.trim(),
+                  icon: "/icons/icon-192x192.png",
+                  badge: "/icons/icon-192x192.png",
+                  tag: "matrouh-notification",
+                  renotify: true,
+                },
+                fcm_options: {
+                  link: `https://emtaz-matrouh.vercel.app${target_route || "/"}`,
+                },
+              },
+              data: {
+                route: target_route || "/",
+                type: notification_type || "GENERAL",
+                sender_id: user.id,
+                sender_name: callerProfile.full_name,
+                ...metadata,
+              },
             },
-          }),
-        });
+          };
 
-        if (fcmRes.status === 200 || fcmRes.status === 201) {
+          const fcmRes = await fetch(
+            `https://fcm.googleapis.com/v1/projects/${firebaseProjectId}/messages:send`,
+            {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${firebaseOAuthToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(httpV1Payload),
+            }
+          );
+
+          fcmStatus = fcmRes.status;
+          fcmBody = await fcmRes.text();
+        } else {
+          // Fallback WebPush endpoint delivery
+          const directRes = await fetch(`https://fcm.googleapis.com/fcm/send/${fcmToken}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "TTL": "86400",
+            },
+            body: JSON.stringify({
+              title: title.trim(),
+              body: body.trim(),
+              data: {
+                route: target_route || "/",
+                type: notification_type || "GENERAL",
+                sender_id: user.id,
+                sender_name: callerProfile.full_name,
+                ...metadata,
+              },
+            }),
+          });
+          fcmStatus = directRes.status;
+          fcmBody = await directRes.text();
+        }
+
+        console.log(`[EDGE_BROADCAST] FCM_RESPONSE_STATUS = ${fcmStatus}`);
+        console.log(`[EDGE_BROADCAST] FCM_RESPONSE_BODY = ${fcmBody.substring(0, 200)}`);
+
+        if (fcmStatus === 200 || fcmStatus === 201) {
           pushSuccessCount++;
           console.log(`[EDGE_BROADCAST] FCM_SUCCESS = ${maskedId}`);
         } else {
           pushFailedCount++;
-          const respText = await fcmRes.text();
-          console.warn(`[EDGE_BROADCAST] FCM_FAILED = ${fcmRes.status}: ${respText}`);
+          console.warn(`[EDGE_BROADCAST] FCM_FAILED = ${maskedId} (Status ${fcmStatus}): ${fcmBody}`);
+
+          // Handle stale tokens (UNREGISTERED)
+          if (fcmBody.includes("UNREGISTERED") || fcmBody.includes("not a valid FCM registration token")) {
+            console.log(`[EDGE_BROADCAST] Removing invalid/stale token for ${maskedId}`);
+            try {
+              await adminClient.auth.admin.updateUserById(recipientId, {
+                user_metadata: { fcm_token: null },
+              });
+            } catch (_) {}
+          }
         }
       } catch (fcmErr) {
         pushFailedCount++;
@@ -301,6 +468,8 @@ serve(async (req) => {
         pushSent: pushSuccessCount,
         pushFailed: pushFailedCount,
         tokensFound: tokensFound,
+        tokensMissing: tokensMissing,
+        fcmAttempts: fcmAttempts,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

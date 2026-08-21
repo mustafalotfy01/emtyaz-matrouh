@@ -201,20 +201,56 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
   void setTargetRoute(String val) => state = state.copyWith(targetRoute: val);
 
   Future<bool> broadcastNotification() async {
-    final user = _ref.read(authProvider).user;
+    // 1. Resolve current session & user directly from Supabase with fallback to authProvider
+    var session = SupabaseService.isInitialized ? SupabaseService.client.auth.currentSession : null;
+    if (session == null || session.isExpired) {
+      try {
+        final refreshRes = await SupabaseService.client.auth.refreshSession();
+        session = refreshRes.session;
+      } catch (e) {
+        debugPrint('[REAL_BROADCAST] Session refresh note: $e');
+      }
+    }
+
+    final currentAuthUser = SupabaseService.isInitialized
+        ? (SupabaseService.client.auth.currentUser ?? session?.user)
+        : null;
+
+    var userProfile = _ref.read(authProvider).user;
+
+    // If userProfile in provider is null but Supabase user is logged in, fetch live profile
+    if (userProfile == null && currentAuthUser != null && SupabaseService.isInitialized) {
+      try {
+        final profileData = await SupabaseService.client
+            .from('profiles')
+            .select()
+            .eq('id', currentAuthUser.id)
+            .maybeSingle();
+        if (profileData != null) {
+          userProfile = UserProfile.fromJson(profileData);
+        }
+      } catch (e) {
+        debugPrint('[REAL_BROADCAST] Profile fetch error: $e');
+      }
+    }
+
+    final isAuthenticated = currentAuthUser != null && session != null;
+    final userId = currentAuthUser?.id ?? userProfile?.id;
+    final maskedUserId = userId != null && userId.length > 8 ? '${userId.substring(0, 8)}...' : (userId ?? 'none');
+    final userRole = userProfile?.role.toDbString() ?? 'unknown';
 
     debugPrint('══════════════════════════════════════════════════');
     debugPrint('[REAL_BROADCAST] PROVIDER_ENTERED');
     debugPrint('[EDGE_CLIENT] BROWSER_ORIGIN = ${kIsWeb ? Uri.base.origin : "native"}');
-    debugPrint('[REAL_BROADCAST] AUTHENTICATED: ${user != null}');
-    debugPrint('[REAL_BROADCAST] USER_ID: ${user != null ? "${user.id.substring(0, 8)}..." : "none"}');
-    debugPrint('[REAL_BROADCAST] ROLE: ${user?.role.toDbString() ?? "none"}');
+    debugPrint('[REAL_BROADCAST] AUTHENTICATED: $isAuthenticated');
+    debugPrint('[REAL_BROADCAST] USER_ID: $maskedUserId');
+    debugPrint('[REAL_BROADCAST] ROLE: $userRole');
     debugPrint('[REAL_BROADCAST] TITLE: ${state.title}');
     debugPrint('[REAL_BROADCAST] MESSAGE: ${state.body}');
     debugPrint('[REAL_BROADCAST] AUDIENCE: ${state.audienceType.toDbString()}');
     debugPrint('[REAL_BROADCAST] SELECTED_USERS_COUNT: ${state.selectedStudentIds.length}');
 
-    if (user == null) {
+    if (!isAuthenticated || userId == null) {
       debugPrint('[REAL_BROADCAST] RETURN_REASON = NOT_AUTHENTICATED');
       state = state.copyWith(errorMessage: 'يجب تسجيل الدخول بحساب مسؤول أو قائد لإرسال الإشعارات');
       return false;
@@ -273,9 +309,9 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
         notificationType: state.notificationType,
         targetRoute: state.targetRoute,
         metadata: {
-          'sender_id': user.id,
-          'sender_name': user.fullName,
-          'sender_role': user.role.toDbString(),
+          'sender_id': userId,
+          'sender_name': userProfile?.fullName ?? 'المنسق',
+          'sender_role': userRole,
         },
       );
 
@@ -302,9 +338,9 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
       final totalDelivered = edgeResult.inAppCount > 0 ? edgeResult.inAppCount : edgeResult.recipientCount;
       final newCampaign = NotificationCampaign(
         id: 'camp-${DateTime.now().millisecondsSinceEpoch}',
-        senderId: user.id,
-        senderName: user.fullName,
-        senderRole: user.role.toDbString(),
+        senderId: userId,
+        senderName: userProfile?.fullName ?? 'المنسق',
+        senderRole: userRole,
         audienceType: audienceTypeStr,
         audienceValue: audienceValueStr,
         title: state.title.trim(),

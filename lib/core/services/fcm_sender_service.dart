@@ -8,6 +8,8 @@ class BroadcastExecutionResult {
   final int recipientCount;
   final int inAppCount;
   final int tokensFound;
+  final int tokensMissing;
+  final int fcmAttempts;
   final int pushDeliveredCount;
   final int pushFailedCount;
   final String? errorMessage;
@@ -17,6 +19,8 @@ class BroadcastExecutionResult {
     this.recipientCount = 0,
     this.inAppCount = 0,
     this.tokensFound = 0,
+    this.tokensMissing = 0,
+    this.fcmAttempts = 0,
     this.pushDeliveredCount = 0,
     this.pushFailedCount = 0,
     this.errorMessage,
@@ -40,7 +44,26 @@ class FcmSenderService {
     String targetRoute = '/',
     Map<String, dynamic>? metadata,
   }) async {
-    if (!SupabaseService.isInitialized || !SupabaseService.isLoggedIn) {
+    if (!SupabaseService.isInitialized) {
+      return BroadcastExecutionResult(
+        success: false,
+        errorMessage: 'يجب تسجيل الدخول بحساب معتمد لإرسال الإشعارات',
+      );
+    }
+
+    // 1. Verify and auto-refresh Supabase session if expired
+    var session = SupabaseService.client.auth.currentSession;
+    if (session == null || session.isExpired) {
+      try {
+        final refreshRes = await SupabaseService.client.auth.refreshSession();
+        session = refreshRes.session;
+      } catch (e) {
+        debugPrint('[EDGE_CLIENT] Session refresh note: $e');
+      }
+    }
+
+    final currentUser = SupabaseService.client.auth.currentUser ?? session?.user;
+    if (currentUser == null || session == null) {
       return BroadcastExecutionResult(
         success: false,
         errorMessage: 'يجب تسجيل الدخول بحساب معتمد لإرسال الإشعارات',
@@ -70,7 +93,7 @@ class FcmSenderService {
       debugPrint('[EDGE_CLIENT] FUNCTION_NAME = broadcast-notification');
       debugPrint('[EDGE_CLIENT] INVOKE_URL = $maskedUrl');
 
-      // 1. Invoke Supabase Edge Function with caller's JWT token
+      // 2. Invoke Supabase Edge Function with caller's JWT token
       final res = await SupabaseService.client.functions.invoke(
         'broadcast-notification',
         body: payload,
@@ -84,6 +107,10 @@ class FcmSenderService {
             (data['in_app_count'] as num?)?.toInt() ?? 0;
         final tokensFound = (data['tokensFound'] as num?)?.toInt() ??
             (data['tokens_found'] as num?)?.toInt() ?? 0;
+        final tokensMissing = (data['tokensMissing'] as num?)?.toInt() ??
+            (data['tokens_missing'] as num?)?.toInt() ?? 0;
+        final fcmAttempts = (data['fcmAttempts'] as num?)?.toInt() ??
+            (data['fcm_attempts'] as num?)?.toInt() ?? 0;
         final pushDeliveredCount = (data['pushSent'] as num?)?.toInt() ??
             (data['push_delivered_count'] as num?)?.toInt() ?? 0;
         final pushFailedCount = (data['pushFailed'] as num?)?.toInt() ?? 0;
@@ -97,6 +124,8 @@ class FcmSenderService {
           recipientCount: recipientCount,
           inAppCount: inAppCount,
           tokensFound: tokensFound,
+          tokensMissing: tokensMissing,
+          fcmAttempts: fcmAttempts,
           pushDeliveredCount: pushDeliveredCount,
           pushFailedCount: pushFailedCount,
         );

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/localization/app_localizations.dart';
+import '../../../core/services/supabase_service.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/custom_card.dart';
 import '../../auth/models/user_profile.dart';
@@ -28,6 +29,26 @@ class _SendNotificationScreenState extends ConsumerState<SendNotificationScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final session = SupabaseService.isInitialized ? SupabaseService.client.auth.currentSession : null;
+      final currentUser = SupabaseService.isInitialized ? SupabaseService.client.auth.currentUser : null;
+      final userProfile = ref.read(authProvider).user;
+      final maskedId = currentUser?.id != null ? '${currentUser!.id.substring(0, 8)}...' : 'none';
+      final role = userProfile?.role.toDbString() ?? 'unknown';
+      final tokenExpired = session?.isExpired ?? true;
+      final hasAccessToken = session?.accessToken != null && session!.accessToken.isNotEmpty;
+
+      debugPrint('──────────────────────────────────────────────────');
+      debugPrint('[AUTH_DIAG] SCREEN_OPENED');
+      debugPrint('[AUTH_DIAG] SESSION_EXISTS = ${session != null}');
+      debugPrint('[AUTH_DIAG] USER_EXISTS = ${currentUser != null}');
+      debugPrint('[AUTH_DIAG] USER_ID = $maskedId');
+      debugPrint('[AUTH_DIAG] ROLE = $role');
+      debugPrint('[AUTH_DIAG] ACCESS_TOKEN_EXISTS = $hasAccessToken');
+      debugPrint('[AUTH_DIAG] TOKEN_EXPIRED = $tokenExpired');
+      debugPrint('──────────────────────────────────────────────────');
+    });
   }
 
   @override
