@@ -59,6 +59,28 @@
     src="https://maps.googleapis.com/maps/api/js?key=YOUR_WEB_MAPS_API_KEY_HERE"
     defer>
   </script>
+
+  <!-- Firebase JS SDK (v10.13.0) for Web, PWA & iOS Safari Push -->
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js"></script>
+  <script>
+    if (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length === 0) {
+      try {
+        firebase.initializeApp({
+          apiKey: "AIzaSyARdhGJLdx0svHtzA4AlKCNuswy2L0KwSA",
+          authDomain: "emtaz-matrouh.firebaseapp.com",
+          projectId: "emtaz-matrouh",
+          storageBucket: "emtaz-matrouh.firebasestorage.app",
+          messagingSenderId: "261034289906",
+          appId: "1:261034289906:web:006eff87282e76483cbe6b",
+          measurementId: "G-PRB2CXXCYS"
+        });
+        console.log('[FCM] Window Firebase initialized successfully for Emtaz-Matrouh');
+      } catch (e) {
+        console.warn('[FCM] Window Firebase initialization warning:', e);
+      }
+    }
+  </script>
 </head>
   <script>
     // Register Service Worker for PWA and Firebase Cloud Messaging (Root Scope)

@@ -107,17 +107,13 @@ class SendNotificationState {
       case NotificationAudienceType.groupB:
         return availableStudents.where((s) => s.studentGroup == StudentGroup.groupB).length;
       case NotificationAudienceType.department:
-        return (availableStudents.length * 0.4).ceil(); // Active department shift estimation
+        return (availableStudents.length * 0.4).ceil();
       case NotificationAudienceType.specificStudents:
         return selectedStudentIds.length;
     }
   }
 
-  int get estimatedDeviceCount {
-    final recipients = estimatedRecipientCount;
-    // Average 1.3 registered push devices (Mobile + Browser) per student
-    return (recipients * 1.3).ceil();
-  }
+  int get estimatedDeviceCount => (estimatedRecipientCount * 1.3).ceil();
 }
 
 class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
@@ -131,7 +127,6 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
     await Future.wait([
       fetchDepartments(),
       fetchApprovedStudents(),
-      fetchCampaignsHistory(),
     ]);
   }
 
@@ -169,24 +164,6 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
       }
     } catch (e) {
       if (kDebugMode) print('[SendNotificationNotifier] fetchApprovedStudents error: $e');
-    }
-  }
-
-  Future<void> fetchCampaignsHistory() async {
-    if (!SupabaseService.isInitialized) return;
-    try {
-      final data = await SupabaseService.adminClient
-          .from('notification_campaigns')
-          .select()
-          .order('created_at', ascending: false)
-          .limit(30);
-
-      if (data is List) {
-        final campaigns = data.map((c) => NotificationCampaign.fromJson(c)).toList();
-        state = state.copyWith(campaignsHistory: campaigns);
-      }
-    } catch (_) {
-      // Table may not exist yet in fresh migration
     }
   }
 
@@ -272,6 +249,41 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
         targetStudentIds = [state.availableStudents.first.id];
       }
 
+      if (targetStudentIds.isEmpty) {
+        state = state.copyWith(
+          isSending: false,
+          errorMessage: 'لم يتم العثور على طلاب مستهدفين لإرسال الإشعار إليهم',
+        );
+        return false;
+      }
+
+      // 2. Insert In-App Notifications for each recipient in Supabase (using exact valid columns)
+      if (SupabaseService.isInitialized) {
+        final notifPayload = targetStudentIds.map((id) => {
+          'user_id': id,
+          'title': state.title.trim(),
+          'message': state.body.trim(),
+          'type': state.notificationType,
+          'is_read': false,
+        }).toList();
+
+        final insertRes = await SupabaseService.adminClient
+            .from('notifications')
+            .insert(notifPayload)
+            .select();
+
+        if (kDebugMode) {
+          print('[SendNotificationNotifier] Supabase inserted ${insertRes.length} in-app notification records');
+        }
+      }
+
+      // 3. Trigger native browser notification
+      PushNotificationService.instance.showBrowserNotification(
+        title: state.title.trim(),
+        body: state.body.trim(),
+        route: state.targetRoute,
+      );
+
       final audienceTypeStr = state.audienceType.toDbString();
       final audienceValueStr = state.audienceType == NotificationAudienceType.department
           ? state.selectedDepartmentName
@@ -279,58 +291,6 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
               ? 'A'
               : (state.audienceType == NotificationAudienceType.groupB ? 'B' : null));
 
-      final metadata = {
-        'route': state.targetRoute,
-        'type': state.notificationType,
-        'sender_role': user.role.toDbString(),
-        'sender_name': user.fullName,
-      };
-
-      // 2. Insert In-App Notifications for each recipient in Supabase
-      if (SupabaseService.isInitialized) {
-        try {
-          final notifPayload = targetStudentIds.map((id) => {
-            'user_id': id,
-            'title': state.title.trim(),
-            'message': state.body.trim(),
-            'type': state.notificationType,
-            'metadata': metadata,
-            'is_read': false,
-            'created_at': DateTime.now().toIso8601String(),
-          }).toList();
-
-          await SupabaseService.adminClient.from('notifications').insert(notifPayload);
-
-          // Try inserting campaign record if table exists
-          try {
-            await SupabaseService.adminClient.from('notification_campaigns').insert({
-              'sender_id': user.id,
-              'audience_type': audienceTypeStr,
-              'audience_value': audienceValueStr,
-              'title': state.title.trim(),
-              'body': state.body.trim(),
-              'type': state.notificationType,
-              'metadata': metadata,
-              'recipient_count': targetStudentIds.length,
-              'device_count': (targetStudentIds.length * 1.3).ceil(),
-              'success_count': (targetStudentIds.length * 1.3).ceil(),
-              'failure_count': 0,
-            });
-          } catch (_) {}
-        } catch (e) {
-          if (kDebugMode) print('[SendNotificationNotifier] Supabase broadcast error: $e');
-        }
-      }
-
-      // 3. Trigger native browser push notification for active user
-      PushNotificationService.instance.showBrowserNotification(
-        title: state.title.trim(),
-        body: state.body.trim(),
-        route: state.targetRoute,
-        metadata: metadata,
-      );
-
-      // 4. Create local Campaign Item in History
       final newCampaign = NotificationCampaign(
         id: 'camp-${DateTime.now().millisecondsSinceEpoch}',
         senderId: user.id,
@@ -341,23 +301,20 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
         title: state.title.trim(),
         body: state.body.trim(),
         type: state.notificationType,
-        metadata: metadata,
         recipientCount: targetStudentIds.length,
-        deviceCount: (targetStudentIds.length * 1.3).ceil(),
-        successCount: (targetStudentIds.length * 1.3).ceil(),
+        deviceCount: targetStudentIds.length,
+        successCount: targetStudentIds.length,
         failureCount: 0,
         createdAt: DateTime.now(),
       );
-
-      final updatedHistory = [newCampaign, ...state.campaignsHistory];
 
       state = state.copyWith(
         isSending: false,
         title: '',
         body: '',
         selectedStudentIds: const {},
-        campaignsHistory: updatedHistory,
-        successMessage: 'تم إرسال الإشعار بنجاح إلى ${targetStudentIds.length} طالبًا على أجهزتهم المسجلة ✅',
+        campaignsHistory: [newCampaign, ...state.campaignsHistory],
+        successMessage: 'تم إرسال الإشعار بنجاح وحفظه في سجلات ${targetStudentIds.length} طالبًا ✅',
       );
 
       return true;

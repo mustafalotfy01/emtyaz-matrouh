@@ -182,6 +182,22 @@ async function runNotificationSuite() {
   const screenCode = require('fs').readFileSync('lib/features/notifications/screens/send_notification_screen.dart', 'utf8');
   assert(screenCode.includes('AppColors.darkSurface') && screenCode.includes('Live Push Preview'), 'SendNotificationScreen supports Dark Mode with iOS banner preview');
 
+  // Cleanup: Delete any test records created during this run
+  const testTitles = [
+    'تنبيه إداري عام لجميع الطلاب',
+    'تنبيه للمجموعة A',
+    'تنبيه للمجموعة B',
+    'تنبيه نوبتجيات قسم الطوارئ 🏥',
+    'إشعار مباشر',
+    'تحديث الروستر من القائد'
+  ];
+  for (const title of testTitles) {
+    await fetch(SUPABASE_URL + `/rest/v1/notifications?title=eq.${encodeURIComponent(title)}`, {
+      method: 'DELETE',
+      headers: { apikey: SERVICE_ROLE_KEY, Authorization: 'Bearer ' + SERVICE_ROLE_KEY }
+    });
+  }
+
   console.log('\n════════════════════════════════════════════════════════════════');
   console.log(`🏁 ALL TESTS PASSED: ${passed} / ${passed + failed}`);
   console.log('════════════════════════════════════════════════════════════════\n');
