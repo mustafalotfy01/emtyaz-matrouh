@@ -6,8 +6,8 @@ class AppStrings {
   
   // Roles
   static const String roleStudent = 'طالب امتياز';
-  static const String roleLeader = 'منسق الجدولة والامتياز';
-  static const String roleDoctor = 'الدكتور المقيّم';
+  static const String roleLeader = 'ليدر';
+  static const String roleDoctor = 'دكتور مشرف';
   static const String roleAdmin = 'الإدارة العليا';
 
   // Navigation

@@ -69,7 +69,7 @@ class _SendNotificationScreenState extends ConsumerState<SendNotificationScreen>
       debugPrint('──────────────────────────────────────────────────');
 
       // Refresh student list and campaigns history
-      ref.read(sendNotificationProvider.notifier).fetchAvailableStudents();
+      ref.read(sendNotificationProvider.notifier).fetchApprovedStudents();
       ref.read(sendNotificationProvider.notifier).fetchCampaignsHistory();
     });
   }

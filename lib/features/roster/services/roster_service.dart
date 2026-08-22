@@ -631,6 +631,7 @@ class RosterService {
         StudentRosterSummary(
           studentId: student.id,
           studentName: student.fullName,
+          avatarUrl: student.avatarUrl,
           studentGroup: student.studentGroup,
           preferences: prefs,
           assignedShifts: finalShifts,

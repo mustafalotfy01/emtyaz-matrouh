@@ -629,6 +629,19 @@ class _PublishReleaseBottomSheetState extends ConsumerState<_PublishReleaseBotto
           backgroundColor: AppDesignTokens.success,
         ),
       );
+    } else if (mounted) {
+      final error = ref.read(appVersionsProvider).errorMessage ?? 'حدث خطأ أثناء الرفع.';
+      String helpfulMsg = error;
+      if (error.contains('SocketException') || error.contains('connection abort') || error.contains('errno = 103')) {
+        helpfulMsg = '⚠️ انقطع الاتصال أثناء الرفع بسبب بطء أو انقطاع شبكة الهاتف. يمكنك إعادة المحاولة أو وضع رابط تحميل APK مباشر.';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(helpfulMsg),
+          backgroundColor: Colors.redAccent,
+          duration: const Duration(seconds: 5),
+        ),
+      );
     }
   }
 
@@ -872,11 +885,63 @@ class _PublishReleaseBottomSheetState extends ConsumerState<_PublishReleaseBotto
                 ],
               ),
 
+              if (state.isSaving) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppDesignTokens.primary.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(AppDesignTokens.radiusMd),
+                    border: Border.all(color: AppDesignTokens.primary.withOpacity(0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              state.uploadStatusText ?? 'جارٍ رفع الحزمة...',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: AppDesignTokens.textPrimary(context),
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '${(state.uploadProgress * 100).toInt()}%',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: AppDesignTokens.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: LinearProgressIndicator(
+                          value: state.uploadProgress > 0 ? state.uploadProgress : null,
+                          minHeight: 8,
+                          backgroundColor: AppDesignTokens.primary.withOpacity(0.15),
+                          valueColor: const AlwaysStoppedAnimation<Color>(AppDesignTokens.primary),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
               const SizedBox(height: 20),
 
               // Submit Button
               AppButton(
-                text: state.isSaving ? 'جارٍ رفع الحزمة ونشر الإصدار...' : 'نشر الإصدار الرسمي الآن',
+                text: state.isSaving
+                    ? 'جارٍ الرفع (${(state.uploadProgress * 100).toInt()}%) والنشر...'
+                    : 'نشر الإصدار الرسمي الآن',
                 icon: Icons.cloud_upload_rounded,
                 isLoading: state.isSaving,
                 onPressed: state.isSaving ? null : _submitPublish,

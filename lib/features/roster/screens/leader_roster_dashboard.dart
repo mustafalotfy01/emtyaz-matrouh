@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/theme/app_design_tokens.dart';
+import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/app_badge.dart';
 import '../../../core/widgets/app_card.dart';
 import '../models/roster_entry.dart';
@@ -722,17 +723,10 @@ class _StudentSummaryCard extends ConsumerWidget {
               children: [
                 Row(
                   children: [
-                    CircleAvatar(
-                      radius: 18,
-                      backgroundColor: AppDesignTokens.primary.withOpacity(0.12),
-                      child: Text(
-                        summary.studentName.isNotEmpty ? summary.studentName.characters.first : 'S',
-                        style: const TextStyle(
-                          color: AppDesignTokens.primary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                        ),
-                      ),
+                    AppAvatar(
+                      name: summary.studentName,
+                      imageUrl: summary.avatarUrl,
+                      size: AppAvatarSize.small,
                     ),
                     const SizedBox(width: 10),
                     Column(

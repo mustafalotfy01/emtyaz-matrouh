@@ -73,7 +73,33 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+              // Centered Avatar Preview with Camera / Gallery Action
+              Center(
+                child: Column(
+                  children: [
+                    AppAvatar(
+                      name: user.fullName,
+                      imageUrl: user.avatarUrl,
+                      size: AppAvatarSize.large,
+                      onEditTap: () {
+                        Navigator.pop(ctx);
+                        _openAvatarActionsModal(context, user);
+                      },
+                    ),
+                    const SizedBox(height: 6),
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _openAvatarActionsModal(context, user);
+                      },
+                      icon: const Icon(Icons.photo_camera_rounded, size: 16),
+                      label: const Text('تغيير الصورة الشخصية (كاميرا / معرض)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
               AppInput(
                 label: 'الاسم الكامل',
                 controller: nameController,
@@ -99,15 +125,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 controller: addressController,
                 prefixIcon: const Icon(Icons.home_outlined, size: 18),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               AppButton(
-                text: 'تغيير الصورة الشخصية من المعرض 🖼️',
-                icon: Icons.photo_library_rounded,
+                text: 'تغيير كلمة المرور 🔑',
+                icon: Icons.lock_reset_rounded,
                 variant: AppButtonVariant.outline,
                 width: double.infinity,
                 onPressed: () {
                   Navigator.pop(ctx);
-                  _pickImage(fromCamera: false);
+                  _openChangePasswordDialog(context);
                 },
               ),
               const SizedBox(height: 20),
@@ -258,6 +284,193 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 },
               ),
           ],
+        ),
+      ),
+    );
+  }
+
+  void _openChangePasswordDialog(BuildContext context) {
+    final currentPassController = TextEditingController();
+    final newPassController = TextEditingController();
+    final confirmPassController = TextEditingController();
+    bool obscureCurrent = true;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
+    bool isSubmitting = false;
+    String? localError;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Container(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          decoration: BoxDecoration(
+            color: AppDesignTokens.surface(context),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            border: Border.all(color: AppDesignTokens.border(context)),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: AppDesignTokens.primary.withOpacity(0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.lock_reset_rounded, color: AppDesignTokens.primary, size: 20),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'تغيير كلمة المرور',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: AppDesignTokens.textPrimary(context),
+                          ),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (localError != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppDesignTokens.danger.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppDesignTokens.danger.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline_rounded, color: AppDesignTokens.danger, size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            localError!,
+                            style: const TextStyle(color: AppDesignTokens.danger, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                AppInput(
+                  label: 'كلمة المرور الحالية',
+                  controller: currentPassController,
+                  isPassword: true,
+                  prefixIcon: const Icon(Icons.lock_outline_rounded, size: 18),
+                ),
+                const SizedBox(height: 12),
+                AppInput(
+                  label: 'كلمة المرور الجديدة',
+                  controller: newPassController,
+                  isPassword: true,
+                  prefixIcon: const Icon(Icons.lock_rounded, size: 18),
+                ),
+                const SizedBox(height: 12),
+                AppInput(
+                  label: 'تأكيد كلمة المرور الجديدة',
+                  controller: confirmPassController,
+                  isPassword: true,
+                  prefixIcon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppButton(
+                        text: 'إلغاء',
+                        variant: AppButtonVariant.ghost,
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: AppButton(
+                        text: isSubmitting ? 'جارٍ الحفظ...' : 'تحديث كلمة المرور',
+                        variant: AppButtonVariant.primary,
+                        isLoading: isSubmitting,
+                        onPressed: () async {
+                          final cur = currentPassController.text.trim();
+                          final newP = newPassController.text.trim();
+                          final confirmP = confirmPassController.text.trim();
+
+                          if (cur.isEmpty || newP.isEmpty || confirmP.isEmpty) {
+                            setModalState(() => localError = 'يرجى ملء جميع الحقول المطلوبة');
+                            return;
+                          }
+
+                          if (newP.length < 6) {
+                            setModalState(() => localError = 'كلمة المرور الجديدة يجب أن تكون 6 خانات على الأقل');
+                            return;
+                          }
+
+                          if (newP != confirmP) {
+                            setModalState(() => localError = 'كلمة المرور الجديدة وتأكيدها غير متطابقين');
+                            return;
+                          }
+
+                          if (newP == cur) {
+                            setModalState(() => localError = 'كلمة المرور الجديدة يجب أن تكون مختلفة عن الحالية');
+                            return;
+                          }
+
+                          setModalState(() {
+                            isSubmitting = true;
+                            localError = null;
+                          });
+
+                          final ok = await ref.read(authProvider.notifier).changePassword(
+                            currentPassword: cur,
+                            newPassword: newP,
+                          );
+
+                          if (ok) {
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  backgroundColor: AppDesignTokens.success,
+                                  content: Text('تم تغيير كلمة المرور بنجاح ✅'),
+                                ),
+                              );
+                            }
+                          } else {
+                            final err = ref.read(authProvider).error ?? 'فشل تغيير كلمة المرور';
+                            setModalState(() {
+                              isSubmitting = false;
+                              localError = err;
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -548,21 +761,48 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               AppSectionHeader(title: l10n.securitySection),
               const SizedBox(height: 6),
               AppCard(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: SwitchListTile(
-                  title: Text(
-                    l10n.enableBiometrics,
-                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: AppDesignTokens.textPrimary(context)),
-                  ),
-                  subtitle: Text(
-                    l10n.enableBiometricsSub,
-                    style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
-                  ),
-                  value: authState.isBiometricEnabled,
-                  activeColor: AppDesignTokens.primary,
-                  onChanged: (val) {
-                    ref.read(authProvider.notifier).toggleBiometrics(val);
-                  },
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                child: Column(
+                  children: [
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppDesignTokens.primary.withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.lock_reset_rounded, color: AppDesignTokens.primary, size: 20),
+                      ),
+                      title: const Text(
+                        'تغيير كلمة المرور',
+                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(
+                        'تحديث كلمة مرور الحساب والرمز السري',
+                        style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
+                      ),
+                      trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey),
+                      onTap: () => _openChangePasswordDialog(context),
+                    ),
+                    Divider(height: 1, color: AppDesignTokens.borderSubtle(context)),
+                    SwitchListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 6),
+                      title: Text(
+                        l10n.enableBiometrics,
+                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: AppDesignTokens.textPrimary(context)),
+                      ),
+                      subtitle: Text(
+                        l10n.enableBiometricsSub,
+                        style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
+                      ),
+                      value: authState.isBiometricEnabled,
+                      activeColor: AppDesignTokens.primary,
+                      onChanged: (val) {
+                        ref.read(authProvider.notifier).toggleBiometrics(val);
+                      },
+                    ),
+                  ],
                 ),
               ),
 

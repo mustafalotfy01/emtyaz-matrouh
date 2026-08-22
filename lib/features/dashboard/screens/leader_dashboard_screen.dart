@@ -443,6 +443,7 @@ class LeaderDashboardScreen extends ConsumerWidget {
                         children: [
                           AppAvatar(
                             name: s.studentName,
+                            imageUrl: s.avatarUrl,
                             size: AppAvatarSize.small,
                           ),
                           const SizedBox(width: 12),

@@ -101,10 +101,7 @@ final studentActiveFingerprintRequestProvider = Provider<FingerprintRequest?>((r
     data: (requests) {
       final now = DateTime.now();
       for (final req in requests) {
-        if (!req.isPending) continue;
-        // Check if created within last 25 minutes
-        final diff = now.difference(req.sentAt);
-        if (diff.inMinutes > 25) continue;
+        if (!req.isPending || req.isExpired) continue;
 
         // Check audience
         if (req.audienceType == 'ALL') return req;

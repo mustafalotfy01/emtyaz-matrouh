@@ -6,6 +6,7 @@ import '../../../core/localization/app_localizations.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/platform_service.dart';
 import '../../../core/theme/app_design_tokens.dart';
+import '../../../core/utils/distance_calculator.dart';
 import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/app_badge.dart';
 import '../../../core/widgets/app_button.dart';
@@ -1025,9 +1026,38 @@ class StudentDashboardScreen extends ConsumerWidget {
                         color: Color(0xFFDC2626),
                       ),
                     ),
-                    Text(
-                      'مرسل من: ${req.senderName} • ${DateFormat('hh:mm a', 'ar').format(req.sentAt)}',
-                      style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Text(
+                          'مرسل من: ${req.senderName} • ${DateFormat('hh:mm a', 'ar').format(req.sentAt)}',
+                          style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
+                        ),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDC2626).withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFDC2626).withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.timer_outlined, size: 12, color: Color(0xFFDC2626)),
+                              const SizedBox(width: 3),
+                              Text(
+                                'متبقي ${req.remainingTimeFormatted}',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFFDC2626),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -1052,7 +1082,7 @@ class StudentDashboardScreen extends ConsumerWidget {
               ),
               icon: const Icon(Icons.touch_app_rounded, color: Colors.white, size: 18),
               label: const Text(
-                'تأكيد البصمة وتحديد الموقع الآن 📱📍',
+                'تأكيد البصمة داخل المستشفى الآن 📱📍',
                 style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13),
               ),
               onPressed: () => _showUrgentFingerprintDialog(context, ref, req),
@@ -1102,13 +1132,32 @@ class StudentDashboardScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 12),
               const Text(
-                'تأكيد التواجد الفوري بالبصمة الحيوية',
+                'تأكيد التواجد الفوري بمستشفى مطروح العام',
                 style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDC2626).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.timer_rounded, size: 14, color: Color(0xFFDC2626)),
+                    const SizedBox(width: 4),
+                    Text(
+                      'المهلة المتبقية: ${req.remainingTimeFormatted} دقيقة (حد أقصى 5 دقائق)',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFFDC2626)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
               Text(
-                'طلب رسمي صادر من: ${req.senderName}\nيرجى البصمة وإرسال إحداثيات موقعك الجغرافي لتأكيد تواجدك بالقسم السريري.',
+                'طلب رسمي صادر من: ${req.senderName}\nيرجى تأكيد البصمة الحيوية وإرسال الموقع الجغرافي من داخل نطاق المستشفى لإثبات الحضور الفعلي.',
                 style: TextStyle(fontSize: 12.5, color: AppDesignTokens.textSecondary(context), height: 1.4),
                 textAlign: TextAlign.center,
               ),
@@ -1118,7 +1167,7 @@ class StudentDashboardScreen extends ConsumerWidget {
                   children: [
                     CircularProgressIndicator(color: Color(0xFFDC2626)),
                     SizedBox(height: 10),
-                    Text('جارٍ التحقق البيومتري وتحديد الموقع بدقة...', style: TextStyle(fontSize: 12)),
+                    Text('جارٍ التحقق البيومتري وتأكيد النطاق الجغرافي للمستشفى...', style: TextStyle(fontSize: 12)),
                   ],
                 )
               else
@@ -1142,11 +1191,26 @@ class StudentDashboardScreen extends ConsumerWidget {
                         icon: const Icon(Icons.fingerprint_rounded, color: Colors.white),
                         label: const Text('بصم الآن 📱📍', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                         onPressed: () async {
+                          // 1. Check 5-minute timeout expiration
+                          if (req.isExpired) {
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  backgroundColor: AppDesignTokens.danger,
+                                  duration: Duration(seconds: 4),
+                                  content: Text('عذراً، انتهت مهلة الـ 5 دقائق المحددة لتأكيد البصمة الفورية ⏰'),
+                                ),
+                              );
+                            }
+                            return;
+                          }
+
                           setModalState(() => isSubmitting = true);
                           try {
-                            // 1. Biometric verification
+                            // 2. Biometric verification
                             final bioRes = await PlatformService.biometric.authenticate(
-                              reason: 'تأكيد بصمة التواجد الفوري بالقسم',
+                              reason: 'تأكيد بصمة التواجد الفوري بمستشفى مطروح العام',
                             );
 
                             if (!bioRes.success && !PlatformService.isWeb) {
@@ -1162,10 +1226,53 @@ class StudentDashboardScreen extends ConsumerWidget {
                               return;
                             }
 
-                            // 2. Fetch GPS coordinates
+                            // 3. Fetch GPS coordinates
                             final loc = await LocationService.getCurrentLocation();
+                            final userLat = loc.latitude ?? 0.0;
+                            final userLon = loc.longitude ?? 0.0;
 
-                            // 3. Confirm in Supabase
+                            // 4. Verify Hospital Geofence (Matrouh General Hospital)
+                            const hospitalLat = 31.3543;
+                            const hospitalLon = 27.2373;
+                            const allowedRadiusMeters = 200.0;
+                            final isInsideHospital = (loc.latitude != null && loc.longitude != null) &&
+                                DistanceCalculator.isWithinZone(
+                                  userLat: userLat,
+                                  userLon: userLon,
+                                  zoneLat: hospitalLat,
+                                  zoneLon: hospitalLon,
+                                  radiusMeters: allowedRadiusMeters,
+                                );
+
+                            final distanceMeters = (loc.latitude != null && loc.longitude != null)
+                                ? DistanceCalculator.calculateDistanceMeters(
+                                    userLat,
+                                    userLon,
+                                    hospitalLat,
+                                    hospitalLon,
+                                  )
+                                : 999999.0;
+
+                            if (!isInsideHospital) {
+                              setModalState(() => isSubmitting = false);
+                              if (context.mounted) {
+                                final distText = distanceMeters >= 1000
+                                    ? '${(distanceMeters / 1000).toStringAsFixed(1)} كم'
+                                    : '${distanceMeters.round()} متر';
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    backgroundColor: AppDesignTokens.danger,
+                                    duration: const Duration(seconds: 5),
+                                    content: Text(
+                                      'أنت خارج نطاق مستشفى مطروح العام ($distText بعيداً). يجب التواجد داخل المستشفى لإثبات البصمة الفورية 📍🏥',
+                                    ),
+                                  ),
+                                );
+                              }
+                              return;
+                            }
+
+                            // 5. Confirm in Supabase
                             await ref.read(fingerprintRequestsProvider.notifier).confirmFingerprint(
                               requestId: req.id,
                               latitude: loc.latitude,
@@ -1180,7 +1287,7 @@ class StudentDashboardScreen extends ConsumerWidget {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   backgroundColor: AppDesignTokens.success,
-                                  content: Text('تم تأكيد التواجد والبصمة الحيوية بنجاح وإرسالها للمشرف ✅📍'),
+                                  content: Text('تم تأكيد التواجد داخل مستشفى مطروح العام بالبصمة الحيوية بنجاح ✅📍'),
                                 ),
                               );
                             }

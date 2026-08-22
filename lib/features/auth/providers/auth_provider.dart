@@ -794,8 +794,68 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<bool> deleteAvatar() async {
     final currentUser = state.user;
     if (currentUser == null) return false;
-
     return updateProfile(avatarUrl: '');
+  }
+
+  /// Change user password with current password verification
+  Future<bool> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final currentUser = state.user;
+    if (currentUser == null) {
+      state = state.copyWith(error: 'لم يتم تسجيل الدخول');
+      return false;
+    }
+
+    final curPwd = currentPassword.trim();
+    final newPwd = newPassword.trim();
+
+    if (curPwd.isEmpty || newPwd.isEmpty) {
+      state = state.copyWith(error: 'يرجى إدخال كلمة المرور الحالية والجديدة');
+      return false;
+    }
+
+    if (newPwd.length < 6) {
+      state = state.copyWith(error: 'كلمة المرور الجديدة يجب ألا تقل عن 6 خانات');
+      return false;
+    }
+
+    state = state.copyWith(isLoading: true, error: null);
+
+    try {
+      if (SupabaseService.isInitialized) {
+        // 1. Verify current password by signing in
+        try {
+          await SupabaseService.client.auth.signInWithPassword(
+            email: currentUser.email,
+            password: curPwd,
+          );
+        } catch (e) {
+          if (kDebugMode) print('Current password verification error: $e');
+          state = state.copyWith(isLoading: false, error: 'كلمة المرور الحالية غير صحيحة');
+          return false;
+        }
+
+        // 2. Update user password in Supabase Auth
+        await SupabaseService.client.auth.updateUser(
+          UserAttributes(password: newPwd),
+        );
+      }
+
+      // 3. Update local in-memory passwords registry cache
+      if (currentUser.universityCode.isNotEmpty) {
+        _userPasswordsRegistry[currentUser.universityCode] = newPwd;
+      }
+      _userPasswordsRegistry[currentUser.email] = newPwd;
+
+      state = state.copyWith(isLoading: false, error: null);
+      return true;
+    } catch (e) {
+      if (kDebugMode) print('changePassword error: $e');
+      state = state.copyWith(isLoading: false, error: 'حدث خطأ أثناء تغيير كلمة المرور: $e');
+      return false;
+    }
   }
 
   Future<void> logout() async {

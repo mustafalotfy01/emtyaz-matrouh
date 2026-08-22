@@ -33,9 +33,30 @@ class FingerprintRequest {
     this.deviceMetadata = const {},
   });
 
+  static const int expirationDurationSeconds = 300; // 5 minutes limit
+
   bool get isConfirmed => status == 'confirmed';
-  bool get isPending => status == 'pending';
-  bool get isExpired => status == 'expired';
+  bool get isExpiredByTime {
+    if (status == 'confirmed') return false;
+    final diff = DateTime.now().difference(sentAt).inSeconds;
+    return diff >= expirationDurationSeconds;
+  }
+  bool get isExpired => status == 'expired' || isExpiredByTime;
+  bool get isPending => status == 'pending' && !isExpiredByTime;
+
+  int get remainingSeconds {
+    if (status == 'confirmed') return 0;
+    final elapsed = DateTime.now().difference(sentAt).inSeconds;
+    final left = expirationDurationSeconds - elapsed;
+    return left > 0 ? left : 0;
+  }
+
+  String get remainingTimeFormatted {
+    final secs = remainingSeconds;
+    final m = secs ~/ 60;
+    final s = secs % 60;
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
 
   String get audienceDisplay {
     if (audienceType.startsWith('DEPARTMENT:')) {

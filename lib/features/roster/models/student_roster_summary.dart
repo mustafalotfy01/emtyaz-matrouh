@@ -47,6 +47,7 @@ class StudentHistoricalStats {
 class StudentRosterSummary {
   final String studentId;
   final String studentName;
+  final String? avatarUrl;
   final StudentGroup studentGroup;
   final List<RosterPreference> preferences;
   final List<RosterEntry> assignedShifts;
@@ -56,6 +57,7 @@ class StudentRosterSummary {
   StudentRosterSummary({
     required this.studentId,
     required this.studentName,
+    this.avatarUrl,
     required this.studentGroup,
     required this.preferences,
     required this.assignedShifts,

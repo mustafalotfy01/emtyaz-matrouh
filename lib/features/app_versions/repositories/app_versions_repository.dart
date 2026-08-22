@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/constants/app_config.dart';
 import '../../../core/models/app_version_model.dart';
 import '../../../core/services/supabase_service.dart';
 
@@ -44,17 +47,90 @@ class AppVersionsRepository {
     }
   }
 
-  /// Uploads APK file binary to Supabase Storage app-releases bucket
+  /// Uploads APK file binary to Supabase Storage app-releases bucket with progress tracking
   Future<String> uploadApkBinary({
     required String versionName,
     required String fileName,
     required Uint8List fileBytes,
+    void Function(double progress, int sentBytes, int totalBytes)? onProgress,
   }) async {
     final sanitizedVersion = versionName.trim().replaceAll(' ', '_');
     final sanitizedFileName = fileName.trim().replaceAll(' ', '_');
     final storagePath = 'android/$sanitizedVersion/$sanitizedFileName';
+    final totalBytes = fileBytes.length;
 
+    // Initial progress report
+    onProgress?.call(0.01, 0, totalBytes);
+
+    int attempts = 0;
+    const maxAttempts = 2;
+    dynamic lastError;
+
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        final token = _client.auth.currentSession?.accessToken ?? AppConfig.supabaseAnonKey;
+        final uploadUrl = Uri.parse('${AppConfig.supabaseUrl}/storage/v1/object/app-releases/$storagePath');
+
+        final client = http.Client();
+        final request = http.StreamedRequest('POST', uploadUrl);
+        request.headers.addAll({
+          'Authorization': 'Bearer $token',
+          'apikey': AppConfig.supabaseAnonKey,
+          'Content-Type': 'application/vnd.android.package-archive',
+          'x-upsert': 'true',
+        });
+        request.contentLength = totalBytes;
+
+        final streamController = StreamController<List<int>>();
+        request.sink.addStream(streamController.stream).then((_) {
+          request.sink.close();
+        });
+
+        // Write bytes in 64KB chunks to track progress smoothly
+        const chunkSize = 64 * 1024;
+        int sentBytes = 0;
+        Future.microtask(() async {
+          try {
+            for (int i = 0; i < totalBytes; i += chunkSize) {
+              final end = (i + chunkSize < totalBytes) ? i + chunkSize : totalBytes;
+              final chunk = fileBytes.sublist(i, end);
+              streamController.add(chunk);
+              sentBytes += chunk.length;
+              final ratio = (sentBytes / totalBytes).clamp(0.0, 1.0);
+              onProgress?.call(ratio, sentBytes, totalBytes);
+              await Future.delayed(const Duration(milliseconds: 2));
+            }
+            await streamController.close();
+          } catch (e) {
+            streamController.addError(e);
+          }
+        });
+
+        final streamedResponse = await client.send(request).timeout(const Duration(minutes: 8));
+        final response = await http.Response.fromStream(streamedResponse);
+        client.close();
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          onProgress?.call(1.0, totalBytes, totalBytes);
+          final publicUrl = _client.storage.from('app-releases').getPublicUrl(storagePath);
+          return publicUrl;
+        } else {
+          throw Exception('فشل الخادم في استقبال الملف (${response.statusCode}): ${response.body}');
+        }
+      } catch (e) {
+        lastError = e;
+        if (kDebugMode) print('⚠️ Streamed upload attempt $attempts failed: $e');
+        if (attempts < maxAttempts) {
+          await Future.delayed(const Duration(seconds: 2));
+        }
+      }
+    }
+
+    // Fallback to default Supabase SDK uploadBinary if streamed request encountered an issue
     try {
+      if (kDebugMode) print('Falling back to standard uploadBinary...');
+      onProgress?.call(0.5, (totalBytes * 0.5).toInt(), totalBytes);
       await _client.storage.from('app-releases').uploadBinary(
         storagePath,
         fileBytes,
@@ -64,11 +140,12 @@ class AppVersionsRepository {
         ),
       );
 
+      onProgress?.call(1.0, totalBytes, totalBytes);
       final publicUrl = _client.storage.from('app-releases').getPublicUrl(storagePath);
       return publicUrl;
     } catch (e) {
-      if (kDebugMode) print('❌ Storage upload error: $e');
-      rethrow;
+      if (kDebugMode) print('❌ Storage upload fallback error: $e');
+      throw lastError ?? Exception('فشل في رفع ملف APK: $e');
     }
   }
 

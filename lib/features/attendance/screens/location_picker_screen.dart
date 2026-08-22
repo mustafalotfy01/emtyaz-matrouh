@@ -57,6 +57,12 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
     _selectedRadius = widget.initialRadius.clamp(_minRadius, _maxRadius);
     _nameController =
         TextEditingController(text: widget.initialHospitalName);
+    // Timeout to prevent infinite gray screen loading overlay
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted && !_mapReady) {
+        setState(() => _mapReady = true);
+      }
+    });
   }
 
   @override

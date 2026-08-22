@@ -143,10 +143,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           spacing: 8,
                           runSpacing: 6,
                           children: [
-                            _buildRoleChip(context, UserRole.student, l10n.isArabic ? 'طالب امتياز' : 'Intern'),
-                            _buildRoleChip(context, UserRole.leader, l10n.isArabic ? 'منسق الجداول' : 'Coordinator'),
-                            _buildRoleChip(context, UserRole.evaluatingDoctor, l10n.isArabic ? 'طبيب مقيّم' : 'Doctor'),
-                            _buildRoleChip(context, UserRole.superAdmin, l10n.isArabic ? 'إدارة الكلية' : 'Admin'),
+                            _buildRoleChip(context, UserRole.student, l10n.isArabic ? 'طالب امتياز' : 'Intern Student'),
+                            _buildRoleChip(context, UserRole.leader, l10n.isArabic ? 'ليدر' : 'Leader'),
+                            _buildRoleChip(context, UserRole.evaluatingDoctor, l10n.isArabic ? 'دكتور مشرف' : 'Supervisor Doctor'),
+                            _buildRoleChip(context, UserRole.superAdmin, l10n.isArabic ? 'الإدارة العليا' : 'Senior Management'),
                           ],
                         ),
                       ],
@@ -180,9 +180,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           prefixIcon: const Icon(Icons.lock_outline_rounded, size: 18),
                         ),
 
+                        const SizedBox(height: 8),
+
                         // Forgot Password Link
                         Align(
-                          alignment: l10n.isArabic ? Alignment.centerLeft : Alignment.centerRight,
+                          alignment: AlignmentDirectional.centerEnd,
                           child: TextButton(
                             onPressed: () {
                               Navigator.push(
@@ -241,7 +243,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                         // Submit Button
                         AppButton(
-                          text: '${l10n.isArabic ? "تسجيل الدخول كـ" : "Login as"} ${_selectedRole.displayNameAr}',
+                          text: '${l10n.isArabic ? "تسجيل الدخول كـ" : "Login as"} ${l10n.isArabic ? _selectedRole.displayNameAr : _selectedRole.displayNameEn}',
                           icon: Icons.login_rounded,
                           isLoading: authState.isLoading,
                           onPressed: _handleLogin,

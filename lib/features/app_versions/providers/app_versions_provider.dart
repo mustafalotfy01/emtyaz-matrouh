@@ -12,12 +12,20 @@ final appVersionsRepositoryProvider = Provider<AppVersionsRepository>((ref) {
 class AppVersionsState {
   final bool isLoading;
   final bool isSaving;
+  final double uploadProgress;
+  final int uploadedBytes;
+  final int totalBytes;
+  final String? uploadStatusText;
   final String? errorMessage;
   final List<AppVersionModel> versions;
 
   const AppVersionsState({
     this.isLoading = false,
     this.isSaving = false,
+    this.uploadProgress = 0.0,
+    this.uploadedBytes = 0,
+    this.totalBytes = 0,
+    this.uploadStatusText,
     this.errorMessage,
     this.versions = const [],
   });
@@ -25,12 +33,20 @@ class AppVersionsState {
   AppVersionsState copyWith({
     bool? isLoading,
     bool? isSaving,
+    double? uploadProgress,
+    int? uploadedBytes,
+    int? totalBytes,
+    String? uploadStatusText,
     String? errorMessage,
     List<AppVersionModel>? versions,
   }) {
     return AppVersionsState(
       isLoading: isLoading ?? this.isLoading,
       isSaving: isSaving ?? this.isSaving,
+      uploadProgress: uploadProgress ?? this.uploadProgress,
+      uploadedBytes: uploadedBytes ?? this.uploadedBytes,
+      totalBytes: totalBytes ?? this.totalBytes,
+      uploadStatusText: uploadStatusText,
       errorMessage: errorMessage,
       versions: versions ?? this.versions,
     );
@@ -77,7 +93,14 @@ class AppVersionsNotifier extends StateNotifier<AppVersionsState> {
     int? fileSize,
     Uint8List? apkBytes,
   }) async {
-    state = state.copyWith(isSaving: true, errorMessage: null);
+    state = state.copyWith(
+      isSaving: true,
+      uploadProgress: 0.0,
+      uploadedBytes: 0,
+      totalBytes: apkBytes?.length ?? fileSize ?? 0,
+      uploadStatusText: (apkBytes != null && apkBytes.isNotEmpty) ? 'جاري تجهيز حزمة APK...' : 'جاري حفظ بيانات الإصدار...',
+      errorMessage: null,
+    );
     try {
       String finalUrl = apkUrl.trim();
 
@@ -91,12 +114,30 @@ class AppVersionsNotifier extends StateNotifier<AppVersionsState> {
           versionName: versionName,
           fileName: actualFileName,
           fileBytes: apkBytes,
+          onProgress: (progress, sent, total) {
+            final percent = (progress * 100).toStringAsFixed(0);
+            final sentMb = (sent / (1024 * 1024)).toStringAsFixed(1);
+            final totalMb = (total / (1024 * 1024)).toStringAsFixed(1);
+
+            state = state.copyWith(
+              uploadProgress: progress,
+              uploadedBytes: sent,
+              totalBytes: total,
+              uploadStatusText: progress >= 1.0
+                  ? 'تم اكتمال الرفع! جاري النشر...'
+                  : 'جاري رفع الملف: $percent% ($sentMb / $totalMb MB)',
+            );
+          },
         );
       }
 
       if (finalUrl.isEmpty) {
         throw Exception('رابط تحميل APK أو الملف مطلوب لنشر الإصدار');
       }
+
+      state = state.copyWith(
+        uploadStatusText: 'جاري تسجيل الإصدار في النظام...',
+      );
 
       await _repo.publishRelease(
         versionName: versionName,
@@ -111,11 +152,17 @@ class AppVersionsNotifier extends StateNotifier<AppVersionsState> {
       );
 
       await loadVersions();
-      state = state.copyWith(isSaving: false);
+      state = state.copyWith(
+        isSaving: false,
+        uploadProgress: 1.0,
+        uploadStatusText: null,
+      );
       return true;
     } catch (e) {
       state = state.copyWith(
         isSaving: false,
+        uploadProgress: 0.0,
+        uploadStatusText: null,
         errorMessage: 'فشل نشر الإصدار: $e',
       );
       return false;

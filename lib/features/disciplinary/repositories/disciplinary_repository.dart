@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/supabase_service.dart';
 import '../models/disciplinary_action.dart';
@@ -54,7 +55,7 @@ class DisciplinaryRepository {
     }
   }
 
-  /// Create action directly by Super Admin (auto-approved, marked super_admin)
+  /// Create action directly by Super Admin or Leader (auto-approved)
   Future<DisciplinaryAction> createDirectAdminAction({
     required String studentId,
     required String departmentId,
@@ -67,6 +68,28 @@ class DisciplinaryRepository {
     String? adminNote,
   }) async {
     try {
+      // 1. Try secure RPC first
+      try {
+        final rpcRes = await _client.rpc('apply_direct_disciplinary_action', params: {
+          'p_student_id': studentId,
+          'p_department_id': departmentId,
+          'p_action_type': actionType.toDbString(),
+          'p_reason': reason,
+          'p_description': description,
+          'p_deduction_value': deductionValue,
+          'p_deduction_unit': deductionUnit,
+          'p_severity': severity,
+          'p_admin_note': adminNote,
+        });
+
+        if (rpcRes != null) {
+          return DisciplinaryAction.fromJson(Map<String, dynamic>.from(rpcRes as Map));
+        }
+      } catch (rpcErr) {
+        if (kDebugMode) print('Direct disciplinary RPC fallback: $rpcErr');
+      }
+
+      // 2. Direct table insert fallback
       final adminId = _client.auth.currentUser?.id;
       final now = DateTime.now().toIso8601String();
 

@@ -9,11 +9,24 @@ enum UserRole {
       case UserRole.superAdmin:
         return 'الإدارة العليا';
       case UserRole.leader:
-        return 'منسق الجدولة والامتياز';
+        return 'ليدر';
       case UserRole.evaluatingDoctor:
-        return 'الدكتور المقيّم';
+        return 'دكتور مشرف';
       case UserRole.student:
         return 'طالب امتياز';
+    }
+  }
+
+  String get displayNameEn {
+    switch (this) {
+      case UserRole.superAdmin:
+        return 'Senior Management';
+      case UserRole.leader:
+        return 'Leader';
+      case UserRole.evaluatingDoctor:
+        return 'Supervisor Doctor';
+      case UserRole.student:
+        return 'Intern Student';
     }
   }
 

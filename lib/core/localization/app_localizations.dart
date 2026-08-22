@@ -34,9 +34,9 @@ class AppLocalizations {
 
   // ── Roles ────────────────────────────────────────────────────────────────
   String get roleStudent => isArabic ? 'طالب امتياز' : 'Intern Student';
-  String get roleLeader => isArabic ? 'منسق الامتياز والجدولة' : 'Internship Coordinator';
-  String get roleDoctor => isArabic ? 'الدكتور المشرف' : 'Clinical Supervisor';
-  String get roleAdmin => isArabic ? 'الإدارة العليا' : 'Super Admin';
+  String get roleLeader => isArabic ? 'ليدر' : 'Leader';
+  String get roleDoctor => isArabic ? 'دكتور مشرف' : 'Supervisor Doctor';
+  String get roleAdmin => isArabic ? 'الإدارة العليا' : 'Senior Management';
 
   // ── Student Groups ───────────────────────────────────────────────────────
   String get groupA => isArabic ? 'المجموعة A' : 'Group A';
