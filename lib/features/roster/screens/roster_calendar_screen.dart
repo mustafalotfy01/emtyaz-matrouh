@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/constants/app_colors.dart';
 import '../../../core/localization/app_localizations.dart';
+import '../../../core/theme/app_design_tokens.dart';
 import '../../auth/models/user_profile.dart';
 import '../../auth/providers/auth_provider.dart';
 import 'final_approved_roster_screen.dart';
@@ -38,22 +38,26 @@ class _RosterCalendarScreenState extends ConsumerState<RosterCalendarScreen>
     final l10n = context.l10n;
 
     return Scaffold(
-      backgroundColor: AppColors.bg(context),
+      backgroundColor: AppDesignTokens.bg(context),
       appBar: AppBar(
+        backgroundColor: AppDesignTokens.surface(context),
+        elevation: 0,
         title: Text(
-          isLeader ? l10n.leaderRosterManagementTitle : l10n.monthlyRosterSummary,
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.text(context)),
+          isLeader
+              ? (l10n.isArabic ? 'إدارة الجدولة والروستر الشهري' : 'Internship Roster Management')
+              : (l10n.isArabic ? 'الروستر الشهري' : 'Monthly Internship Roster'),
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppDesignTokens.textPrimary(context)),
         ),
         bottom: TabBar(
           controller: _tabController,
-          indicatorColor: AppColors.primaryTeal,
+          indicatorColor: AppDesignTokens.primary,
           indicatorWeight: 3,
-          labelColor: AppColors.primaryTeal,
-          unselectedLabelColor: AppColors.subtext(context),
+          labelColor: AppDesignTokens.primary,
+          unselectedLabelColor: AppDesignTokens.textSecondary(context),
           labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
           tabs: [
             Tab(
-              icon: const Icon(Icons.verified, size: 18),
+              icon: const Icon(Icons.verified_rounded, size: 18),
               text: '🟢 ${l10n.approvedRosterTitle}',
             ),
             Tab(
@@ -67,12 +71,12 @@ class _RosterCalendarScreenState extends ConsumerState<RosterCalendarScreen>
         controller: _tabController,
         children: [
           // ── TAB 1: Official Approved Roster (Pure roster_entries) ─────────
-          const FinalApprovedRosterScreen(),
+          const FinalApprovedRosterScreen(isEmbeddedInTabs: true),
 
           // ── TAB 2: Preference Proposal / Review ──────────────────────────
           isLeader
-              ? const LeaderRosterDashboard()
-              : const StudentRosterScreen(),
+              ? const LeaderRosterDashboard(isEmbeddedInTabs: true)
+              : const StudentRosterScreen(isEmbeddedInTabs: true),
         ],
       ),
     );

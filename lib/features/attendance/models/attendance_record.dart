@@ -19,6 +19,37 @@ enum AttendanceStatus {
         return 'إجازة معتمدة';
     }
   }
+
+  static AttendanceStatus fromString(String? val) {
+    switch (val?.toLowerCase()) {
+      case 'late':
+        return AttendanceStatus.late;
+      case 'absent':
+        return AttendanceStatus.absent;
+      case 'early_leave':
+        return AttendanceStatus.earlyLeave;
+      case 'excused':
+        return AttendanceStatus.excused;
+      case 'present':
+      default:
+        return AttendanceStatus.present;
+    }
+  }
+
+  String toDbString() {
+    switch (this) {
+      case AttendanceStatus.late:
+        return 'late';
+      case AttendanceStatus.absent:
+        return 'absent';
+      case AttendanceStatus.earlyLeave:
+        return 'early_leave';
+      case AttendanceStatus.excused:
+        return 'excused';
+      case AttendanceStatus.present:
+        return 'present';
+    }
+  }
 }
 
 class AttendanceRecord {
@@ -73,6 +104,49 @@ class AttendanceRecord {
     this.lateMinutes = 0,
     this.earlyLeaveMinutes = 0,
   });
+
+  factory AttendanceRecord.fromJson(Map<String, dynamic> json) {
+    return AttendanceRecord(
+      id: json['id']?.toString() ?? '',
+      studentId: json['student_id']?.toString() ?? '',
+      studentName: json['student_name']?.toString() ?? 'طالب امتياز',
+      departmentName: json['departments'] != null && json['departments']['name_ar'] != null
+          ? json['departments']['name_ar'].toString()
+          : (json['department_name']?.toString() ?? 'قسم الطوارئ والعناية'),
+      checkInTime: json['check_in_time'] != null
+          ? DateTime.parse(json['check_in_time'].toString())
+          : DateTime.now(),
+      checkOutTime: json['check_out_time'] != null
+          ? DateTime.parse(json['check_out_time'].toString())
+          : null,
+      checkInLat: (json['check_in_latitude'] as num?)?.toDouble() ?? 31.3543,
+      checkInLon: (json['check_in_longitude'] as num?)?.toDouble() ?? 27.2373,
+      checkInGpsAccuracy: (json['gps_accuracy'] as num?)?.toDouble(),
+      checkOutLat: (json['check_out_latitude'] as num?)?.toDouble(),
+      checkOutLon: (json['check_out_longitude'] as num?)?.toDouble(),
+      geofenceDistanceMeters: (json['geofence_distance'] as num?)?.toDouble(),
+      isGeofenceVerified: json['geofence_status'] == true,
+      isBiometricVerified: json['biometric_verified'] == true,
+      biometricMethod: json['biometric_method']?.toString() ?? 'fingerprint',
+      status: AttendanceStatus.fromString(json['status']?.toString()),
+      lateMinutes: (json['late_minutes'] as num?)?.toInt() ?? 0,
+      earlyLeaveMinutes: (json['early_leave_minutes'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toSupabasePayload() {
+    return {
+      'student_id': studentId,
+      'check_in_time': checkInTime.toIso8601String(),
+      if (checkOutTime != null) 'check_out_time': checkOutTime!.toIso8601String(),
+      'check_in_latitude': checkInLat,
+      'check_in_longitude': checkInLon,
+      'geofence_status': isGeofenceVerified,
+      'biometric_verified': isBiometricVerified,
+      'status': status.toDbString(),
+      'late_minutes': lateMinutes,
+    };
+  }
 
   AttendanceRecord copyWith({
     DateTime? checkOutTime,

@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nurse_matrouh/features/auth/models/user_profile.dart';
 import 'package:nurse_matrouh/features/roster/models/roster_month.dart';
 import 'package:nurse_matrouh/features/roster/models/roster_preference.dart';
-import 'package:nurse_matrouh/features/roster/models/student_roster_summary.dart';
 import 'package:nurse_matrouh/features/roster/services/roster_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

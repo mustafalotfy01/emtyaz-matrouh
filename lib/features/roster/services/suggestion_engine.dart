@@ -7,7 +7,7 @@ class SuggestionEngine {
 
   /// Generates automatic assignment suggestion based on student's exact requested shifts:
   /// - Uses student's chosen dates and shift types (Morning / Long / Night) directly
-  /// - Fallback to group default window (1-15 for Group A, 16-end for Group B)
+  /// - Intelligently fills remaining slots across the month respecting 36-hour weekly limit
   static List<RosterEntry> generateSuggestion1({
     required String studentId,
     required String studentName,
@@ -51,13 +51,11 @@ class SuggestionEngine {
       );
     }
 
-    // Fallback if preferences are fewer than required days
+    // Fallback if preferences are fewer than required days (distribute evenly across month)
     if (entries.length < totalTarget) {
       final daysInMonth = DateTime(year, month + 1, 0).day;
-      final startDay = studentGroup == StudentGroup.groupA ? 1 : 16;
-      final endDay = studentGroup == StudentGroup.groupA ? 15 : daysInMonth;
 
-      for (int d = startDay; d <= endDay && entries.length < totalTarget; d++) {
+      for (int d = 1; d <= daysInMonth && entries.length < totalTarget; d++) {
         final dt = DateTime(year, month, d);
         if (!entries.any((e) => e.shiftDate.day == d)) {
           entries.add(

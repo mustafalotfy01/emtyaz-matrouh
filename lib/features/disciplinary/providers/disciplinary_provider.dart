@@ -1,5 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/disciplinary_action.dart';
+import '../repositories/disciplinary_repository.dart';
+
+final disciplinaryRepositoryProvider = Provider<DisciplinaryRepository>((ref) {
+  return DisciplinaryRepository();
+});
 
 class DisciplineMetrics {
   final int totalWarnings;
@@ -21,38 +26,94 @@ class DisciplineMetrics {
   });
 }
 
-class DisciplinaryNotifier extends StateNotifier<List<DisciplinaryAction>> {
-  DisciplinaryNotifier() : super([]);
+class DisciplinaryNotifier extends StateNotifier<AsyncValue<List<DisciplinaryAction>>> {
+  final DisciplinaryRepository _repository;
 
-  void addAction(DisciplinaryAction action) {
-    state = [action, ...state];
+  DisciplinaryNotifier(this._repository) : super(const AsyncValue.loading()) {
+    loadActions();
   }
 
-  void approveAction(String actionId) {
-    state = [
-      for (final item in state)
-        if (item.id == actionId) item.copyWith(status: ActionStatus.approved) else item
-    ];
+  Future<void> loadActions() async {
+    try {
+      state = const AsyncValue.loading();
+      final list = await _repository.fetchAllActions();
+      state = AsyncValue.data(list);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
   }
 
-  void cancelAction(String actionId) {
-    state = [
-      for (final item in state)
-        if (item.id == actionId) item.copyWith(status: ActionStatus.cancelled) else item
-    ];
+  Future<void> createDirectAdminAction({
+    required String studentId,
+    required String departmentId,
+    required DisciplinaryActionType actionType,
+    required String reason,
+    required String description,
+    required double deductionValue,
+    String deductionUnit = 'points',
+    int severity = 1,
+    String? adminNote,
+  }) async {
+    await _repository.createDirectAdminAction(
+      studentId: studentId,
+      departmentId: departmentId,
+      actionType: actionType,
+      reason: reason,
+      description: description,
+      deductionValue: deductionValue,
+      deductionUnit: deductionUnit,
+      severity: severity,
+      adminNote: adminNote,
+    );
+    await loadActions();
+  }
+
+  Future<void> createDoctorAction({
+    required String studentId,
+    required String departmentId,
+    required DisciplinaryActionType actionType,
+    required String reason,
+    required String description,
+    required double deductionValue,
+    String deductionUnit = 'points',
+    int severity = 1,
+  }) async {
+    await _repository.createDoctorAction(
+      studentId: studentId,
+      departmentId: departmentId,
+      actionType: actionType,
+      reason: reason,
+      description: description,
+      deductionValue: deductionValue,
+      deductionUnit: deductionUnit,
+      severity: severity,
+    );
+    await loadActions();
+  }
+
+  Future<void> approveAction(String actionId, {String? adminComment}) async {
+    await _repository.approveAction(actionId: actionId, adminComment: adminComment);
+    await loadActions();
+  }
+
+  Future<void> rejectAction(String actionId, String reason) async {
+    await _repository.rejectAction(actionId: actionId, reason: reason);
+    await loadActions();
   }
 
   DisciplineMetrics getStudentMetrics(String studentId) {
-    final studentActions = state.where((a) => a.studentId == studentId && a.status != ActionStatus.cancelled).toList();
+    final actions = state.maybeWhen(
+      data: (list) => list.where((a) => a.studentId == studentId && a.status == ActionStatus.approved).toList(),
+      orElse: () => <DisciplinaryAction>[],
+    );
 
-    final warnings = studentActions.where((a) => a.actionType == DisciplinaryActionType.warning || a.actionType == DisciplinaryActionType.finalWarning).length;
-    final violations = studentActions.where((a) => a.actionType == DisciplinaryActionType.officialViolation || a.actionType == DisciplinaryActionType.behavioralViolation).length;
-    final deductions = studentActions.where((a) => a.actionType == DisciplinaryActionType.deduction).length;
-    final absences = studentActions.where((a) => a.actionType == DisciplinaryActionType.absence || a.actionType == DisciplinaryActionType.unexcusedAbsence).length;
-    final lates = studentActions.where((a) => a.actionType == DisciplinaryActionType.lateCheckin).length;
-    final rewards = studentActions.where((a) => a.actionType == DisciplinaryActionType.reward).length;
+    final warnings = actions.where((a) => a.actionType == DisciplinaryActionType.warning || a.actionType == DisciplinaryActionType.finalWarning).length;
+    final violations = actions.where((a) => a.actionType == DisciplinaryActionType.officialViolation || a.actionType == DisciplinaryActionType.behavioralViolation).length;
+    final deductions = actions.where((a) => a.actionType == DisciplinaryActionType.deduction).length;
+    final absences = actions.where((a) => a.actionType == DisciplinaryActionType.absence || a.actionType == DisciplinaryActionType.unexcusedAbsence).length;
+    final lates = actions.where((a) => a.actionType == DisciplinaryActionType.lateCheckin).length;
+    final rewards = actions.where((a) => a.actionType == DisciplinaryActionType.reward).length;
 
-    // Calculate attendance percentage (e.g. 95%)
     final totalShifts = 12;
     final attendedShifts = totalShifts - absences;
     final attendancePct = (attendedShifts / totalShifts) * 100;
@@ -69,6 +130,14 @@ class DisciplinaryNotifier extends StateNotifier<List<DisciplinaryAction>> {
   }
 }
 
-final disciplinaryProvider = StateNotifierProvider<DisciplinaryNotifier, List<DisciplinaryAction>>((ref) {
-  return DisciplinaryNotifier();
+final disciplinaryProvider =
+    StateNotifierProvider<DisciplinaryNotifier, AsyncValue<List<DisciplinaryAction>>>((ref) {
+  final repo = ref.watch(disciplinaryRepositoryProvider);
+  return DisciplinaryNotifier(repo);
+});
+
+final studentDisciplinaryHistoryProvider =
+    FutureProvider.family<List<DisciplinaryAction>, String>((ref, studentId) async {
+  final repo = ref.watch(disciplinaryRepositoryProvider);
+  return repo.fetchStudentActions(studentId);
 });

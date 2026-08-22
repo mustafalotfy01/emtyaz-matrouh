@@ -9,10 +9,13 @@ import '../../auth/providers/auth_provider.dart';
 import '../models/roster_entry.dart';
 import '../models/roster_month.dart';
 import '../providers/final_roster_provider.dart';
+import '../providers/roster_provider.dart';
+import '../services/final_roster_service.dart';
 import 'student_roster_screen.dart';
 
 class FinalApprovedRosterScreen extends ConsumerWidget {
-  const FinalApprovedRosterScreen({super.key});
+  final bool isEmbeddedInTabs;
+  const FinalApprovedRosterScreen({super.key, this.isEmbeddedInTabs = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -29,61 +32,19 @@ class FinalApprovedRosterScreen extends ConsumerWidget {
 
     final editState = ref.watch(finalRosterEditProvider);
 
-    return Scaffold(
-      backgroundColor: AppColors.bg(context),
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(l10n.approvedRosterTitle, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16.5, color: AppColors.text(context))),
-            Text(l10n.approvedRosterBannerTitle, style: TextStyle(fontSize: 10.5, color: AppColors.subtext(context))),
-          ],
-        ),
-        actions: [
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFF10B981),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white30),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.verified, color: Colors.white, size: 14),
-                const SizedBox(width: 4),
-                Text(
-                  l10n.statusApprovedShort,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: l10n.isArabic ? 'تحديث الروستر من الخادم' : 'Refresh Roster',
-            icon: Icon(Icons.refresh, color: AppColors.text(context)),
-            onPressed: () {
-              ref.invalidate(finalApprovedRosterProvider);
-              ref.invalidate(studentFinalApprovedRosterProvider);
-              ref.invalidate(finalRosterMonthMetaProvider);
-            },
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(finalApprovedRosterProvider);
-          ref.invalidate(studentFinalApprovedRosterProvider);
-          ref.invalidate(finalRosterMonthMetaProvider);
-        },
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // ── 1. Month Navigation Header ────────────────────────────────
-            _buildMonthSelectorCard(context, selectedMonth, l10n, ref),
+    final content = RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(finalApprovedRosterProvider);
+        ref.invalidate(studentFinalApprovedRosterProvider);
+        ref.invalidate(finalRosterMonthMetaProvider);
+      },
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // ── 1. Month Navigation Header ────────────────────────────────
+          _buildMonthSelectorCard(context, selectedMonth, l10n, ref),
 
-            const SizedBox(height: 12),
+          const SizedBox(height: 12),
 
             // ── 2. Official Status Banner ──────────────────────────────────
             monthMetaAsync.when(
@@ -225,6 +186,54 @@ class FinalApprovedRosterScreen extends ConsumerWidget {
                             textAlign: TextAlign.center,
                             style: TextStyle(fontSize: 11.5, color: AppColors.subtext(context)),
                           ),
+                          // Leader-only: show sync button when roster is published but has no entries
+                          if (isLeader)
+                            monthMetaAsync.when(
+                              data: (meta) {
+                                if (meta.isPublished) {
+                                  return Padding(
+                                    padding: const EdgeInsets.only(top: 16),
+                                    child: ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF0F766E),
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      ),
+                                      icon: const Icon(Icons.sync, size: 16),
+                                      label: Text(
+                                        l10n.isArabic ? 'استيراد الرغبات للروستر المعتمد' : 'Sync Preferences to Approved Roster',
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                      ),
+                                      onPressed: () async {
+                                        if (user == null) return;
+                                        final res = await FinalRosterService.syncAllStudentPreferencesToApprovedRoster(
+                                          month: selectedMonth.month,
+                                          year: selectedMonth.year,
+                                          leaderId: user.id,
+                                        );
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text(res['message'] ?? ''),
+                                              backgroundColor: res['success'] == true ? AppColors.success : AppColors.danger,
+                                            ),
+                                          );
+                                          if (res['success'] == true) {
+                                            ref.invalidate(finalApprovedRosterProvider);
+                                            ref.invalidate(studentFinalApprovedRosterProvider);
+                                            ref.invalidate(finalRosterMonthMetaProvider);
+                                          }
+                                        }
+                                      },
+                                    ),
+                                  );
+                                }
+                                return const SizedBox.shrink();
+                              },
+                              loading: () => const SizedBox.shrink(),
+                              error: (_, __) => const SizedBox.shrink(),
+                            ),
                         ],
                       ),
                     ),
@@ -285,10 +294,40 @@ class FinalApprovedRosterScreen extends ConsumerWidget {
                 },
               ),
 
-            const SizedBox(height: 30),
           ],
         ),
+      );
+
+    if (isEmbeddedInTabs) {
+      return Material(
+        color: AppColors.bg(context),
+        child: content,
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: AppColors.bg(context),
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l10n.approvedRosterTitle, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16.5, color: AppColors.text(context))),
+            Text(l10n.approvedRosterBannerTitle, style: TextStyle(fontSize: 10.5, color: AppColors.subtext(context))),
+          ],
+        ),
+        actions: [
+          IconButton(
+            tooltip: l10n.isArabic ? 'تحديث الروستر من الخادم' : 'Refresh Roster',
+            icon: Icon(Icons.refresh, color: AppColors.text(context)),
+            onPressed: () {
+              ref.invalidate(finalApprovedRosterProvider);
+              ref.invalidate(studentFinalApprovedRosterProvider);
+              ref.invalidate(finalRosterMonthMetaProvider);
+            },
+          ),
+        ],
       ),
+      body: content,
     );
   }
 
@@ -333,14 +372,23 @@ class FinalApprovedRosterScreen extends ConsumerWidget {
                 ],
                 onChanged: (val) {
                   if (val != null) {
-                    ref.read(activeFinalRosterMonthProvider.notifier).state = RosterMonth(
-                      id: '00000000-0000-0000-0000-${current.year.toString().padLeft(4, '0')}${val.toString().padLeft(2, '0')}000000',
-                      title: 'روستر شهر $val ${current.year}',
-                      month: val,
-                      year: current.year,
-                      status: RosterMonthStatus.published,
-                      isPublished: true,
+                    final target = RosterMonth.getAvailableMonths().firstWhere(
+                      (m) => m.month == val && m.year == current.year,
+                      orElse: () => RosterMonth(
+                        id: '00000000-0000-0000-0000-${current.year.toString().padLeft(4, '0')}${val.toString().padLeft(2, '0')}000000',
+                        title: 'روستر شهر $val ${current.year}',
+                        month: val,
+                        year: current.year,
+                        status: RosterMonthStatus.published,
+                        isPublished: true,
+                      ),
                     );
+                    ref.read(currentRosterMonthProvider.notifier).state = target;
+                    ref.read(activeFinalRosterMonthProvider.notifier).state = target;
+                    ref.read(leaderRosterProvider.notifier).loadDashboard();
+                    ref.invalidate(finalApprovedRosterProvider);
+                    ref.invalidate(studentFinalApprovedRosterProvider);
+                    ref.invalidate(finalRosterMonthMetaProvider);
                   }
                 },
               ),

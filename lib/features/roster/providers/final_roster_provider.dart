@@ -3,18 +3,11 @@ import '../../auth/providers/auth_provider.dart';
 import '../models/roster_entry.dart';
 import '../models/roster_month.dart';
 import '../services/final_roster_service.dart';
+import 'roster_provider.dart';
 
-/// Active month selected for Final Approved Roster view
+/// Active month selected for Final Approved Roster view (synced with currentRosterMonthProvider)
 final activeFinalRosterMonthProvider = StateProvider<RosterMonth>((ref) {
-  final now = DateTime.now();
-  return RosterMonth(
-    id: '00000000-0000-0000-0000-${now.year.toString().padLeft(4, '0')}${now.month.toString().padLeft(2, '0')}000000',
-    title: 'روستر شهر ${now.month} ${now.year}',
-    month: now.month,
-    year: now.year,
-    status: RosterMonthStatus.published,
-    isPublished: true,
-  );
+  return ref.watch(currentRosterMonthProvider);
 });
 
 /// Fetches the live month published metadata from Supabase

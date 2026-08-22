@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>إمتياز مطروح</string>
+	<string>MANU</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -68,12 +68,12 @@
 	</array>
 	<!-- Location Permissions -->
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>يحتاج إمتياز مطروح إلى موقعك الحالي لتسجيل الحضور ضمن نطاق المستشفى الجغرافي</string>
+	<string>يحتاج MANU إلى موقعك الحالي لتسجيل الحضور ضمن نطاق المستشفى الجغرافي</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>يحتاج إمتياز مطروح إلى موقعك لتسجيل الحضور والإشعارات الجغرافية</string>
+	<string>يحتاج MANU إلى موقعك لتسجيل الحضور والإشعارات الجغرافية</string>
 	<!-- Biometric Permissions -->
 	<key>NSFaceIDUsageDescription</key>
-	<string>يستخدم إمتياز مطروح Face ID لتأكيد هويتك عند تسجيل الحضور</string>
+	<string>يستخدم MANU خاصية Face ID لتأكيد هويتك عند تسجيل الحضور</string>
 	<!--
 	  Google Maps iOS SDK API Key.
 	  To configure:

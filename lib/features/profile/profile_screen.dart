@@ -2,15 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../core/constants/app_colors.dart';
+import '../../core/services/media_picker_service.dart';
 import '../../core/localization/app_localizations.dart';
 import '../../core/localization/locale_provider.dart';
 import '../../core/services/firebase_messaging_service.dart';
 import '../../core/services/push_notification_service.dart';
+import '../../core/theme/app_design_tokens.dart';
 import '../../core/theme/theme_provider.dart';
-import '../../core/widgets/ios/app_card.dart';
-import '../../core/widgets/ios/app_section_header.dart';
+import '../../core/widgets/app_avatar.dart';
+import '../../core/widgets/app_badge.dart';
+import '../../core/widgets/app_button.dart';
+import '../../core/widgets/app_card.dart';
+import '../../core/widgets/app_dialog.dart';
+import '../../core/widgets/app_input.dart';
+import '../../core/widgets/app_section_header.dart';
 import '../../core/widgets/ios/language_segmented_control.dart';
+import 'widgets/app_update_dialog.dart';
+import '../auth/models/user_profile.dart';
 import '../auth/providers/auth_provider.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -21,19 +29,254 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  void _openEditProfileDialog(BuildContext context, UserProfile user) {
+    final nameController = TextEditingController(text: user.fullName);
+    final phoneController = TextEditingController(text: user.phoneNumber);
+    final emergencyController = TextEditingController(text: user.emergencyContact);
+    final addressController = TextEditingController(text: user.residenceAddress);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+        ),
+        decoration: BoxDecoration(
+          color: AppDesignTokens.surface(context),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          border: Border.all(color: AppDesignTokens.border(context)),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'تعديل البيانات الشخصية',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppDesignTokens.textPrimary(context),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              AppInput(
+                label: 'الاسم الكامل',
+                controller: nameController,
+                prefixIcon: const Icon(Icons.person_outline_rounded, size: 18),
+              ),
+              const SizedBox(height: 12),
+              AppInput(
+                label: 'رقم الهاتف',
+                controller: phoneController,
+                keyboardType: TextInputType.phone,
+                prefixIcon: const Icon(Icons.phone_outlined, size: 18),
+              ),
+              const SizedBox(height: 12),
+              AppInput(
+                label: 'رقم طوارئ للتواصل',
+                controller: emergencyController,
+                keyboardType: TextInputType.phone,
+                prefixIcon: const Icon(Icons.contact_phone_outlined, size: 18),
+              ),
+              const SizedBox(height: 12),
+              AppInput(
+                label: 'عنوان السكن في مطروح',
+                controller: addressController,
+                prefixIcon: const Icon(Icons.home_outlined, size: 18),
+              ),
+              const SizedBox(height: 16),
+              AppButton(
+                text: 'تغيير الصورة الشخصية من المعرض 🖼️',
+                icon: Icons.photo_library_rounded,
+                variant: AppButtonVariant.outline,
+                width: double.infinity,
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _pickImage(fromCamera: false);
+                },
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: AppButton(
+                      text: 'إلغاء',
+                      variant: AppButtonVariant.ghost,
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: AppButton(
+                      text: 'حفظ التعديلات',
+                      variant: AppButtonVariant.primary,
+                      onPressed: () async {
+                        Navigator.pop(ctx);
+                        final ok = await ref.read(authProvider.notifier).updateProfile(
+                          fullName: nameController.text,
+                          phoneNumber: phoneController.text,
+                          emergencyContact: emergencyController.text,
+                          residenceAddress: addressController.text,
+                        );
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              backgroundColor: ok ? AppDesignTokens.success : AppDesignTokens.danger,
+                              content: Text(ok ? 'تم تحديث البيانات بنجاح ✅' : 'فشل تحديث البيانات ❌'),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickImage({bool fromCamera = false}) async {
+    try {
+      final picked = await MediaPickerService.instance.pickImage(fromCamera: fromCamera);
+
+      if (picked != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('جارٍ رفع الصورة الشخصية وتحديث البروفايل...'),
+              duration: Duration(seconds: 1),
+            ),
+          );
+        }
+
+        final uploadedUrl = await ref
+            .read(authProvider.notifier)
+            .uploadAvatarBytes(picked.bytes, picked.extension);
+
+        if (mounted) {
+          if (uploadedUrl != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                backgroundColor: AppDesignTokens.success,
+                content: Text('تم تحديث الصورة الشخصية بنجاح وستظهر في الليدربورد والبروفايل ✅'),
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                backgroundColor: AppDesignTokens.danger,
+                content: Text('تعذر رفع الصورة، يرجى المحاولة لاحقاً ❌'),
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppDesignTokens.danger,
+            content: Text('خطأ أثناء اختيار الصورة: $e'),
+          ),
+        );
+      }
+    }
+  }
+
+  void _openAvatarActionsModal(BuildContext context, UserProfile user) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppDesignTokens.surface(context),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          border: Border.all(color: AppDesignTokens.border(context)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'الصورة الشخصية',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: AppDesignTokens.textPrimary(context),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded, color: AppDesignTokens.primary),
+              title: const Text('اختيار صورة من المعرض (Gallery) 🖼️', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickImage(fromCamera: false);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_rounded, color: AppDesignTokens.primary),
+              title: const Text('التقاط صورة بالكاميرا (Camera) 📷', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickImage(fromCamera: true);
+              },
+            ),
+            if (user.avatarUrl != null && user.avatarUrl!.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded, color: AppDesignTokens.danger),
+                title: const Text('حذف الصورة الحالية', style: TextStyle(color: AppDesignTokens.danger, fontWeight: FontWeight.w600, fontSize: 13.5)),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await ref.read(authProvider.notifier).deleteAvatar();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        backgroundColor: AppDesignTokens.success,
+                        content: Text('تم حذف الصورة الشخصية بنجاح ✅'),
+                      ),
+                    );
+                  }
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
-    final user = authState.user;
+    final user = authState.user ?? UserProfile.mockStudent();
     final currentThemeMode = ref.watch(themeModeProvider);
     final currentLocale = ref.watch(localeProvider);
     final l10n = context.l10n;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: AppColors.bg(context),
+      backgroundColor: AppDesignTokens.bg(context),
       appBar: AppBar(
         title: Text(l10n.profileAndSettingsTitle),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
         actions: const [
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 12),
@@ -48,57 +291,103 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── 1. User Header ─────────────────────────────────────────────
-              Center(
+              // ── 1. User Header & Avatar ────────────────────────────────────
+              AppCard(
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   children: [
-                    Container(
-                      width: 76,
-                      height: 76,
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryTeal.withOpacity(0.12),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AppColors.primaryTeal, width: 2),
+                    Center(
+                      child: AppAvatar(
+                        name: user.fullName,
+                        imageUrl: user.avatarUrl,
+                        size: AppAvatarSize.xlarge,
+                        onEditTap: () => _openAvatarActionsModal(context, user),
+                        isOnline: true,
+                        showOnlineIndicator: true,
                       ),
-                      child: const Icon(Icons.person_rounded, size: 44, color: AppColors.primaryTeal),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     Text(
-                      user?.fullName.isNotEmpty == true ? user!.fullName : 'أحمد محمود العبد',
+                      user.fullName,
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.text(context),
+                        color: AppDesignTokens.textPrimary(context),
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        AppBadge(
+                          label: user.role.displayNameAr,
+                          variant: AppBadgeVariant.primary,
+                          size: AppBadgeSize.medium,
+                        ),
+                        if (user.role == UserRole.student) ...[
+                          const SizedBox(width: 8),
+                          AppBadge(
+                            label: user.studentGroup.displayNameAr,
+                            variant: AppBadgeVariant.neutral,
+                            size: AppBadgeSize.medium,
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 12),
                     Text(
-                      user?.role.displayNameAr ?? l10n.roleStudent,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        color: AppColors.primaryTeal,
-                        fontWeight: FontWeight.w600,
+                      '${l10n.universityCodeLabel} ${user.universityCode}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppDesignTokens.textSecondary(context),
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
-                    const SizedBox(height: 3),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AppColors.muted(context),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '${l10n.universityCodeLabel} ${user?.universityCode ?? "NUR-2026-081"}',
-                        style: TextStyle(fontSize: 11, color: AppColors.subtext(context), fontWeight: FontWeight.w500),
-                      ),
+                    const SizedBox(height: 14),
+                    AppButton(
+                      text: 'تعديل الملف الشخصي',
+                      icon: Icons.edit_outlined,
+                      variant: AppButtonVariant.outline,
+                      size: AppButtonSize.small,
+                      onPressed: () => _openEditProfileDialog(context, user),
                     ),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
-              // ── 2. Appearance Section (Light / Dark / System) ──────────────
+              // ── 2. Official Academic & Contact Data ────────────────────────
+              AppSectionHeader(title: l10n.accountSection),
+              const SizedBox(height: 6),
+              AppCard(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
+                child: Column(
+                  children: [
+                    _buildInfoRow(context, Icons.email_outlined, l10n.emailLabel, user.email),
+                    Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
+                    _buildInfoRow(context, Icons.phone_outlined, l10n.phoneLabel, user.phoneNumber),
+                    if (user.gpa != null) ...[
+                      Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
+                      _buildInfoRow(context, Icons.school_outlined, 'المعدل التراكمي (GPA)', user.gpa!.toStringAsFixed(2)),
+                    ],
+                    if (user.nationalId != null && user.nationalId!.isNotEmpty) ...[
+                      Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
+                      _buildInfoRow(context, Icons.credit_card_outlined, l10n.nationalIdLabel, user.nationalId!),
+                    ],
+                    Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
+                    _buildInfoRow(context, Icons.home_outlined, l10n.residenceLabel, user.isMatrouhResident ? l10n.residentMatrouh : l10n.residentExpatriate),
+                    if (user.emergencyContact.isNotEmpty) ...[
+                      Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
+                      _buildInfoRow(context, Icons.contact_phone_outlined, 'جهة اتصال الطوارئ', user.emergencyContact),
+                    ],
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // ── 3. Appearance Section ──────────────────────────────────────
               AppSectionHeader(title: l10n.appearanceSection),
               const SizedBox(height: 6),
               AppCard(
@@ -112,7 +401,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       isSelected: currentThemeMode == ThemeMode.system,
                       onTap: () => ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.system),
                     ),
-                    Divider(height: 1, color: AppColors.border(context)),
+                    Divider(height: 1, color: AppDesignTokens.borderSubtle(context)),
                     _buildThemeRadioRow(
                       context,
                       title: l10n.themeLight,
@@ -120,7 +409,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       isSelected: currentThemeMode == ThemeMode.light,
                       onTap: () => ref.read(themeModeProvider.notifier).setThemeMode(ThemeMode.light),
                     ),
-                    Divider(height: 1, color: AppColors.border(context)),
+                    Divider(height: 1, color: AppDesignTokens.borderSubtle(context)),
                     _buildThemeRadioRow(
                       context,
                       title: l10n.themeDark,
@@ -134,7 +423,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
               const SizedBox(height: 20),
 
-              // ── 3. Language Section ────────────────────────────────────────
+              // ── 4. Language Section ────────────────────────────────────────
               AppSectionHeader(title: l10n.languageSection),
               const SizedBox(height: 6),
               AppCard(
@@ -147,7 +436,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       isSelected: currentLocale.languageCode == 'ar',
                       onTap: () => ref.read(localeProvider.notifier).setLocale(const Locale('ar', 'EG')),
                     ),
-                    Divider(height: 1, color: AppColors.border(context)),
+                    Divider(height: 1, color: AppDesignTokens.borderSubtle(context)),
                     _buildLanguageRow(
                       context,
                       title: 'English',
@@ -160,37 +449,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
               const SizedBox(height: 20),
 
-              // ── 4. Student Official Data ───────────────────────────────────
-              AppSectionHeader(title: l10n.accountSection),
-              const SizedBox(height: 6),
-              AppCard(
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                child: Column(
-                  children: [
-                    _buildInfoRow(context, Icons.email_outlined, l10n.emailLabel, user?.email ?? 'student1@nurse.edu.eg'),
-                    Divider(height: 12, color: AppColors.border(context)),
-                    _buildInfoRow(context, Icons.phone_outlined, l10n.phoneLabel, user?.phoneNumber ?? '01012345678'),
-                    if (user?.gpa != null) ...[
-                      Divider(height: 12, color: AppColors.border(context)),
-                      _buildInfoRow(context, Icons.school_outlined, 'المعدل التراكمي (GPA)', user!.gpa!.toStringAsFixed(2)),
-                    ],
-                    if (user?.nationalId != null && user!.nationalId!.isNotEmpty) ...[
-                      Divider(height: 12, color: AppColors.border(context)),
-                      _buildInfoRow(context, Icons.credit_card_outlined, l10n.nationalIdLabel, user!.nationalId!),
-                    ],
-                    Divider(height: 12, color: AppColors.border(context)),
-                    _buildInfoRow(context, Icons.home_outlined, l10n.residenceLabel, user?.isMatrouhResident == true ? l10n.residentMatrouh : l10n.residentExpatriate),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // ── 5. Push Notifications & PWA Settings ───────────────────────
+              // ── 5. Push Notifications & FCM Diagnostics ────────────────────
               AppSectionHeader(title: l10n.isArabic ? 'الإشعارات والتنبيهات الفورية' : 'Push Notifications'),
               const SizedBox(height: 6),
               AppCard(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(14),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -199,10 +462,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: AppColors.primaryTeal.withValues(alpha: 0.12),
+                            color: AppDesignTokens.primary.withOpacity(0.1),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.notifications_active_outlined, color: AppColors.primaryTeal, size: 20),
+                          child: const Icon(Icons.notifications_active_outlined, color: AppDesignTokens.primary, size: 20),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -211,7 +474,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             children: [
                               Text(
                                 l10n.isArabic ? 'إشعارات الروستر والتدريب' : 'Shift & Roster Push Alerts',
-                                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: AppColors.text(context)),
+                                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: AppDesignTokens.textPrimary(context)),
                               ),
                               Text(
                                 PushNotificationService.instance.getPermissionStatus() == PushPermissionStatus.granted
@@ -221,8 +484,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
                                   color: PushNotificationService.instance.getPermissionStatus() == PushPermissionStatus.granted
-                                      ? AppColors.success
-                                      : AppColors.warning,
+                                      ? AppDesignTokens.success
+                                      : AppDesignTokens.warning,
                                 ),
                               ),
                             ],
@@ -230,110 +493,50 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ),
                       ],
                     ),
-
-                    const SizedBox(height: 10),
-
-                    if (PushNotificationService.instance.isIosSafariNonStandalone()) ...[
-                      // iPhone PWA Home Screen Guide Card
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AppColors.muted(context),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppColors.primaryTeal.withValues(alpha: 0.3)),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: AppButton(
+                            text: PushNotificationService.instance.getPermissionStatus() == PushPermissionStatus.granted
+                                ? (l10n.isArabic ? 'إرسال إشعار تجريبي 🔔' : 'Send Test Alert 🔔')
+                                : (l10n.isArabic ? 'تفعيل الإشعارات 🔔' : 'Enable Alerts 🔔'),
+                            variant: AppButtonVariant.primary,
+                            size: AppButtonSize.small,
+                            onPressed: () async {
+                              if (PushNotificationService.instance.getPermissionStatus() != PushPermissionStatus.granted) {
+                                await PushNotificationService.instance.requestPermission();
+                                await FirebaseMessagingService.instance.requestPermission();
+                                await FirebaseMessagingService.instance.retrieveToken();
+                                if (mounted) setState(() {});
+                              } else {
+                                await PushNotificationService.instance.showBrowserNotification(
+                                  title: 'MANU (FCM)',
+                                  body: 'تم اختبار الإشعارات الفورية بنجاح على جهازك! 🎉',
+                                  route: '/notifications',
+                                );
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      backgroundColor: AppDesignTokens.success,
+                                      content: Text(l10n.isArabic ? 'تم إرسال إشعار تجريبي بنجاح ✅' : 'Test notification sent ✅'),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                          ),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.phone_iphone, color: AppColors.primaryTeal, size: 18),
-                                const SizedBox(width: 6),
-                                Text(
-                                  l10n.isArabic ? 'دليل تفعيل الإشعارات على iPhone / iPad:' : 'Enable Notifications on iPhone / iPad:',
-                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.text(context)),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              l10n.isArabic
-                                  ? '1. اضغط زر المشاركة (Share) 📤\n2. اختر إضافة إلى الشاشة الرئيسية (Add to Home Screen) 📲\n3. افتح التطبيق من الشاشة الرئيسية\n4. اضغط تفعيل الإشعارات'
-                                  : '1. Tap the Share button 📤\n2. Select "Add to Home Screen" 📲\n3. Open app from your Home Screen\n4. Tap Enable Notifications',
-                              style: TextStyle(fontSize: 11.5, height: 1.5, color: AppColors.subtext(context)),
-                            ),
-                          ],
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: AppButton(
+                            text: l10n.isArabic ? 'تشخيص FCM 🛠️' : 'FCM Debug 🛠️',
+                            variant: AppButtonVariant.outline,
+                            size: AppButtonSize.small,
+                            onPressed: () => context.push('/fcm-debug'),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: PushNotificationService.instance.getPermissionStatus() == PushPermissionStatus.granted
-                              ? AppColors.muted(context)
-                              : AppColors.primaryTeal,
-                          foregroundColor: PushNotificationService.instance.getPermissionStatus() == PushPermissionStatus.granted
-                              ? AppColors.text(context)
-                              : Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        icon: const Icon(Icons.notification_add, size: 16),
-                        label: Text(
-                          PushNotificationService.instance.getPermissionStatus() == PushPermissionStatus.granted
-                              ? (l10n.isArabic ? 'إرسال إشعار تجريبي للجهاز 🔔' : 'Send Test Notification 🔔')
-                              : (l10n.isArabic ? 'تفعيل الإشعارات وتوليد رمز FCM 🔔' : 'Enable FCM Notifications 🔔'),
-                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
-                        ),
-                        onPressed: () async {
-                          if (PushNotificationService.instance.getPermissionStatus() != PushPermissionStatus.granted) {
-                            await PushNotificationService.instance.requestPermission();
-                            await FirebaseMessagingService.instance.requestPermission();
-                            await FirebaseMessagingService.instance.retrieveToken();
-                            if (mounted) setState(() {});
-                          } else {
-                            // Show test browser notification
-                            await PushNotificationService.instance.showBrowserNotification(
-                              title: 'امتياز مطروح (FCM)',
-                              body: 'تم اختبار الإشعارات الفورية بنجاح على جهازك! 🎉',
-                              route: '/notifications',
-                            );
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  backgroundColor: AppColors.success,
-                                  content: Text(l10n.isArabic ? 'تم إرسال إشعار تجريبي بنجاح ✅' : 'Test notification sent ✅'),
-                                ),
-                              );
-                            }
-                          }
-                        },
-                      ),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    // Diagnostics Screen Link
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          side: BorderSide(color: AppColors.primaryTeal.withValues(alpha: 0.3)),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        icon: const Icon(Icons.build_circle_outlined, size: 16, color: AppColors.primaryTeal),
-                        label: Text(
-                          l10n.isArabic ? 'تشخيص إشعارات FCM والتسجيل 🛠️' : 'FCM Diagnostics & Token 🛠️',
-                          style: const TextStyle(fontSize: 11.5, color: AppColors.primaryTeal, fontWeight: FontWeight.w600),
-                        ),
-                        onPressed: () {
-                          context.push('/fcm-debug');
-                        },
-                      ),
+                      ],
                     ),
                   ],
                 ),
@@ -349,14 +552,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 child: SwitchListTile(
                   title: Text(
                     l10n.enableBiometrics,
-                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: AppColors.text(context)),
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: AppDesignTokens.textPrimary(context)),
                   ),
                   subtitle: Text(
                     l10n.enableBiometricsSub,
-                    style: TextStyle(fontSize: 11, color: AppColors.subtext(context)),
+                    style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
                   ),
                   value: authState.isBiometricEnabled,
-                  activeColor: AppColors.primaryTeal,
+                  activeColor: AppDesignTokens.primary,
                   onChanged: (val) {
                     ref.read(authProvider.notifier).toggleBiometrics(val);
                   },
@@ -365,17 +568,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
               const SizedBox(height: 20),
 
-              // ── 6. About App ───────────────────────────────────────────────
+              // ── 7. About App ───────────────────────────────────────────────
               AppSectionHeader(title: l10n.aboutSection),
               const SizedBox(height: 6),
               AppCard(
                 padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
                 child: Column(
                   children: [
-                    _buildNavRow(context, Icons.info_outline_rounded, l10n.appVersionLabel, l10n.appVersionValue),
-                    Divider(height: 8, color: AppColors.border(context)),
+                    _buildNavRow(
+                      context,
+                      Icons.info_outline_rounded,
+                      l10n.appVersionLabel,
+                      l10n.appVersionValue,
+                      onTap: () => AppUpdateModal.showUpdateCheck(context),
+                    ),
+                    Divider(height: 8, color: AppDesignTokens.borderSubtle(context)),
                     _buildNavRow(context, Icons.privacy_tip_outlined, l10n.privacyPolicy, null),
-                    Divider(height: 8, color: AppColors.border(context)),
+                    Divider(height: 8, color: AppDesignTokens.borderSubtle(context)),
                     _buildNavRow(context, Icons.description_outlined, l10n.termsOfService, null),
                   ],
                 ),
@@ -383,19 +592,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
               const SizedBox(height: 24),
 
-              // ── 7. Logout Button ───────────────────────────────────────────
+              // ── 8. Logout Button ───────────────────────────────────────────
               Center(
-                child: TextButton.icon(
+                child: AppButton(
+                  text: l10n.logoutBtn,
+                  icon: Icons.logout_rounded,
+                  variant: AppButtonVariant.danger,
+                  size: AppButtonSize.medium,
+                  width: double.infinity,
                   onPressed: () => _confirmLogout(context, ref, l10n),
-                  icon: const Icon(Icons.logout_rounded, color: AppColors.danger, size: 18),
-                  label: Text(
-                    l10n.logoutBtn,
-                    style: const TextStyle(
-                      color: AppColors.danger,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
                 ),
               ),
             ],
@@ -417,12 +622,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         HapticFeedback.lightImpact();
         onTap();
       },
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: isSelected ? AppColors.primaryTeal : AppColors.subtext(context)),
+            Icon(icon, size: 20, color: isSelected ? AppDesignTokens.primary : AppDesignTokens.textSecondary(context)),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -430,12 +635,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                  color: isSelected ? AppColors.primaryTeal : AppColors.text(context),
+                  color: isSelected ? AppDesignTokens.primary : AppDesignTokens.textPrimary(context),
                 ),
               ),
             ),
             if (isSelected)
-              const Icon(Icons.check_rounded, color: AppColors.primaryTeal, size: 18),
+              const Icon(Icons.check_rounded, color: AppDesignTokens.primary, size: 18),
           ],
         ),
       ),
@@ -453,12 +658,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         HapticFeedback.lightImpact();
         onTap();
       },
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
         child: Row(
           children: [
-            Icon(Icons.language_rounded, size: 20, color: isSelected ? AppColors.primaryTeal : AppColors.subtext(context)),
+            Icon(Icons.language_rounded, size: 20, color: isSelected ? AppDesignTokens.primary : AppDesignTokens.textSecondary(context)),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -466,12 +671,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                  color: isSelected ? AppColors.primaryTeal : AppColors.text(context),
+                  color: isSelected ? AppDesignTokens.primary : AppDesignTokens.textPrimary(context),
                 ),
               ),
             ),
             if (isSelected)
-              const Icon(Icons.check_rounded, color: AppColors.primaryTeal, size: 18),
+              const Icon(Icons.check_rounded, color: AppDesignTokens.primary, size: 18),
           ],
         ),
       ),
@@ -483,18 +688,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: AppColors.primaryTeal),
+          Icon(icon, size: 18, color: AppDesignTokens.primary),
           const SizedBox(width: 10),
           Text(
             label,
-            style: TextStyle(fontSize: 12, color: AppColors.subtext(context)),
+            style: TextStyle(fontSize: 12, color: AppDesignTokens.textSecondary(context)),
           ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               value,
               textAlign: TextAlign.end,
-              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppColors.text(context)),
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppDesignTokens.textPrimary(context)),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -503,52 +708,53 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildNavRow(BuildContext context, IconData icon, String title, String? value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: AppColors.subtext(context)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              title,
-              style: TextStyle(fontSize: 13, color: AppColors.text(context), fontWeight: FontWeight.w500),
+  Widget _buildNavRow(BuildContext context, IconData icon, String title, String? value, {VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap != null
+          ? () {
+              HapticFeedback.lightImpact();
+              onTap();
+            }
+          : null,
+      borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: AppDesignTokens.textSecondary(context)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(fontSize: 13, color: AppDesignTokens.textPrimary(context), fontWeight: FontWeight.w500),
+              ),
             ),
-          ),
-          if (value != null)
-            Text(value, style: TextStyle(fontSize: 11, color: AppColors.subtext(context)))
-          else
-            const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: AppColors.textMuted),
-        ],
+            if (value != null)
+              Text(value, style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)))
+            else
+              Icon(Icons.arrow_forward_ios_rounded, size: 12, color: AppDesignTokens.textMuted(context)),
+          ],
+        ),
       ),
     );
   }
 
   void _confirmLogout(BuildContext context, WidgetRef ref, AppLocalizations l10n) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l10n.logoutConfirmTitle),
-        content: Text(l10n.logoutConfirmMessage),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(l10n.cancel),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await ref.read(authProvider.notifier).logout();
-              if (context.mounted) {
-                context.go('/login');
-              }
-            },
-            child: Text(l10n.logoutBtn),
-          ),
-        ],
-      ),
-    );
+    AppDialog.showConfirmation(
+      context,
+      title: l10n.logoutConfirmTitle,
+      message: l10n.logoutConfirmMessage,
+      confirmText: l10n.logoutBtn,
+      cancelText: l10n.cancel,
+      isDestructive: true,
+      icon: Icons.logout_rounded,
+    ).then((confirmed) async {
+      if (confirmed == true) {
+        await ref.read(authProvider.notifier).logout();
+        if (context.mounted) {
+          context.go('/login');
+        }
+      }
+    });
   }
 }

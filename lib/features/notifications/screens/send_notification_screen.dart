@@ -350,10 +350,6 @@ class _SendNotificationScreenState extends ConsumerState<SendNotificationScreen>
     switch (state.audienceType) {
       case NotificationAudienceType.allStudents:
         return 'كل الطلاب (الدفعة كاملة)';
-      case NotificationAudienceType.groupA:
-        return 'طلاب المجموعة A';
-      case NotificationAudienceType.groupB:
-        return 'طلاب المجموعة B';
       case NotificationAudienceType.department:
         return 'طلاب قسم: ${state.selectedDepartmentName ?? "القسم المحدد"}';
       case NotificationAudienceType.specificStudents:
@@ -434,30 +430,6 @@ class _SendNotificationScreenState extends ConsumerState<SendNotificationScreen>
                       dense: true,
                       title: const Text('👥 كل الطلاب (الدفعة كاملة)', style: TextStyle(fontSize: 13)),
                       subtitle: Text('${state.availableStudents.length} طالب مسجل بالمنظومة', style: const TextStyle(fontSize: 11)),
-                      onChanged: (val) {
-                        if (val != null) ref.read(sendNotificationProvider.notifier).setAudienceType(val);
-                      },
-                    ),
-
-                    RadioListTile<NotificationAudienceType>(
-                      value: NotificationAudienceType.groupA,
-                      groupValue: state.audienceType,
-                      activeColor: AppColors.primaryTeal,
-                      dense: true,
-                      title: const Text('🅰️ طلاب المجموعة A فقط', style: TextStyle(fontSize: 13)),
-                      subtitle: Text('${state.availableStudents.where((s) => s.studentGroup == StudentGroup.groupA).length} طالب', style: const TextStyle(fontSize: 11)),
-                      onChanged: (val) {
-                        if (val != null) ref.read(sendNotificationProvider.notifier).setAudienceType(val);
-                      },
-                    ),
-
-                    RadioListTile<NotificationAudienceType>(
-                      value: NotificationAudienceType.groupB,
-                      groupValue: state.audienceType,
-                      activeColor: AppColors.primaryTeal,
-                      dense: true,
-                      title: const Text('🅱️ طلاب المجموعة B فقط', style: TextStyle(fontSize: 13)),
-                      subtitle: Text('${state.availableStudents.where((s) => s.studentGroup == StudentGroup.groupB).length} طالب', style: const TextStyle(fontSize: 11)),
                       onChanged: (val) {
                         if (val != null) ref.read(sendNotificationProvider.notifier).setAudienceType(val);
                       },
@@ -710,7 +682,7 @@ class _SendNotificationScreenState extends ConsumerState<SendNotificationScreen>
                                 const Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text('امتياز مطروح', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+                                    Text('MANU', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
                                     Text('الآن', style: TextStyle(color: Colors.white38, fontSize: 10)),
                                   ],
                                 ),
@@ -762,25 +734,84 @@ class _SendNotificationScreenState extends ConsumerState<SendNotificationScreen>
           ),
 
           // ── TAB 2: SENT CAMPAIGNS HISTORY ─────────────────────────────────
-          state.campaignsHistory.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.history_toggle_off_outlined, size: 48, color: AppColors.subtext(context).withValues(alpha: 0.5)),
-                      const SizedBox(height: 12),
-                      Text('لا توجد إشعارات مرسلة سابقة', style: TextStyle(color: AppColors.subtext(context))),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: state.campaignsHistory.length,
-                  itemBuilder: (ctx, index) {
-                    final campaign = state.campaignsHistory[index];
-                    return _buildCampaignHistoryCard(context, campaign);
-                  },
-                ),
+          RefreshIndicator(
+            onRefresh: () async {
+              await ref.read(sendNotificationProvider.notifier).fetchCampaignsHistory(force: true);
+            },
+            color: AppColors.primaryTeal,
+            child: state.isLoadingHistory && state.campaignsHistory.isEmpty
+                ? const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(color: AppColors.primaryTeal),
+                        SizedBox(height: 12),
+                        Text('جارٍ تحميل سجل الإشعارات...', style: TextStyle(fontSize: 13)),
+                      ],
+                    ),
+                  )
+                : state.campaignsHistory.isEmpty
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+                          Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.history_toggle_off_outlined,
+                                    size: 48, color: AppColors.subtext(context).withValues(alpha: 0.5)),
+                                const SizedBox(height: 12),
+                                Text('لا توجد إشعارات مرسلة سابقة',
+                                    style: TextStyle(color: AppColors.subtext(context), fontSize: 14)),
+                                const SizedBox(height: 16),
+                                OutlinedButton.icon(
+                                  onPressed: () {
+                                    ref.read(sendNotificationProvider.notifier).fetchCampaignsHistory(force: true);
+                                  },
+                                  icon: const Icon(Icons.refresh, size: 16),
+                                  label: const Text('تحديث السجل', style: TextStyle(fontSize: 12.5)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      )
+                    : ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(16),
+                        itemCount: state.campaignsHistory.length + 1,
+                        itemBuilder: (ctx, index) {
+                          if (index == 0) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12.0),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'إجمالي الإشعارات المرسلة (${state.campaignsHistory.length}):',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.subtext(context),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.refresh, size: 18),
+                                    tooltip: 'تحديث السجل',
+                                    onPressed: () {
+                                      ref.read(sendNotificationProvider.notifier).fetchCampaignsHistory(force: true);
+                                    },
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+                          final campaign = state.campaignsHistory[index - 1];
+                          return _buildCampaignHistoryCard(context, campaign);
+                        },
+                      ),
+          ),
         ],
       ),
     );
@@ -819,33 +850,47 @@ class _SendNotificationScreenState extends ConsumerState<SendNotificationScreen>
                 ),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             Text(
               campaign.body,
-              style: TextStyle(fontSize: 12, color: AppColors.subtext(context)),
-              maxLines: 2,
+              style: TextStyle(fontSize: 12.5, color: AppColors.text(context).withValues(alpha: 0.85)),
+              maxLines: 4,
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             const Divider(height: 1),
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  '🎯 ${campaign.audienceDisplayName}',
-                  style: const TextStyle(fontSize: 11, color: AppColors.primaryTeal, fontWeight: FontWeight.w600),
+                Flexible(
+                  child: Text(
+                    '🎯 ${campaign.audienceDisplayName}',
+                    style: const TextStyle(fontSize: 11, color: AppColors.primaryTeal, fontWeight: FontWeight.w600),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
+                const SizedBox(width: 8),
                 Text(
                   '📱 ${campaign.recipientCount} طالب • ${campaign.deviceCount} جهاز',
                   style: TextStyle(fontSize: 11, color: AppColors.subtext(context)),
                 ),
               ],
             ),
-            const SizedBox(height: 2),
-            Text(
-              'التاريخ: ${DateFormat('yyyy-MM-dd • hh:mm a').format(campaign.createdAt)}',
-              style: TextStyle(fontSize: 10.5, color: AppColors.subtext(context).withValues(alpha: 0.7)),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'التاريخ: ${DateFormat('yyyy-MM-dd • hh:mm a').format(campaign.createdAt)}',
+                  style: TextStyle(fontSize: 10.5, color: AppColors.subtext(context).withValues(alpha: 0.7)),
+                ),
+                if (campaign.senderName != null && campaign.senderName!.isNotEmpty)
+                  Text(
+                    'بواسطة: ${campaign.senderName}',
+                    style: TextStyle(fontSize: 10.5, color: AppColors.subtext(context).withValues(alpha: 0.7)),
+                  ),
+              ],
             ),
           ],
         ),

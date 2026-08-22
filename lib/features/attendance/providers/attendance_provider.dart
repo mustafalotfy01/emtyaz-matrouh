@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/attendance_record.dart';
 import '../models/geofence_zone.dart';
 import '../../../core/models/location_result.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/platform_service.dart';
+import '../../../core/services/supabase_service.dart';
 import '../../../core/utils/distance_calculator.dart';
 
 // ── Geofence result ──────────────────────────────────────────────────────────
@@ -28,6 +30,7 @@ class GeofenceResult {
 enum CheckInStep {
   idle,
   gettingLocation,
+  refiningAccuracy,
   poorAccuracyWarning,
   checkingGeofence,
   outsideZone,
@@ -47,6 +50,7 @@ class AttendanceState {
   final LocationResult? lastLocation;
   final GeofenceResult? geofenceResult;
   final GeofenceZone activeZone;
+  final bool isLoadingHistory;
 
   AttendanceState({
     required this.history,
@@ -55,11 +59,13 @@ class AttendanceState {
     this.errorMessage,
     this.lastLocation,
     this.geofenceResult,
+    this.isLoadingHistory = false,
     GeofenceZone? activeZone,
   }) : activeZone = activeZone ?? GeofenceZone.matrouhGeneralHospitalEmergency();
 
   bool get isProcessing =>
       step == CheckInStep.gettingLocation ||
+      step == CheckInStep.refiningAccuracy ||
       step == CheckInStep.checkingGeofence ||
       step == CheckInStep.biometricInProgress;
 
@@ -71,6 +77,7 @@ class AttendanceState {
     LocationResult? lastLocation,
     GeofenceResult? geofenceResult,
     GeofenceZone? activeZone,
+    bool? isLoadingHistory,
     bool clearActive = false,
     bool clearError = false,
     bool clearLocation = false,
@@ -84,6 +91,7 @@ class AttendanceState {
           clearLocation ? null : (lastLocation ?? this.lastLocation),
       geofenceResult: geofenceResult ?? this.geofenceResult,
       activeZone: activeZone ?? this.activeZone,
+      isLoadingHistory: isLoadingHistory ?? this.isLoadingHistory,
     );
   }
 }
@@ -95,6 +103,39 @@ class AttendanceNotifier extends StateNotifier<AttendanceState> {
       : super(AttendanceState(
           history: [],
         ));
+
+  // ── Load Real History from Supabase ─────────────────────────────────────────
+  Future<void> loadAttendanceHistory(String studentId) async {
+    if (!SupabaseService.isInitialized) return;
+
+    state = state.copyWith(isLoadingHistory: true);
+    try {
+      final res = await SupabaseService.client
+          .from('attendance')
+          .select('*, departments(name_ar)')
+          .eq('student_id', studentId)
+          .order('check_in_time', ascending: false);
+
+      final records = (res as List)
+          .map((json) => AttendanceRecord.fromJson(json))
+          .toList();
+
+      AttendanceRecord? active;
+      final activeList = records.where((r) => r.checkOutTime == null).toList();
+      if (activeList.isNotEmpty) {
+        active = activeList.first;
+      }
+
+      state = state.copyWith(
+        history: records,
+        activeRecord: active,
+        isLoadingHistory: false,
+      );
+    } catch (e) {
+      if (kDebugMode) print('[AttendanceNotifier] loadAttendanceHistory error: $e');
+      state = state.copyWith(isLoadingHistory: false);
+    }
+  }
 
   // ── Zone management ────────────────────────────────────────────────────────
 
@@ -147,7 +188,7 @@ class AttendanceNotifier extends StateNotifier<AttendanceState> {
       clearLocation: true,
     );
 
-    // ── Step 1: GPS ────────────────────────────────────────────────────────
+    // ── Step 1: GPS with progressive accuracy retry ────────────────────────
     final locResult = await LocationService.getCurrentLocation();
 
     if (!locResult.isSuccess && locResult.error != LocationError.poorAccuracy) {
@@ -162,7 +203,14 @@ class AttendanceNotifier extends StateNotifier<AttendanceState> {
       state = state.copyWith(
         step: CheckInStep.poorAccuracyWarning,
         lastLocation: locResult,
-        errorMessage: locResult.errorMessageAr,
+        errorMessage: 'دقة GPS الحالية (${locResult.accuracyMeters?.toStringAsFixed(0)}م). جاري تحسين دقة الموقع...',
+      );
+      // Try one more focused retry
+      await Future.delayed(const Duration(milliseconds: 1200));
+      await retryLocationAccuracy(
+        studentId: studentId,
+        studentName: studentName,
+        departmentName: departmentName,
       );
       return;
     }
@@ -179,7 +227,6 @@ class AttendanceNotifier extends StateNotifier<AttendanceState> {
   }) async {
     final loc = state.lastLocation;
     if (loc == null) return;
-    // Use the existing location with skipAccuracyCheck=true
     final accepted = LocationResult(
       latitude: loc.latitude,
       longitude: loc.longitude,
@@ -194,12 +241,12 @@ class AttendanceNotifier extends StateNotifier<AttendanceState> {
     required String studentName,
     required String departmentName,
   }) async {
-    state = state.copyWith(step: CheckInStep.gettingLocation, clearError: true);
+    state = state.copyWith(step: CheckInStep.refiningAccuracy, clearError: true);
     final locResult = await LocationService.getCurrentLocation(
-      skipAccuracyCheck: false,
+      skipAccuracyCheck: true,
     );
 
-    if (!locResult.isSuccess && locResult.error != LocationError.poorAccuracy) {
+    if (!locResult.isSuccess && (locResult.latitude == null || locResult.longitude == null)) {
       state = state.copyWith(
         step: CheckInStep.error,
         errorMessage: locResult.errorMessageAr,
@@ -217,11 +264,10 @@ class AttendanceNotifier extends StateNotifier<AttendanceState> {
     String studentName,
     String departmentName,
   ) async {
-    // Guard: must have valid coordinates
     if (locResult.latitude == null || locResult.longitude == null) {
       state = state.copyWith(
         step: CheckInStep.error,
-        errorMessage: 'إحداثيات الموقع غير متوفرة.',
+        errorMessage: 'إحداثيات الموقع غير متوفرة. يرجى التحقق من تشغيل GPS.',
       );
       return;
     }
@@ -249,7 +295,7 @@ class AttendanceNotifier extends StateNotifier<AttendanceState> {
       state = state.copyWith(
         step: CheckInStep.outsideZone,
         errorMessage:
-            'أنت خارج نطاق المستشفى المسموح (${distanceMeters.toStringAsFixed(0)} متر، المسموح: ${zone.radiusMeters.toStringAsFixed(0)} متر).',
+            'أنت خارج نطاق المستشفى (${distanceMeters.toStringAsFixed(0)}م، المسموح: ${zone.radiusMeters.toStringAsFixed(0)}م).',
       );
       return;
     }
@@ -257,7 +303,6 @@ class AttendanceNotifier extends StateNotifier<AttendanceState> {
     state = state.copyWith(step: CheckInStep.awaitingBiometric);
   }
 
-  /// Convenience alias called from the UI screen — delegates to [submitBiometricAndFinalize].
   Future<void> confirmWithBiometric({
     required String studentId,
     required String studentName,
@@ -315,6 +360,28 @@ class AttendanceNotifier extends StateNotifier<AttendanceState> {
       status: AttendanceStatus.present,
     );
 
+    // Save to Supabase if connected
+    if (SupabaseService.isInitialized && studentId.contains('-')) {
+      try {
+        final inserted = await SupabaseService.client
+            .from('attendance')
+            .insert(newRecord.toSupabasePayload())
+            .select()
+            .single();
+
+        final dbRecord = AttendanceRecord.fromJson(inserted);
+        state = state.copyWith(
+          activeRecord: dbRecord,
+          history: [dbRecord, ...state.history],
+          step: CheckInStep.success,
+          clearError: true,
+        );
+        return;
+      } catch (e) {
+        if (kDebugMode) print('[AttendanceNotifier] insert attendance error: $e');
+      }
+    }
+
     state = state.copyWith(
       activeRecord: newRecord,
       history: [newRecord, ...state.history],
@@ -326,16 +393,30 @@ class AttendanceNotifier extends StateNotifier<AttendanceState> {
   Future<void> checkOut() async {
     if (state.activeRecord == null) return;
 
-    final locResult = await LocationService.getCurrentLocation();
+    final locResult = await LocationService.getCurrentLocation(skipAccuracyCheck: true);
     final location = locResult.isSuccess
         ? locResult
         : const LocationResult(error: LocationError.unknown);
 
+    final checkOutTime = DateTime.now();
     final updatedRecord = state.activeRecord!.copyWith(
-      checkOutTime: DateTime.now(),
+      checkOutTime: checkOutTime,
       checkOutLat: location.isSuccess ? location.latitude : null,
       checkOutLon: location.isSuccess ? location.longitude : null,
     );
+
+    // Update in Supabase
+    if (SupabaseService.isInitialized && updatedRecord.id.contains('-')) {
+      try {
+        await SupabaseService.client.from('attendance').update({
+          'check_out_time': checkOutTime.toIso8601String(),
+          'check_out_latitude': location.latitude,
+          'check_out_longitude': location.longitude,
+        }).eq('id', updatedRecord.id);
+      } catch (e) {
+        if (kDebugMode) print('[AttendanceNotifier] checkout error: $e');
+      }
+    }
 
     state = state.copyWith(
       history: [

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/constants/app_colors.dart';
+import 'package:intl/intl.dart';
 import '../../../core/localization/app_localizations.dart';
-import '../../../core/widgets/custom_card.dart';
-import '../../auth/models/user_profile.dart';
+import '../../../core/theme/app_design_tokens.dart';
+import '../../../core/widgets/app_badge.dart';
+import '../../../core/widgets/app_card.dart';
 import '../models/roster_entry.dart';
 import '../models/roster_preference.dart';
 import '../models/student_roster_summary.dart';
@@ -13,23 +14,23 @@ class _StudentDatePreferenceInfo {
   final StudentRosterSummary summary;
   final PreferenceShiftType? requestedShiftType;
   final RosterEntry? assignedShift;
+  final int weeklyHours;
 
   _StudentDatePreferenceInfo({
     required this.summary,
     this.requestedShiftType,
     this.assignedShift,
+    required this.weeklyHours,
   });
 }
 
 class LeaderDayAssignmentSheet extends ConsumerStatefulWidget {
   final DateTime date;
-  final StudentGroup studentGroup;
   final List<StudentRosterSummary> allSummaries;
 
   const LeaderDayAssignmentSheet({
     super.key,
     required this.date,
-    required this.studentGroup,
     required this.allSummaries,
   });
 
@@ -40,6 +41,21 @@ class LeaderDayAssignmentSheet extends ConsumerStatefulWidget {
 class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSheet> {
   ShiftType _selectedShiftType = ShiftType.night;
   String _selectedDeptId = 'a0000001-0000-0000-0000-000000000001';
+  String _searchQuery = '';
+
+  int _calculateWeeklyHours(StudentRosterSummary student, DateTime date) {
+    final int offsetToSat = (date.weekday + 1) % 7;
+    final weekStart = DateTime(date.year, date.month, date.day).subtract(Duration(days: offsetToSat));
+    final weekEnd = weekStart.add(const Duration(days: 6, hours: 23, minutes: 59));
+
+    int hours = 0;
+    for (final s in student.assignedShifts) {
+      if (!s.shiftDate.isBefore(weekStart) && !s.shiftDate.isAfter(weekEnd)) {
+        hours += (s.shiftType == ShiftType.morning ? 6 : 12);
+      }
+    }
+    return hours;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,14 +64,17 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
     final selectedDept = depts.firstWhere((d) => d.id == _selectedDeptId, orElse: () => depts.first);
     final l10n = context.l10n;
 
-    // Group students matching this day
-    final groupStudents = leaderState.summaries.where((s) => s.studentGroup == widget.studentGroup).toList();
+    final allStudents = leaderState.summaries;
 
     // Separate students who selected this date from those who didn't
     final List<_StudentDatePreferenceInfo> requestingStudents = [];
-    final List<StudentRosterSummary> otherStudents = [];
+    final List<_StudentDatePreferenceInfo> otherStudents = [];
 
-    for (final student in groupStudents) {
+    for (final student in allStudents) {
+      if (_searchQuery.isNotEmpty && !student.studentName.toLowerCase().contains(_searchQuery.toLowerCase())) {
+        continue;
+      }
+
       final matchPref = student.preferences.cast<RosterPreference?>().firstWhere(
         (p) =>
             p?.preferenceDate.year == widget.date.year &&
@@ -72,16 +91,19 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
         orElse: () => null,
       );
 
+      final weeklyHours = _calculateWeeklyHours(student, widget.date);
+
+      final info = _StudentDatePreferenceInfo(
+        summary: student,
+        requestedShiftType: matchPref?.preferenceShiftType,
+        assignedShift: currentShift,
+        weeklyHours: weeklyHours,
+      );
+
       if (matchPref != null) {
-        requestingStudents.add(
-          _StudentDatePreferenceInfo(
-            summary: student,
-            requestedShiftType: matchPref.preferenceShiftType,
-            assignedShift: currentShift,
-          ),
-        );
+        requestingStudents.add(info);
       } else {
-        otherStudents.add(student);
+        otherStudents.add(info);
       }
     }
 
@@ -94,18 +116,20 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
       return a.summary.studentName.compareTo(b.summary.studentName);
     });
 
-    final totalAssignedOnDay = groupStudents
+    final totalAssignedOnDay = allStudents
         .where((s) => s.assignedShifts.any((e) =>
             e.shiftDate.year == widget.date.year &&
             e.shiftDate.month == widget.date.month &&
             e.shiftDate.day == widget.date.day))
         .length;
 
+    final dateFormatted = DateFormat('EEEE، d MMMM yyyy', l10n.isArabic ? 'ar' : 'en').format(widget.date);
+
     return Container(
-      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.88),
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.90),
       padding: const EdgeInsets.only(top: 12, left: 16, right: 16, bottom: 24),
       decoration: BoxDecoration(
-        color: AppColors.card(context),
+        color: AppDesignTokens.surface(context),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
@@ -117,14 +141,14 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: AppColors.border(context),
+                color: AppDesignTokens.border(context),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
           ),
           const SizedBox(height: 12),
 
-          // Header: Date + Group + Assigned Counter
+          // Header: Date + Assigned Counter
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -132,45 +156,29 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${widget.date.day}/${widget.date.month}/${widget.date.year}',
+                    dateFormatted,
                     style: TextStyle(
-                      fontSize: 18,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.text(context),
+                      color: AppDesignTokens.textPrimary(context),
                     ),
                   ),
+                  const SizedBox(height: 2),
                   Text(
-                    '${l10n.isArabic ? "المجموعة الأساسية:" : "Target Group:"} ${widget.studentGroup == StudentGroup.groupA ? l10n.groupA : l10n.groupB}',
-                    style: TextStyle(fontSize: 11.5, color: AppColors.subtext(context)),
+                    'قاعدة الـ 36 ساعة أسبوعياً • إدارة التوزيع اليومي',
+                    style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
                   ),
                 ],
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryTeal.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.primaryTeal),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.people, size: 16, color: AppColors.primaryTeal),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${l10n.isArabic ? "المعينين:" : "Assigned:"} $totalAssignedOnDay',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.primaryTeal,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
+              AppBadge(
+                label: '${l10n.isArabic ? "المعينين:" : "Assigned:"} $totalAssignedOnDay',
+                variant: AppBadgeVariant.primary,
+                size: AppBadgeSize.medium,
               ),
             ],
           ),
 
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
 
           // Department Selector Pills
           SingleChildScrollView(
@@ -178,7 +186,7 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
             child: Row(
               children: depts.map((d) {
                 final isSelected = d.id == _selectedDeptId;
-                final deptStudentCount = groupStudents.where((s) => s.assignedShifts.any((e) =>
+                final deptStudentCount = allStudents.where((s) => s.assignedShifts.any((e) =>
                     e.shiftDate.year == widget.date.year &&
                     e.shiftDate.month == widget.date.month &&
                     e.shiftDate.day == widget.date.day &&
@@ -189,10 +197,10 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
                   child: FilterChip(
                     label: Text('${l10n.isArabic ? d.nameAr : (d.nameEn.isNotEmpty ? d.nameEn : d.nameAr)} ($deptStudentCount)'),
                     selected: isSelected,
-                    selectedColor: AppColors.primaryTeal,
-                    backgroundColor: AppColors.muted(context),
+                    selectedColor: AppDesignTokens.primary,
+                    backgroundColor: AppDesignTokens.surfaceMuted(context),
                     labelStyle: TextStyle(
-                      color: isSelected ? Colors.white : AppColors.text(context),
+                      color: isSelected ? Colors.white : AppDesignTokens.textPrimary(context),
                       fontWeight: FontWeight.bold,
                       fontSize: 11,
                     ),
@@ -211,7 +219,7 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
           Builder(
             builder: (context) {
               final deptShifts = <RosterEntry>[];
-              for (final s in groupStudents) {
+              for (final s in allStudents) {
                 for (final e in s.assignedShifts) {
                   if (e.shiftDate.year == widget.date.year &&
                       e.shiftDate.month == widget.date.month &&
@@ -226,13 +234,8 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
               final longStudents = deptShifts.where((e) => e.shiftType == ShiftType.long).toList();
               final nightStudents = deptShifts.where((e) => e.shiftType == ShiftType.night).toList();
 
-              return Container(
+              return AppCard(
                 padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppColors.muted(context),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.border(context)),
-                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -240,8 +243,8 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          '${l10n.isArabic ? selectedDept.nameAr : (selectedDept.nameEn.isNotEmpty ? selectedDept.nameEn : selectedDept.nameAr)} (${deptShifts.length}):',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.text(context)),
+                          '${l10n.isArabic ? selectedDept.nameAr : (selectedDept.nameEn.isNotEmpty ? selectedDept.nameEn : selectedDept.nameAr)} (${deptShifts.length} معين):',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppDesignTokens.textPrimary(context)),
                         ),
                       ],
                     ),
@@ -249,9 +252,9 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _buildDeptShiftSummary(context, '${l10n.shiftMorningShort} (08-14)', morningStudents, const Color(0xFF0284C7)),
-                        _buildDeptShiftSummary(context, '${l10n.shiftLongShort} (08-20)', longStudents, const Color(0xFF7C3AED)),
-                        _buildDeptShiftSummary(context, '${l10n.shiftNightShort} (20-08)', nightStudents, const Color(0xFF1E293B)),
+                        _buildDeptShiftSummary(context, 'صباحي (6h)', morningStudents, AppDesignTokens.shiftMorning),
+                        _buildDeptShiftSummary(context, 'طويل (12h)', longStudents, AppDesignTokens.shiftLong),
+                        _buildDeptShiftSummary(context, 'ليلي (12h)', nightStudents, AppDesignTokens.shiftNight),
                       ],
                     ),
                   ],
@@ -260,44 +263,43 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
             },
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
           // Shift Type Selector Card
-          CustomCard(
-            padding: const EdgeInsets.all(12),
+          AppCard(
+            padding: const EdgeInsets.all(10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   l10n.isArabic ? 'الشيفت المراد تعيينه للطلاب عند الضغط:' : 'Select shift to assign on click:',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.text(context)),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5, color: AppDesignTokens.textPrimary(context)),
                 ),
                 const SizedBox(height: 8),
-
                 Row(
                   children: [
                     _buildShiftChoice(
-                      label: l10n.shiftNightShort,
-                      sub: '20:00 - 08:00',
+                      label: 'ليلي (Night)',
+                      sub: '12 ساعة (20-08)',
                       type: ShiftType.night,
                       icon: Icons.nightlight_round,
-                      color: const Color(0xFF1E293B),
+                      color: AppDesignTokens.shiftNight,
                     ),
                     const SizedBox(width: 8),
                     _buildShiftChoice(
-                      label: l10n.shiftLongShort,
-                      sub: '08:00 - 20:00',
+                      label: 'طويل (Long)',
+                      sub: '12 ساعة (08-20)',
                       type: ShiftType.long,
                       icon: Icons.timelapse,
-                      color: const Color(0xFF7C3AED),
+                      color: AppDesignTokens.shiftLong,
                     ),
                     const SizedBox(width: 8),
                     _buildShiftChoice(
-                      label: l10n.shiftMorningShort,
-                      sub: '08:00 - 14:00',
+                      label: 'صباحي (Morning)',
+                      sub: '6 ساعات (08-14)',
                       type: ShiftType.morning,
                       icon: Icons.wb_sunny,
-                      color: const Color(0xFF0284C7),
+                      color: AppDesignTokens.shiftMorning,
                     ),
                   ],
                 ),
@@ -305,7 +307,7 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
             ),
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
           // Students List
           Expanded(
@@ -321,7 +323,7 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
-                        color: AppColors.text(context),
+                        color: AppDesignTokens.textPrimary(context),
                       ),
                     ),
                   ],
@@ -331,15 +333,16 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
                 if (requestingStudents.isEmpty)
                   Container(
                     padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(
-                      color: AppColors.muted(context),
+                      color: AppDesignTokens.surfaceMuted(context),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppColors.border(context)),
+                      border: Border.all(color: AppDesignTokens.border(context)),
                     ),
                     child: Center(
                       child: Text(
-                        l10n.isArabic ? 'لا يوجد طلاب اختاروا هذا اليوم بشكل مسبق.' : 'No students requested this day.',
-                        style: TextStyle(color: AppColors.subtext(context), fontSize: 11),
+                        l10n.isArabic ? 'لا يوجد طلاب اختاروا هذا اليوم في تفضيلاتهم.' : 'No students requested this day.',
+                        style: TextStyle(color: AppDesignTokens.textSecondary(context), fontSize: 11),
                       ),
                     ),
                   )
@@ -350,6 +353,7 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
                       summary: info.summary,
                       requestedShiftType: info.requestedShiftType,
                       assignedShift: info.assignedShift,
+                      weeklyHours: info.weeklyHours,
                       deptId: selectedDept.id,
                       deptName: l10n.isArabic ? selectedDept.nameAr : (selectedDept.nameEn.isNotEmpty ? selectedDept.nameEn : selectedDept.nameAr),
                       l10n: l10n,
@@ -358,43 +362,36 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
 
                 const SizedBox(height: 14),
 
-                // SECTION 2: Other students in group
-                Row(
-                  children: [
-                    Icon(Icons.group, size: 16, color: AppColors.subtext(context)),
-                    const SizedBox(width: 6),
-                    Text(
-                      '${l10n.isArabic ? "باقي طلاب المجموعة" : "Other interns in group"} (${otherStudents.length})',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                        color: AppColors.subtext(context),
+                // SECTION 2: Other students
+                ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: Row(
+                    children: [
+                      Icon(Icons.group, size: 16, color: AppDesignTokens.textSecondary(context)),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${l10n.isArabic ? "باقي طلاب الدفعة" : "Other interns"} (${otherStudents.length})',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          color: AppDesignTokens.textSecondary(context),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-
-                if (otherStudents.isNotEmpty)
-                  ...otherStudents.map((summary) {
-                    final currentShift = summary.assignedShifts.cast<RosterEntry?>().firstWhere(
-                      (s) =>
-                          s?.shiftDate.year == widget.date.year &&
-                          s?.shiftDate.month == widget.date.month &&
-                          s?.shiftDate.day == widget.date.day,
-                      orElse: () => null,
-                    );
-
+                    ],
+                  ),
+                  children: otherStudents.map((info) {
                     return _buildStudentTile(
                       context: context,
-                      summary: summary,
+                      summary: info.summary,
                       requestedShiftType: null,
-                      assignedShift: currentShift,
+                      assignedShift: info.assignedShift,
+                      weeklyHours: info.weeklyHours,
                       deptId: selectedDept.id,
                       deptName: l10n.isArabic ? selectedDept.nameAr : (selectedDept.nameEn.isNotEmpty ? selectedDept.nameEn : selectedDept.nameAr),
                       l10n: l10n,
                     );
-                  }),
+                  }).toList(),
+                ),
               ],
             ),
           ),
@@ -457,15 +454,18 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
     required StudentRosterSummary summary,
     required PreferenceShiftType? requestedShiftType,
     required RosterEntry? assignedShift,
+    required int weeklyHours,
     required String deptId,
     required String deptName,
     required AppLocalizations l10n,
   }) {
     final isAssigned = assignedShift != null;
+    final isOver36 = weeklyHours > 36;
+    final isExact36 = weeklyHours == 36;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
-      child: CustomCard(
+      child: AppCard(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           children: [
@@ -474,55 +474,87 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE0F2FE),
+                  color: AppDesignTokens.shiftMorningBgLight,
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: const Color(0xFF0284C7)),
+                  border: Border.all(color: AppDesignTokens.shiftMorning),
                 ),
-                child: Text('${l10n.shiftMorningLetter} ${l10n.shiftMorningShort}', style: const TextStyle(color: Color(0xFF0369A1), fontSize: 9, fontWeight: FontWeight.bold)),
+                child: const Text('طلب صباحي (6h)', style: TextStyle(color: AppDesignTokens.shiftMorning, fontSize: 9, fontWeight: FontWeight.bold)),
               )
             else if (requestedShiftType == PreferenceShiftType.longShift)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF3E8FF),
+                  color: AppDesignTokens.shiftLongBgLight,
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: const Color(0xFF7C3AED)),
+                  border: Border.all(color: AppDesignTokens.shiftLong),
                 ),
-                child: Text('${l10n.shiftLongLetter} ${l10n.shiftLongShort}', style: const TextStyle(color: Color(0xFF5B21B6), fontSize: 9, fontWeight: FontWeight.bold)),
+                child: const Text('طلب طويل (12h)', style: TextStyle(color: AppDesignTokens.shiftLong, fontSize: 9, fontWeight: FontWeight.bold)),
               )
             else if (requestedShiftType == PreferenceShiftType.night)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B),
+                  color: AppDesignTokens.shiftNightBgLight,
                   borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppDesignTokens.shiftNight),
                 ),
-                child: Text('${l10n.shiftNightLetter} ${l10n.shiftNightShort}', style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                child: const Text('طلب ليلي (12h)', style: TextStyle(color: AppDesignTokens.shiftNight, fontSize: 9, fontWeight: FontWeight.bold)),
               )
             else
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                 decoration: BoxDecoration(
-                  color: AppColors.muted(context),
+                  color: AppDesignTokens.surfaceMuted(context),
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: Text(l10n.isArabic ? 'غير مختار' : 'None', style: TextStyle(color: AppColors.subtext(context), fontSize: 9)),
+                child: Text(l10n.isArabic ? 'لم يطلب اليوم' : 'No Request', style: TextStyle(color: AppDesignTokens.textSecondary(context), fontSize: 9)),
               ),
 
             const SizedBox(width: 10),
 
-            // Student Info
+            // Student Info & Weekly hours counter
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     summary.studentName,
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.text(context)),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppDesignTokens.textPrimary(context)),
                   ),
-                  Text(
-                    '${l10n.isArabic ? "المعين:" : "Set:"} ${summary.totalFinalShifts}/12 (${l10n.shiftNightLetter}: ${summary.finalNightCount}، ${l10n.shiftLongLetter}: ${summary.finalLongCount})',
-                    style: TextStyle(fontSize: 10, color: AppColors.subtext(context)),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Text(
+                        'إجمالي: ${summary.totalFinalShifts}/12',
+                        style: TextStyle(fontSize: 10, color: AppDesignTokens.textSecondary(context)),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: isOver36
+                              ? AppDesignTokens.dangerBgLight
+                              : (isExact36 ? AppDesignTokens.successBgLight : AppDesignTokens.surfaceMuted(context)),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: isOver36
+                                ? AppDesignTokens.danger
+                                : (isExact36 ? AppDesignTokens.success : AppDesignTokens.border(context)),
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Text(
+                          'أسبوعياً: $weeklyHours/36h',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: isOver36
+                                ? AppDesignTokens.danger
+                                : (isExact36 ? AppDesignTokens.success : AppDesignTokens.textSecondary(context)),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -533,7 +565,9 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF10B981),
+                  color: assignedShift.shiftType == ShiftType.morning
+                      ? AppDesignTokens.shiftMorning
+                      : (assignedShift.shiftType == ShiftType.long ? AppDesignTokens.shiftLong : AppDesignTokens.shiftNight),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
@@ -546,7 +580,7 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
               const SizedBox(width: 6),
               IconButton(
                 tooltip: l10n.isArabic ? 'إلغاء الشيفت' : 'Delete',
-                icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.danger),
+                icon: const Icon(Icons.delete_outline, size: 18, color: AppDesignTokens.danger),
                 onPressed: () async {
                   await ref.read(leaderRosterProvider.notifier).removeShiftFromStudentOnDate(
                     studentId: summary.studentId,
@@ -557,19 +591,24 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
             ] else ...[
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryTeal,
+                  backgroundColor: _selectedShiftType == ShiftType.morning
+                      ? AppDesignTokens.shiftMorning
+                      : (_selectedShiftType == ShiftType.long ? AppDesignTokens.shiftLong : AppDesignTokens.shiftNight),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
                 icon: const Icon(Icons.add, size: 14),
-                label: Text('+ ${_selectedShiftType == ShiftType.night ? l10n.shiftNightShort : (_selectedShiftType == ShiftType.long ? l10n.shiftLongShort : l10n.shiftMorningShort)}', style: const TextStyle(fontSize: 11)),
+                label: Text(
+                  '+ ${_selectedShiftType == ShiftType.night ? l10n.shiftNightShort : (_selectedShiftType == ShiftType.long ? l10n.shiftLongShort : l10n.shiftMorningShort)}',
+                  style: const TextStyle(fontSize: 11),
+                ),
                 onPressed: () async {
                   if (summary.totalFinalShifts >= 12) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(l10n.isArabic ? 'تنبيه: ${summary.studentName} وصل بالفعل لـ 12 شيفت!' : 'Alert: ${summary.studentName} already reached 12 shifts!'),
-                        backgroundColor: AppColors.warning,
+                        backgroundColor: AppDesignTokens.warning,
                       ),
                     );
                   }
@@ -598,7 +637,7 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
 
   Widget _buildDeptShiftSummary(BuildContext context, String label, List<RosterEntry> students, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(8),
@@ -609,21 +648,21 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+              Container(width: 7, height: 7, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
               const SizedBox(width: 4),
               Text(
                 '$label: ${students.length}',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: color),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10.5, color: color),
               ),
             ],
           ),
           if (students.isNotEmpty) ...[
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
-              students.map((e) => e.studentName.split(' ').first).join('، '),
+              students.map((e) => e.studentName.split(' ').first).take(3).join('، '),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 9, color: color, fontWeight: FontWeight.w600),
+              style: TextStyle(fontSize: 8.5, color: color, fontWeight: FontWeight.w600),
             ),
           ],
         ],
@@ -631,3 +670,4 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
     );
   }
 }
+

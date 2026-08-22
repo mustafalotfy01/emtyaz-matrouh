@@ -34,7 +34,7 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   console.log('[FCM-SW] Background push notification received:', payload);
 
-  const title = payload.notification?.title || payload.data?.title || 'امتياز مطروح';
+  const title = payload.notification?.title || payload.data?.title || 'MANU';
   const body = payload.notification?.body || payload.data?.body || 'لديك تنبيه جديد في المنظومة';
   const targetRoute = payload.data?.route || '/';
 

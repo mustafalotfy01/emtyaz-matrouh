@@ -4,14 +4,15 @@ import '../constants/app_config.dart';
 import '../models/location_result.dart';
 
 /// Cross-platform location service.
-/// Uses [geolocator] which supports Android, iOS, and Web (browser Geolocation API).
+/// Uses [geolocator] with multi-sample refinement for hospital environments.
 class LocationService {
   LocationService._();
 
   /// Returns the current device/browser location as a [LocationResult].
-  /// Validates GPS accuracy against [AppConfig.gpsAccuracyThresholdMeters].
+  /// Tries up to [maxRetries] to obtain the best possible accuracy.
   static Future<LocationResult> getCurrentLocation({
     bool skipAccuracyCheck = false,
+    int maxRetries = 3,
   }) async {
     // ── 1. Check location services ──────────────────────────────────────────
     bool serviceEnabled;
@@ -38,29 +39,53 @@ class LocationService {
           error: LocationError.permissionPermanentlyDenied);
     }
 
-    // ── 3. Obtain position ───────────────────────────────────────────────────
+    // ── 3. Obtain position with progressive accuracy refinement ─────────────
+    Position? bestPosition;
     try {
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 15),
-      );
+      for (int i = 0; i < maxRetries; i++) {
+        try {
+          final position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high,
+            timeLimit: const Duration(seconds: 5),
+          );
+
+          if (bestPosition == null || position.accuracy < bestPosition.accuracy) {
+            bestPosition = position;
+          }
+
+          // If we achieved good accuracy, break early
+          if (position.accuracy <= AppConfig.gpsAccuracyThresholdMeters) {
+            break;
+          }
+        } catch (e) {
+          // If first attempt failed, wait briefly before retrying
+          if (i == maxRetries - 1 && bestPosition == null) {
+            rethrow;
+          }
+        }
+        await Future.delayed(const Duration(milliseconds: 600));
+      }
+
+      if (bestPosition == null) {
+        return const LocationResult(error: LocationError.timeout);
+      }
 
       // ── 4. Accuracy validation ───────────────────────────────────────────
-      if (!skipAccuracyCheck &&
-          position.accuracy > AppConfig.gpsAccuracyThresholdMeters) {
-        // Return result but flag poor accuracy — caller decides how to handle
+      // Tolerant threshold: within 50m is acceptable for hospital indoors
+      const double practicalAccuracyThreshold = 50.0;
+      if (!skipAccuracyCheck && bestPosition.accuracy > practicalAccuracyThreshold) {
         return LocationResult(
-          latitude: position.latitude,
-          longitude: position.longitude,
-          accuracyMeters: position.accuracy,
+          latitude: bestPosition.latitude,
+          longitude: bestPosition.longitude,
+          accuracyMeters: bestPosition.accuracy,
           error: LocationError.poorAccuracy,
         );
       }
 
       return LocationResult(
-        latitude: position.latitude,
-        longitude: position.longitude,
-        accuracyMeters: position.accuracy,
+        latitude: bestPosition.latitude,
+        longitude: bestPosition.longitude,
+        accuracyMeters: bestPosition.accuracy,
       );
     } on LocationServiceDisabledException {
       return const LocationResult(error: LocationError.serviceDisabled);
@@ -74,7 +99,7 @@ class LocationService {
       }
       // Dev fallback — Matrouh General Hospital coordinates
       if (!kIsWeb) {
-        return LocationResult(
+        return const LocationResult(
           latitude: 31.3543,
           longitude: 27.2373,
           accuracyMeters: 10.0,

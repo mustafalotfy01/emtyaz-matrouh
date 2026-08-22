@@ -275,21 +275,35 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
     final reviewerId = currentReviewer?.id ?? 'admin-001';
 
     try {
+      // 1. Remove from local in-memory registry so it never resurrects
+      removeStudentFromRegistry(studentId);
+
       if (SupabaseService.isInitialized) {
         try {
-          // Safe cascade deletions
-          await SupabaseService.client.from('roster_entries').delete().eq('student_id', studentId);
-          await SupabaseService.client.from('roster_preferences').delete().eq('student_id', studentId);
-          await SupabaseService.client.from('notifications').delete().eq('user_id', studentId);
-          await SupabaseService.client.from('attendance').delete().eq('student_id', studentId);
-          await SupabaseService.client.from('quiz_answers').delete().eq('student_id', studentId);
-          await SupabaseService.client.from('quiz_attempts').delete().eq('student_id', studentId);
-          await SupabaseService.client.from('evaluations').delete().eq('student_id', studentId);
-          await SupabaseService.client.from('cases').delete().eq('student_id', studentId);
-          await SupabaseService.client.from('disciplinary_actions').delete().eq('student_id', studentId);
-          
-          // Delete from profiles
-          await SupabaseService.client.from('profiles').delete().or('id.eq.$studentId,university_code.eq.$studentId');
+          // Try RPC first for clean atomic server-side cascade
+          try {
+            await SupabaseService.client.rpc('delete_student_account', params: {
+              'p_student_id': studentId,
+            });
+          } catch (_) {
+            // Fallback manual cascades
+            await SupabaseService.client.from('roster_entries').delete().eq('student_id', studentId);
+            await SupabaseService.client.from('roster_preferences').delete().eq('student_id', studentId);
+            await SupabaseService.client.from('notifications').delete().eq('user_id', studentId);
+            await SupabaseService.client.from('attendance').delete().eq('student_id', studentId);
+            await SupabaseService.client.from('quiz_answers').delete().eq('student_id', studentId);
+            await SupabaseService.client.from('quiz_attempts').delete().eq('student_id', studentId);
+            await SupabaseService.client.from('evaluations').delete().eq('student_id', studentId);
+            await SupabaseService.client.from('case_handovers').delete().or('from_student_id.eq.$studentId,to_student_id.eq.$studentId');
+            await SupabaseService.client.from('cases').delete().eq('student_id', studentId);
+            await SupabaseService.client.from('disciplinary_actions').delete().eq('student_id', studentId);
+            await SupabaseService.client.from('confirmation_requests').delete().or('target_student_id.eq.$studentId,sender_id.eq.$studentId');
+            await SupabaseService.client.from('community_comments').delete().eq('author_id', studentId);
+            await SupabaseService.client.from('community_posts').delete().eq('author_id', studentId);
+            
+            // Delete from profiles
+            await SupabaseService.client.from('profiles').delete().or('id.eq.$studentId,university_code.eq.$studentId');
+          }
 
           // Delete from Auth if valid UUID
           try {
@@ -297,22 +311,24 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
           } catch (_) {}
 
           // Audit Log
-          await SupabaseService.client.from('audit_logs').insert({
-            'user_id': reviewerId,
-            'action_type': 'STUDENT_PERMANENTLY_DELETED',
-            'entity_name': 'profiles',
-            'entity_id': studentId,
-            'new_values': {
-              'deleted_by': currentReviewer?.fullName,
-              'timestamp': DateTime.now().toIso8601String(),
-            }
-          });
+          try {
+            await SupabaseService.client.from('audit_logs').insert({
+              'user_id': reviewerId,
+              'action_type': 'STUDENT_PERMANENTLY_DELETED',
+              'entity_name': 'profiles',
+              'entity_id': studentId,
+              'new_values': {
+                'deleted_by': currentReviewer?.fullName,
+                'timestamp': DateTime.now().toIso8601String(),
+              }
+            });
+          } catch (_) {}
         } catch (e) {
           if (kDebugMode) print('Delete student error in Supabase: $e');
         }
       }
 
-      // Remove from local list
+      // Remove from local list state
       state = state.whenData((list) {
         return list.where((s) => s.id != studentId && s.universityCode != studentId).toList();
       });

@@ -34,25 +34,40 @@ class NotificationCampaign {
   });
 
   factory NotificationCampaign.fromJson(Map<String, dynamic> json) {
+    final meta = json['metadata'] is Map<String, dynamic> ? (json['metadata'] as Map<String, dynamic>) : null;
     return NotificationCampaign(
       id: json['id']?.toString() ?? '',
-      senderId: json['sender_id']?.toString() ?? '',
-      senderName: json['sender_name']?.toString(),
-      senderRole: json['sender_role']?.toString(),
-      audienceType: json['audience_type'] ?? 'ALL_STUDENTS',
-      audienceValue: json['audience_value']?.toString(),
+      senderId: json['sender_id']?.toString() ?? meta?['sender_id']?.toString() ?? '',
+      senderName: json['sender_name']?.toString() ?? meta?['sender_name']?.toString(),
+      senderRole: json['sender_role']?.toString() ?? meta?['sender_role']?.toString(),
+      audienceType: json['audience_type'] ?? meta?['audience_type'] ?? 'ALL_STUDENTS',
+      audienceValue: json['audience_value']?.toString() ?? meta?['audience_value']?.toString(),
       title: json['title'] ?? '',
-      body: json['body'] ?? '',
+      body: json['body'] ?? json['message'] ?? '',
       type: json['type'] ?? 'GENERAL',
-      metadata: json['metadata'] is Map<String, dynamic> ? json['metadata'] : null,
-      recipientCount: json['recipient_count'] is num ? (json['recipient_count'] as num).toInt() : 0,
-      deviceCount: json['device_count'] is num ? (json['device_count'] as num).toInt() : 0,
-      successCount: json['success_count'] is num ? (json['success_count'] as num).toInt() : 0,
-      failureCount: json['failure_count'] is num ? (json['failure_count'] as num).toInt() : 0,
+      metadata: meta,
+      recipientCount: json['recipient_count'] is num
+          ? (json['recipient_count'] as num).toInt()
+          : (meta?['recipient_count'] is num
+              ? (meta!['recipient_count'] as num).toInt()
+              : (meta?['recipients'] is num ? (meta!['recipients'] as num).toInt() : 0)),
+      deviceCount: json['device_count'] is num
+          ? (json['device_count'] as num).toInt()
+          : (meta?['device_count'] is num ? (meta!['device_count'] as num).toInt() : 0),
+      successCount: json['success_count'] is num
+          ? (json['success_count'] as num).toInt()
+          : (meta?['success_count'] is num ? (meta!['success_count'] as num).toInt() : 0),
+      failureCount: json['failure_count'] is num
+          ? (json['failure_count'] as num).toInt()
+          : (meta?['failure_count'] is num ? (meta!['failure_count'] as num).toInt() : 0),
       createdAt: json['created_at'] != null
           ? (DateTime.tryParse(json['created_at']) ?? DateTime.now())
           : DateTime.now(),
     );
+  }
+
+  factory NotificationCampaign.fromNotificationRow(Map<String, dynamic> row) {
+    return NotificationCampaign.fromJson(row);
   }
 
   Map<String, dynamic> toJson() {

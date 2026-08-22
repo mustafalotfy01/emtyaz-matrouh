@@ -17,10 +17,10 @@ class AppLocalizations {
   bool get isArabic => locale.languageCode == 'ar';
 
   // ── App Brand & Header ───────────────────────────────────────────────────
-  String get appName => isArabic ? 'إمتياز مطروح' : 'Matrouh Internship';
+  String get appName => 'MANU';
   String get appSubtitle => isArabic
-      ? 'نظام إدارة ومتابعة طلاب سنة الامتياز التمريضية بمحافظة مطروح'
-      : 'Matrouh Governorate Nursing Internship Management System';
+      ? 'منظومة إدارة ومتابعة تدريب الامتياز التمريضي'
+      : 'Nursing Internship Clinical Management System';
 
   // ── Navigation Tabs ──────────────────────────────────────────────────────
   String get navHome => isArabic ? 'الرئيسية' : 'Home';

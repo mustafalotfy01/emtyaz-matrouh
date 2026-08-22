@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/services/fcm_sender_service.dart';
 import '../../../core/services/push_notification_service.dart';
 import '../../../core/services/supabase_service.dart';
@@ -9,8 +11,6 @@ import '../models/notification_campaign.dart';
 
 enum NotificationAudienceType {
   allStudents,
-  groupA,
-  groupB,
   department,
   specificStudents,
 }
@@ -20,10 +20,6 @@ extension NotificationAudienceTypeExt on NotificationAudienceType {
     switch (this) {
       case NotificationAudienceType.allStudents:
         return 'ALL_STUDENTS';
-      case NotificationAudienceType.groupA:
-        return 'GROUP_A';
-      case NotificationAudienceType.groupB:
-        return 'GROUP_B';
       case NotificationAudienceType.department:
         return 'DEPARTMENT';
       case NotificationAudienceType.specificStudents:
@@ -42,6 +38,7 @@ class SendNotificationState {
   final String notificationType;
   final String targetRoute;
   final bool isSending;
+  final bool isLoadingHistory;
   final List<Map<String, dynamic>> departments;
   final List<UserProfile> availableStudents;
   final List<NotificationCampaign> campaignsHistory;
@@ -58,6 +55,7 @@ class SendNotificationState {
     this.notificationType = 'GENERAL',
     this.targetRoute = '/',
     this.isSending = false,
+    this.isLoadingHistory = false,
     this.departments = const [],
     this.availableStudents = const [],
     this.campaignsHistory = const [],
@@ -75,6 +73,7 @@ class SendNotificationState {
     String? notificationType,
     String? targetRoute,
     bool? isSending,
+    bool? isLoadingHistory,
     List<Map<String, dynamic>>? departments,
     List<UserProfile>? availableStudents,
     List<NotificationCampaign>? campaignsHistory,
@@ -91,6 +90,7 @@ class SendNotificationState {
       notificationType: notificationType ?? this.notificationType,
       targetRoute: targetRoute ?? this.targetRoute,
       isSending: isSending ?? this.isSending,
+      isLoadingHistory: isLoadingHistory ?? this.isLoadingHistory,
       departments: departments ?? this.departments,
       availableStudents: availableStudents ?? this.availableStudents,
       campaignsHistory: campaignsHistory ?? this.campaignsHistory,
@@ -103,10 +103,6 @@ class SendNotificationState {
     switch (audienceType) {
       case NotificationAudienceType.allStudents:
         return availableStudents.length;
-      case NotificationAudienceType.groupA:
-        return availableStudents.where((s) => s.studentGroup == StudentGroup.groupA).length;
-      case NotificationAudienceType.groupB:
-        return availableStudents.where((s) => s.studentGroup == StudentGroup.groupB).length;
       case NotificationAudienceType.department:
         return (availableStudents.length * 0.4).ceil();
       case NotificationAudienceType.specificStudents:
@@ -119,16 +115,104 @@ class SendNotificationState {
 
 class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
   final Ref _ref;
+  static const String _cacheKeyPrefix = 'cached_broadcast_campaigns_';
 
   SendNotificationNotifier(this._ref) : super(const SendNotificationState()) {
     initData();
   }
 
   Future<void> initData() async {
+    // 1. Immediately load local cache for instantaneous rendering
+    await _loadCampaignsFromLocalCache();
+
+    // 2. Fetch remote data concurrently
     await Future.wait([
       fetchDepartments(),
       fetchApprovedStudents(),
+      fetchCampaignsHistory(),
     ]);
+  }
+
+  String _getCacheKey() {
+    final user = _ref.read(authProvider).user;
+    return '$_cacheKeyPrefix${user?.id ?? "global"}';
+  }
+
+  Future<void> _loadCampaignsFromLocalCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = _getCacheKey();
+      final cachedJsonStr = prefs.getString(key);
+      if (cachedJsonStr != null && cachedJsonStr.isNotEmpty) {
+        final decoded = jsonDecode(cachedJsonStr);
+        if (decoded is List) {
+          final list = decoded
+              .map((item) => NotificationCampaign.fromJson(Map<String, dynamic>.from(item)))
+              .toList();
+          list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          state = state.copyWith(campaignsHistory: list);
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) print('[SendNotificationNotifier] _loadCampaignsFromLocalCache note: $e');
+    }
+  }
+
+  Future<void> _saveCampaignsToLocalCache(List<NotificationCampaign> campaigns) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = _getCacheKey();
+      final listJson = campaigns.map((c) => c.toJson()).toList();
+      await prefs.setString(key, jsonEncode(listJson));
+    } catch (e) {
+      if (kDebugMode) print('[SendNotificationNotifier] _saveCampaignsToLocalCache note: $e');
+    }
+  }
+
+  Future<void> fetchCampaignsHistory({bool force = false}) async {
+    final user = _ref.read(authProvider).user;
+    if (user == null || !SupabaseService.isInitialized) return;
+
+    if (state.campaignsHistory.isEmpty || force) {
+      state = state.copyWith(isLoadingHistory: true);
+    }
+
+    try {
+      final res = await SupabaseService.client
+          .from('notifications')
+          .select()
+          .eq('user_id', user.id)
+          .order('created_at', ascending: false)
+          .limit(100);
+
+      final serverCampaigns = <NotificationCampaign>[];
+      for (final row in res) {
+        final meta = row['metadata'] is Map<String, dynamic>
+            ? (row['metadata'] as Map<String, dynamic>)
+            : null;
+        if (meta != null && meta['is_broadcast_campaign'] == true) {
+          serverCampaigns.add(NotificationCampaign.fromJson(row));
+        }
+      }
+
+      // Merge local cache and server campaigns with duplicate removal
+      final mergedMap = <String, NotificationCampaign>{};
+      for (final c in state.campaignsHistory) {
+        mergedMap[c.id] = c;
+      }
+      for (final c in serverCampaigns) {
+        mergedMap[c.id] = c;
+      }
+
+      final mergedList = mergedMap.values.toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      state = state.copyWith(campaignsHistory: mergedList, isLoadingHistory: false);
+      await _saveCampaignsToLocalCache(mergedList);
+    } catch (e) {
+      if (kDebugMode) print('[SendNotificationNotifier] fetchCampaignsHistory error: $e');
+      state = state.copyWith(isLoadingHistory: false);
+    }
   }
 
   Future<void> fetchDepartments() async {
@@ -140,10 +224,8 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
           .eq('is_active', true)
           .order('name_ar');
 
-      if (data is List) {
-        final depts = data.map((d) => Map<String, dynamic>.from(d)).toList();
-        state = state.copyWith(departments: depts);
-      }
+      final depts = data.map((d) => Map<String, dynamic>.from(d)).toList();
+      state = state.copyWith(departments: depts);
     } catch (e) {
       if (kDebugMode) print('[SendNotificationNotifier] fetchDepartments error: $e');
     }
@@ -159,10 +241,8 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
           .or('is_approved.eq.true,registration_status.eq.approved')
           .order('full_name');
 
-      if (data is List) {
-        final students = data.map((json) => UserProfile.fromJson(json)).toList();
-        state = state.copyWith(availableStudents: students);
-      }
+      final students = data.map((json) => UserProfile.fromJson(json)).toList();
+      state = state.copyWith(availableStudents: students);
     } catch (e) {
       if (kDebugMode) print('[SendNotificationNotifier] fetchApprovedStudents error: $e');
     }
@@ -276,9 +356,7 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
       final audienceTypeStr = state.audienceType.toDbString();
       final audienceValueStr = state.audienceType == NotificationAudienceType.department
           ? state.selectedDepartmentId
-          : (state.audienceType == NotificationAudienceType.groupA
-              ? 'A'
-              : (state.audienceType == NotificationAudienceType.groupB ? 'B' : null));
+          : null;
 
       List<String>? specificIds;
       if (state.audienceType == NotificationAudienceType.specificStudents) {
@@ -360,14 +438,20 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
         successMsg = 'تم حفظ الإشعار لـ $totalDelivered طالب بنجاح في التطبيق ✅';
       }
 
+      final updatedHistory = [newCampaign, ...state.campaignsHistory];
+      await _saveCampaignsToLocalCache(updatedHistory);
+
       state = state.copyWith(
         isSending: false,
         title: '',
         body: '',
         selectedStudentIds: const {},
-        campaignsHistory: [newCampaign, ...state.campaignsHistory],
+        campaignsHistory: updatedHistory,
         successMessage: successMsg,
       );
+
+      // Async sync with Supabase
+      fetchCampaignsHistory();
 
       return true;
     } catch (e, stack) {

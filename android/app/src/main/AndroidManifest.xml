@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.USE_FINGERPRINT" />
 
     <application
-        android:label="إمتياز مطروح"
+        android:label="MANU"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 

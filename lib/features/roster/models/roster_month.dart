@@ -65,7 +65,6 @@ enum RosterMonthStatus {
       case RosterMonthStatus.locked:
         return 'locked';
       case RosterMonthStatus.draft:
-      default:
         return 'draft';
     }
   }

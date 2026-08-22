@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../core/widgets/custom_button.dart';
-import '../../../core/widgets/custom_card.dart';
+import '../../../core/theme/app_design_tokens.dart';
+import '../../../core/widgets/app_badge.dart';
+import '../../../core/widgets/app_button.dart';
+import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/app_dropdown.dart';
+import '../../../core/widgets/app_input.dart';
 import '../../auth/providers/auth_provider.dart';
 
 enum EvaluationType { reward, warning, officialViolation, penalty }
@@ -17,11 +20,15 @@ class EvaluationLoggerScreen extends ConsumerStatefulWidget {
 class _EvaluationLoggerScreenState extends ConsumerState<EvaluationLoggerScreen> {
   final _formKey = GlobalKey<FormState>();
   String? _selectedStudentId;
-  String _selectedDepartment = 'قسم الطوارئ';
+  String _selectedDepartment = 'قسم الطوارئ والعناية';
   EvaluationType _type = EvaluationType.reward;
   final _titleController = TextEditingController();
   final _notesController = TextEditingController();
-  double _score = 90.0;
+
+  // Structured Rubric Criteria (1 to 5 stars / rating)
+  double _competencyScore = 4.0;
+  double _punctualityScore = 5.0;
+  double _safetyScore = 4.5;
 
   @override
   void dispose() {
@@ -29,6 +36,9 @@ class _EvaluationLoggerScreenState extends ConsumerState<EvaluationLoggerScreen>
     _notesController.dispose();
     super.dispose();
   }
+
+  double get _totalScorePercent =>
+      ((_competencyScore + _punctualityScore + _safetyScore) / 15.0) * 100;
 
   @override
   Widget build(BuildContext context) {
@@ -39,23 +49,50 @@ class _EvaluationLoggerScreenState extends ConsumerState<EvaluationLoggerScreen>
     }
 
     return Scaffold(
+      backgroundColor: AppDesignTokens.bg(context),
       appBar: AppBar(
-        title: const Text('إضافة تقييم / جزاء / مكافأة لطالب'),
+        title: const Text('تسجيل تقييم سريري / إجراء انضباطي'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              CustomCard(
+              // Workflow Status Notice
+              AppCard(
+                variant: AppCardVariant.accentWarning,
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline_rounded, color: AppDesignTokens.warning, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'ملاحظة: تخضع الجزاءات وخصومات الشيفتات لاعتماد الإدارة ومنسق الامتياز قبل تطبيقها النهائي.',
+                        style: TextStyle(fontSize: 12, color: AppDesignTokens.textPrimary(context), height: 1.3),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              AppCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'بيانات التقييم الرسمي',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primaryTeal),
+                      style: TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.bold,
+                        color: AppDesignTokens.textPrimary(context),
+                      ),
                     ),
                     const SizedBox(height: 16),
 
@@ -63,22 +100,23 @@ class _EvaluationLoggerScreenState extends ConsumerState<EvaluationLoggerScreen>
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(8),
+                          color: AppDesignTokens.surfaceMuted(context),
+                          borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
                         ),
-                        child: const Text(
+                        child: Text(
                           'لا يوجد طلاب مسجلين حالياً.',
-                          style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                          style: TextStyle(color: AppDesignTokens.textSecondary(context), fontSize: 13),
                         ),
                       )
                     else
-                      DropdownButtonFormField<String>(
+                      AppDropdown<String>(
+                        label: 'اختر الطالب المراد تقييمه',
                         value: _selectedStudentId,
-                        decoration: const InputDecoration(labelText: 'اختر الطالب المراد تقييمه'),
                         items: students.map((s) {
-                          return DropdownMenuItem(
+                          return AppDropdownItem(
                             value: s.id,
-                            child: Text('${s.fullName} (${s.universityCode})'),
+                            label: '${s.fullName} (${s.universityCode})',
+                            icon: Icons.person_rounded,
                           );
                         }).toList(),
                         onChanged: (v) => setState(() => _selectedStudentId = v),
@@ -86,88 +124,106 @@ class _EvaluationLoggerScreenState extends ConsumerState<EvaluationLoggerScreen>
 
                     const SizedBox(height: 14),
 
-                    DropdownButtonFormField<String>(
+                    AppDropdown<String>(
+                      label: 'القسم السريري',
                       value: _selectedDepartment,
-                      decoration: const InputDecoration(labelText: 'القسم الحاضر به'),
                       items: const [
-                        DropdownMenuItem(value: 'قسم الطوارئ', child: Text('قسم الطوارئ')),
-                        DropdownMenuItem(value: 'عناية جراحة', child: Text('عناية جراحة')),
-                        DropdownMenuItem(value: 'حضانة الأطفال (NICU)', child: Text('حضانة الأطفال (NICU)')),
-                        DropdownMenuItem(value: 'عناية القلب (CCU)', child: Text('عناية القلب (CCU)')),
+                        AppDropdownItem(value: 'قسم الطوارئ والعناية', label: 'قسم الطوارئ والعناية', icon: Icons.local_hospital_rounded),
+                        AppDropdownItem(value: 'عناية جراحة', label: 'عناية جراحة', icon: Icons.healing_rounded),
+                        AppDropdownItem(value: 'حضانة الأطفال (NICU)', label: 'حضانة الأطفال (NICU)', icon: Icons.child_care_rounded),
+                        AppDropdownItem(value: 'عناية القلب (CCU)', label: 'عناية القلب (CCU)', icon: Icons.favorite_rounded),
                       ],
                       onChanged: (v) => setState(() => _selectedDepartment = v!),
                     ),
 
                     const SizedBox(height: 16),
 
-                    const Text('نوع التقييم الرسمي:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text(
+                      'نوع التقييم أو الملاحظة:',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppDesignTokens.textPrimary(context)),
+                    ),
                     const SizedBox(height: 8),
 
-                    SegmentedButton<EvaluationType>(
-                      segments: const [
-                        ButtonSegment(value: EvaluationType.reward, label: Text('مكافأة ⭐')),
-                        ButtonSegment(value: EvaluationType.warning, label: Text('تنبيه ⚠️')),
-                        ButtonSegment(value: EvaluationType.officialViolation, label: Text('مخالفة 🚫')),
-                        ButtonSegment(value: EvaluationType.penalty, label: Text('خصم شيفت ❌')),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _buildTypeChip(EvaluationType.reward, 'إشادة ومكافأة ⭐', AppBadgeVariant.success),
+                        _buildTypeChip(EvaluationType.warning, 'تنبيه سريري ⚠️', AppBadgeVariant.warning),
+                        _buildTypeChip(EvaluationType.officialViolation, 'مخالفة انضباط 🚫', AppBadgeVariant.danger),
+                        _buildTypeChip(EvaluationType.penalty, 'توصية بخصم شيفت ❌', AppBadgeVariant.danger),
                       ],
-                      selected: {_type},
-                      onSelectionChanged: (val) => setState(() => _type = val.first),
                     ),
 
                     const SizedBox(height: 16),
 
-                    TextFormField(
+                    AppInput(
+                      label: 'عنوان التقييم / الإجراء السريري',
+                      hintText: 'مثال: إتقان سحب العينات وتطبيق معايير مكافحة العدوى',
                       controller: _titleController,
-                      decoration: const InputDecoration(
-                        labelText: 'عنوان الإجراء / سبب التقييم',
-                        hintText: 'مثال: سرعة الاستجابة في حالة حرجة / تأخير غير مبرر',
-                      ),
-                      validator: (v) => v!.isEmpty ? 'يرجى إدخال العنوان' : null,
+                      validator: (v) => (v == null || v.trim().isEmpty) ? 'يرجى إدخال العنوان' : null,
                     ),
 
                     const SizedBox(height: 14),
 
-                    TextFormField(
+                    AppInput(
+                      label: 'الملاحظات والتوجيهات السريرية',
+                      hintText: 'اكتب توجيهاتك للطالب والمهام المطلوب تحسينها...',
                       controller: _notesController,
                       maxLines: 3,
-                      decoration: const InputDecoration(
-                        labelText: 'الملاحظات والتعليمات التوجيهية',
-                        hintText: 'اكتب توجيهاتك للطالب والمهام المطلوبة للتحسين...',
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Structured Rubric Section
+                    Text(
+                      'معايير التقييم السريري (Clinical Rubric):',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: AppDesignTokens.textPrimary(context)),
+                    ),
+                    const SizedBox(height: 10),
+
+                    _buildRubricRow('1. الكفاءة السريرية والمهارات الإجرائية', _competencyScore, (v) => setState(() => _competencyScore = v)),
+                    _buildRubricRow('2. الانضباط والحضور في الموعد', _punctualityScore, (v) => setState(() => _punctualityScore = v)),
+                    _buildRubricRow('3. مكافحة العدوى وسلامة المرضى', _safetyScore, (v) => setState(() => _safetyScore = v)),
+
+                    const SizedBox(height: 12),
+
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppDesignTokens.primary.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
                       ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('درجة التقييم السريري (من 100):', style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text('${_score.toInt()}%', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryTeal, fontSize: 16)),
-                      ],
-                    ),
-                    Slider(
-                      value: _score,
-                      min: 0,
-                      max: 100,
-                      divisions: 20,
-                      activeColor: AppColors.primaryTeal,
-                      onChanged: (v) => setState(() => _score = v),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'المجموع الكلي التقديري:',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppDesignTokens.textPrimary(context)),
+                          ),
+                          Text(
+                            '${_totalScorePercent.toStringAsFixed(0)}%',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppDesignTokens.primary),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
-              CustomButton(
-                text: 'اعتماد وحفظ التقييم رسمياً',
-                icon: Icons.check_circle_outline,
+              AppButton(
+                text: 'اعتماد وحفظ التقييم وإرساله للإدارة',
+                icon: Icons.check_circle_outline_rounded,
+                size: AppButtonSize.large,
                 onPressed: () {
                   if (_formKey.currentState!.validate()) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('تم حفظ التقييم بنجاح وإرساله للمنسق والإدارة!'),
-                        backgroundColor: AppColors.success,
+                        content: Text('تم تسجيل التقييم بنجاح وإرساله للمنسق والإدارة للاعتماد ✅'),
+                        backgroundColor: AppDesignTokens.success,
                       ),
                     );
                     Navigator.pop(context);
@@ -177,6 +233,58 @@ class _EvaluationLoggerScreenState extends ConsumerState<EvaluationLoggerScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildTypeChip(EvaluationType type, String label, AppBadgeVariant variant) {
+    final isSelected = _type == type;
+    return InkWell(
+      onTap: () => setState(() => _type = type),
+      borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppDesignTokens.primary : AppDesignTokens.surfaceMuted(context),
+          borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
+          border: Border.all(
+            color: isSelected ? AppDesignTokens.primary : AppDesignTokens.border(context),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+            color: isSelected ? Colors.white : AppDesignTokens.textPrimary(context),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRubricRow(String label, double value, ValueChanged<double> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label, style: TextStyle(fontSize: 12, color: AppDesignTokens.textSecondary(context))),
+              Text('${value.toStringAsFixed(1)} / 5.0', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppDesignTokens.primary)),
+            ],
+          ),
+          Slider(
+            value: value,
+            min: 1.0,
+            max: 5.0,
+            divisions: 8,
+            activeColor: AppDesignTokens.primary,
+            onChanged: onChanged,
+          ),
+        ],
       ),
     );
   }

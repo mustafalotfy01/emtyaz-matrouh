@@ -1,7 +1,7 @@
 {
-    "name": "إمتياز مطروح",
-    "short_name": "إمتياز",
-    "description": "تطبيق إدارة ومتابعة طلاب سنة الامتياز للتمريض بمستشفى مطروح العام",
+    "name": "MANU",
+    "short_name": "MANU",
+    "description": "منظومة إدارة ومتابعة تدريب الامتياز التمريضي",
     "start_url": "/",
     "display": "standalone",
     "background_color": "#0E3B43",

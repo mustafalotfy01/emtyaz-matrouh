@@ -1,17 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/localization/app_localizations.dart';
+import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/widgets/custom_card.dart';
+import '../../auth/models/user_profile.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../models/knowledge_article.dart';
+import '../providers/knowledge_provider.dart';
 
-class ArticleDetailScreen extends StatelessWidget {
+class ArticleDetailScreen extends ConsumerWidget {
   final KnowledgeArticle article;
 
   const ArticleDetailScreen({super.key, required this.article});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
+    final user = ref.watch(authProvider).user;
+    final canManage = user?.role == UserRole.superAdmin ||
+        user?.role == UserRole.evaluatingDoctor ||
+        user?.role == UserRole.leader;
 
     return Scaffold(
       backgroundColor: AppColors.bg(context),
@@ -20,6 +29,58 @@ class ArticleDetailScreen extends StatelessWidget {
           article.title,
           style: TextStyle(color: AppColors.text(context), fontSize: 16, fontWeight: FontWeight.bold),
         ),
+        actions: [
+          if (canManage)
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded, color: AppDesignTokens.danger),
+              tooltip: 'حذف المقال',
+              onPressed: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('تأكيد حذف المقال'),
+                    content: Text('هل أنت متأكد من رغبتك في حذف مقال "${article.title}" نهائياً من المكتبة؟'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('إلغاء'),
+                      ),
+                      FilledButton(
+                        style: FilledButton.styleFrom(backgroundColor: AppDesignTokens.danger),
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('حذف الآن'),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirm == true && context.mounted) {
+                  try {
+                    await ref.read(knowledgeRepositoryProvider).deleteArticle(article.id);
+                    ref.invalidate(knowledgeArticlesProvider);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          backgroundColor: AppDesignTokens.success,
+                          content: Text('تم حذف المقال من المكتبة بنجاح ✅'),
+                        ),
+                      );
+                      Navigator.pop(context);
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          backgroundColor: AppDesignTokens.danger,
+                          content: Text('فشل حذف المقال: $e'),
+                        ),
+                      );
+                    }
+                  }
+                }
+              },
+            ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),

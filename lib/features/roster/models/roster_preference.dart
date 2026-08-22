@@ -1,3 +1,5 @@
+import '../../../core/utils/app_date_utils.dart';
+
 /// نوع شيفت التفضيل للطالب (Morning / Long / Night)
 enum PreferenceShiftType {
   morning,   // صباحي
@@ -28,67 +30,132 @@ enum PreferenceShiftType {
     }
   }
 
+  int get hours {
+    switch (this) {
+      case PreferenceShiftType.morning:
+        return 6;
+      case PreferenceShiftType.longShift:
+      case PreferenceShiftType.night:
+        return 12;
+    }
+  }
+
   static PreferenceShiftType fromString(String? val) {
     switch (val?.toUpperCase()) {
-      case 'L': return PreferenceShiftType.longShift;
-      case 'N': return PreferenceShiftType.night;
+      case 'L':
+      case 'LONG':
+        return PreferenceShiftType.longShift;
+      case 'N':
+      case 'NIGHT':
+        return PreferenceShiftType.night;
       case 'M':
-      default: return PreferenceShiftType.morning;
+      case 'MORNING':
+      default:
+        return PreferenceShiftType.morning;
     }
   }
 }
 
-/// قواعد الروستر وحساب التوازن بين الشيفتات
+/// تمثيل الأسبوع السريري من السبت إلى الجمعة
+class WeeklyHoursSummary {
+  final int weekNumber;
+  final DateTime weekStart;
+  final DateTime weekEnd;
+  final int totalHours;
+  final int requiredHours;
+
+  const WeeklyHoursSummary({
+    required this.weekNumber,
+    required this.weekStart,
+    required this.weekEnd,
+    required this.totalHours,
+    this.requiredHours = 36,
+  });
+
+  bool get isValid => totalHours == requiredHours;
+}
+
+/// قواعد الروستر وحساب 36 ساعة لكل أسبوع (السبت -> الجمعة)
 class ShiftRulesHelper {
   static const int baseRequiredDays = 12;
-  static const int requiredDays = baseRequiredDays;
-  static const int minNightIfNoNight = 2;
-  static const int minLongIfAllNight = 2;
-  static const int minMorningEquivIfAllNight = 4;
+  static const int requiredDays = 12;
+  static const int minNightIfNoNight = 4;
+  static const int requiredWeeklyHours = 36;
 
   /// حساب إجمالي الأيام المطلوبة بناءً على عدد الصباحي:
-  /// الأساس 12 يوم. كل يومين صباحي يعادلان شيفت طويل واحد، وبالتالي:
-  /// - 0 صباحي = 12 يوم
-  /// - 2 صباحي = 13 يوم (2 صباحي + 11 شيفت آخر)
-  /// - 4 صباحي = 14 يوم (4 صباحي + 10 شيفت آخر)
-  /// - 6 صباحي = 15 يوم
   static int requiredDaysForMorning(int morningCount) {
     return baseRequiredDays + (morningCount ~/ 2);
   }
 
-  /// التحقق من أن عدد الصباحي زوجي
-  static bool isMorningEven(int morningCount) => morningCount % 2 == 0;
-
-  /// التحقق من توافر اليوم للمجموعة:
-  /// - المجموعة A: دائماً الأيام 1 إلى 15 (ثابتة بدون فتح أيام إضافية).
-  /// - المجموعة B: دائماً الأيام 16 إلى نهاية الشهر (ثابتة بدون فتح أيام إضافية).
+  /// توافر اليوم للمجموعة (جميع أيام الشهر متاحة حالياً)
   static bool isDayAvailableForGroup({
     required int day,
     required bool isGroupA,
     required int daysInMonth,
   }) {
-    if (isGroupA) {
-      return day >= 1 && day <= 15;
-    } else {
-      return day >= 16 && day <= daysInMonth;
-    }
+    return day >= 1 && day <= daysInMonth;
   }
 
-  /// التحقق الشامل من التفضيلات
+  /// التحقق من أن عدد الصباحي زوجي
+  static bool isMorningEven(int morningCount) => morningCount % 2 == 0;
+
+  /// تقسيم أيام الشهر إلى أسابيع (السبت -> الجمعة) وحساب ساعات كل أسبوع
+  static List<WeeklyHoursSummary> calculateWeeklySummaries({
+    required int month,
+    required int year,
+    required List<RosterPreference> preferences,
+  }) {
+    final daysInMonth = DateTime(year, month + 1, 0).day;
+    final List<WeeklyHoursSummary> summaries = [];
+
+    // Group dates by their Saturday start date
+    DateTime currentDate = DateTime(year, month, 1);
+    int weekNum = 1;
+
+    // Find the first Saturday on or before day 1
+    int offsetToSaturday = (currentDate.weekday + 1) % 7; // Saturday = 0
+    DateTime currentWeekStart = currentDate.subtract(Duration(days: offsetToSaturday));
+
+    while (currentWeekStart.isBefore(DateTime(year, month, daysInMonth).add(const Duration(days: 1)))) {
+      DateTime currentWeekEnd = currentWeekStart.add(const Duration(days: 6));
+
+      int weekHours = 0;
+      for (final p in preferences) {
+        if (p.preferenceDate.isAfter(currentWeekStart.subtract(const Duration(days: 1))) &&
+            p.preferenceDate.isBefore(currentWeekEnd.add(const Duration(days: 1)))) {
+          weekHours += p.preferenceShiftType.hours;
+        }
+      }
+
+      summaries.add(WeeklyHoursSummary(
+        weekNumber: weekNum++,
+        weekStart: currentWeekStart,
+        weekEnd: currentWeekEnd,
+        totalHours: weekHours,
+        requiredHours: requiredWeeklyHours,
+      ));
+
+      currentWeekStart = currentWeekStart.add(const Duration(days: 7));
+    }
+
+    return summaries;
+  }
+
+  /// التحقق الشامل من التفضيلات وفق قاعدة 36 ساعة أسبوعياً
   static ShiftValidationResult validate({
     required int morningCount,
     required int longCount,
     required int nightCount,
+    List<WeeklyHoursSummary> weeklySummaries = const [],
   }) {
     final total = morningCount + longCount + nightCount;
     final requiredTotal = requiredDaysForMorning(morningCount);
 
-    // التحقق من أن عدد الصباحي زوجي
     if (!isMorningEven(morningCount)) {
       return ShiftValidationResult(
         isValid: false,
         canSubmit: false,
-        message: 'اخترت $morningCount صباحي. يجب اختيار يوم صباحي إضافي ليكونا زوجيين (كل يومين صباحي = شيفت كامل).',
+        message: 'اخترت $morningCount صباحي. يجب أن يكون عدد الصباحي زوجياً (كل يومين صباحي = شيفت كامل).',
         ruleViolation: ShiftRuleViolation.morningNotEven,
       );
     }
@@ -109,43 +176,37 @@ class ShiftRulesHelper {
       );
     }
 
-    if (nightCount == 0) {
+    if (nightCount < 2) {
       return ShiftValidationResult(
         isValid: false,
         canSubmit: false,
-        message: 'يجب اختيار $minNightIfNoNight يوم ليلي (Night) على الأقل',
-        ruleViolation: ShiftRuleViolation.noNight,
-      );
-    }
-
-    if (nightCount < minNightIfNoNight) {
-      return ShiftValidationResult(
-        isValid: false,
-        canSubmit: false,
-        message: 'يجب اختيار $minNightIfNoNight أيام ليلية على الأقل (عندك $nightCount فقط)',
+        message: 'يجب اختيار يومين ليليين (Night) على الأقل (اخترت $nightCount).',
         ruleViolation: ShiftRuleViolation.insufficientNight,
       );
     }
 
-    // لو كل الأيام ليلي
-    if (morningCount == 0 && longCount == 0) {
-      return ShiftValidationResult(
-        isValid: false,
-        canSubmit: false,
-        message: 'لو كل أيامك ليلي، أضف $minLongIfAllNight طويل أو $minMorningEquivIfAllNight صباحي على الأقل',
-        ruleViolation: ShiftRuleViolation.allNightNoLong,
-      );
+    // Check weekly 36h compliance if weeklySummaries provided
+    for (final w in weeklySummaries) {
+      if (w.totalHours > 0 && w.totalHours != 36) {
+        return ShiftValidationResult(
+          isValid: false,
+          canSubmit: false,
+          message: 'الأسبوع ${w.weekNumber} يحتوي على ${w.totalHours} ساعة (المطلوب 36 ساعة بالضبط).',
+          ruleViolation: ShiftRuleViolation.weeklyHoursMismatch,
+        );
+      }
     }
 
     return ShiftValidationResult(
       isValid: true,
       canSubmit: true,
-      message: 'اختياراتك مكتملة ومتوازنة ($total يوم) ✓',
+      message: 'اختياراتك متوافقة مع قاعدة الـ 36 ساعة أسبوعياً ($total يوم) ✓',
     );
   }
 
+
   static String get rulesText =>
-      'القواعد: الأساس ١٢ يوم • اليومين الصباحي = يوم طويل (يصبح الإجمالي ١٣ أو ١٤...) • الجروب A (١-١٥) و B (١٦-نهاية الشهر)';
+      'القواعد: إجمالي ٣٦ ساعة لكل أسبوع (السبت -> الجمعة) • صباحي (٦ ساعات) • طويل (١٢ ساعة) • ليلي (١٢ ساعة)';
 }
 
 enum ShiftRuleViolation {
@@ -153,6 +214,7 @@ enum ShiftRuleViolation {
   insufficientNight,
   allNightNoLong,
   morningNotEven,
+  weeklyHoursMismatch,
 }
 
 class ShiftValidationResult {
@@ -241,7 +303,6 @@ class RosterPreference {
   bool get isOptionB => preferenceType == PreferenceType.optionB;
 
   factory RosterPreference.fromJson(Map<String, dynamic> json) {
-    // Map shift_type or fallback from preference_type
     final shiftTypeStr = json['shift_type']?.toString();
     final prefTypeStr = json['preference_type']?.toString() ?? 'L';
 
@@ -249,73 +310,70 @@ class RosterPreference {
     if (shiftTypeStr != null && shiftTypeStr.isNotEmpty) {
       shiftType = PreferenceShiftType.fromString(shiftTypeStr);
     } else {
-      // Map 'L' or 'A' or 'B' or 'N' or 'M'
-      final p = prefTypeStr.toUpperCase();
-      if (p == 'B' || p == 'N') {
-        shiftType = PreferenceShiftType.night;
-      } else if (p == 'M') {
-        shiftType = PreferenceShiftType.morning;
-      } else {
-        shiftType = PreferenceShiftType.longShift;
-      }
+      shiftType = prefTypeStr == 'B' || prefTypeStr == 'N'
+          ? PreferenceShiftType.night
+          : (prefTypeStr == 'M' ? PreferenceShiftType.morning : PreferenceShiftType.longShift);
     }
+
+    final rawDate = json['preference_date'];
+    final parsedDate = rawDate is DateTime ? rawDate : DateTime.parse(rawDate.toString());
 
     return RosterPreference(
       id: json['id']?.toString() ?? '',
       rosterId: json['roster_id']?.toString() ?? '',
       studentId: json['student_id']?.toString() ?? '',
-      preferenceDate: DateTime.parse(json['preference_date']),
-      preferenceType: PreferenceType.fromString(prefTypeStr),
+      preferenceDate: parsedDate,
+      preferenceType: PreferenceType.fromString(json['preference_type']?.toString() ?? 'A'),
       preferenceShiftType: shiftType,
-      status: PreferenceStatus.fromString(json['status'] ?? 'draft'),
-      submittedAt: json['submitted_at'] != null ? DateTime.tryParse(json['submitted_at']) : null,
-      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at']) : null,
+      status: PreferenceStatus.fromString(json['status']?.toString() ?? 'draft'),
+      submittedAt: json['submitted_at'] != null ? DateTime.parse(json['submitted_at'].toString()) : null,
+      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at'].toString()) : null,
     );
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'roster_id': rosterId,
-      'student_id': studentId,
-      'preference_date': '${preferenceDate.year.toString().padLeft(4, '0')}-${preferenceDate.month.toString().padLeft(2, '0')}-${preferenceDate.day.toString().padLeft(2, '0')}',
-      'preference_type': preferenceShiftType == PreferenceShiftType.night
-          ? 'B'
-          : preferenceShiftType == PreferenceShiftType.morning
-              ? 'M'
-              : 'A',
-      'shift_type': preferenceShiftType.code,
-      'status': status.name,
-      'submitted_at': submittedAt?.toIso8601String(),
-    };
-  }
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'roster_id': rosterId,
+    'student_id': studentId,
+    'preference_date': AppDateUtils.toIsoDate(preferenceDate),
+    'preference_type': preferenceType.code,
+    'shift_type': preferenceShiftType.code,
+    'status': status.name,
+    if (submittedAt != null) 'submitted_at': submittedAt!.toIso8601String(),
+    if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
+  };
 
-  Map<String, dynamic> toSupabasePayload() {
-    return {
-      'student_id': studentId,
-      'roster_id': rosterId,
-      'preference_date': '${preferenceDate.year.toString().padLeft(4, '0')}-${preferenceDate.month.toString().padLeft(2, '0')}-${preferenceDate.day.toString().padLeft(2, '0')}',
-      'preference_type': preferenceShiftType == PreferenceShiftType.night ? 'B' : 'A',
-      'status': status.name,
-    };
-  }
+  Map<String, dynamic> toSupabasePayload() => {
+    'roster_id': rosterId,
+    'student_id': studentId,
+    'preference_date': AppDateUtils.toIsoDate(preferenceDate),
+    'preference_type': preferenceType.code,
+    'shift_type': preferenceShiftType.code,
+    'status': status.name,
+    'submitted_at': submittedAt?.toIso8601String(),
+  };
 
   RosterPreference copyWith({
+    String? id,
+    String? rosterId,
+    String? studentId,
+    DateTime? preferenceDate,
     PreferenceType? preferenceType,
     PreferenceShiftType? preferenceShiftType,
     PreferenceStatus? status,
     DateTime? submittedAt,
+    DateTime? createdAt,
   }) {
     return RosterPreference(
-      id: id,
-      rosterId: rosterId,
-      studentId: studentId,
-      preferenceDate: preferenceDate,
+      id: id ?? this.id,
+      rosterId: rosterId ?? this.rosterId,
+      studentId: studentId ?? this.studentId,
+      preferenceDate: preferenceDate ?? this.preferenceDate,
       preferenceType: preferenceType ?? this.preferenceType,
       preferenceShiftType: preferenceShiftType ?? this.preferenceShiftType,
       status: status ?? this.status,
       submittedAt: submittedAt ?? this.submittedAt,
-      createdAt: createdAt,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 }

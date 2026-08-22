@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/localization/app_localizations.dart';
+import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/widgets/custom_button.dart';
 import '../../../core/widgets/custom_card.dart';
-import '../../auth/models/user_profile.dart';
 import '../models/roster_entry.dart';
 import '../models/roster_preference.dart';
 import '../models/student_roster_summary.dart';
@@ -46,6 +46,31 @@ class _LeaderAssignmentScreenState extends ConsumerState<LeaderAssignmentScreen>
       warnings.add(l10n.isArabic ? 'Night = $_nightCount (الحد الأدنى 2 شيفتات سهر).' : 'Night = $_nightCount (Minimum 2 night shifts).');
     }
 
+    // Weekly 36h compliance check (Saturday -> Friday)
+    final rosterMonth = ref.read(currentRosterMonthProvider);
+    final daysInMonth = DateTime(rosterMonth.year, rosterMonth.month + 1, 0).day;
+    DateTime curSat = DateTime(rosterMonth.year, rosterMonth.month, 1);
+    final int offset = (curSat.weekday + 1) % 7;
+    curSat = curSat.subtract(Duration(days: offset));
+    int weekIndex = 1;
+
+    while (curSat.isBefore(DateTime(rosterMonth.year, rosterMonth.month, daysInMonth).add(const Duration(days: 1)))) {
+      final curWeekEnd = curSat.add(const Duration(days: 6, hours: 23, minutes: 59));
+      int weekHours = 0;
+      for (final s in _workingShifts) {
+        if (!s.shiftDate.isBefore(curSat) && !s.shiftDate.isAfter(curWeekEnd)) {
+          weekHours += (s.shiftType == ShiftType.morning ? 6 : 12);
+        }
+      }
+      if (weekHours > 36) {
+        warnings.add(l10n.isArabic
+            ? 'الأسبوع $weekIndex يحتوي على $weekHours ساعة (تجاوز حد الـ 36 ساعة أسبوعياً).'
+            : 'Week $weekIndex has $weekHours hours (exceeds 36h/week limit).');
+      }
+      curSat = curSat.add(const Duration(days: 7));
+      weekIndex++;
+    }
+
     final sorted = List<RosterEntry>.from(_workingShifts)..sort((a, b) => a.shiftDate.compareTo(b.shiftDate));
     for (int i = 0; i < sorted.length - 1; i++) {
       final cur = sorted[i];
@@ -79,11 +104,8 @@ class _LeaderAssignmentScreenState extends ConsumerState<LeaderAssignmentScreen>
   void _openAddShiftDialog(AppLocalizations l10n) {
     final depts = ref.read(departmentsProvider);
     final rosterMonth = ref.read(currentRosterMonthProvider);
-    final isGroupA = widget.summary.studentGroup == StudentGroup.groupA;
 
-    DateTime selectedDate = isGroupA
-        ? DateTime(rosterMonth.year, rosterMonth.month, 1)
-        : DateTime(rosterMonth.year, rosterMonth.month, 16);
+    DateTime selectedDate = DateTime(rosterMonth.year, rosterMonth.month, 1);
 
     ShiftType selectedShift = ShiftType.night;
     String selectedDeptId = depts.first.id;
@@ -94,26 +116,24 @@ class _LeaderAssignmentScreenState extends ConsumerState<LeaderAssignmentScreen>
         return StatefulBuilder(
           builder: (context, setDlgState) {
             return AlertDialog(
-              backgroundColor: AppColors.card(context),
-              title: Text(l10n.isArabic ? 'إضافة شيفت للطالب' : 'Add Intern Shift', style: TextStyle(color: AppColors.text(context))),
+              backgroundColor: AppDesignTokens.surface(context),
+              title: Text(l10n.isArabic ? 'إضافة شيفت للطالب' : 'Add Intern Shift', style: TextStyle(color: AppDesignTokens.textPrimary(context))),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     ListTile(
-                      title: Text(l10n.isArabic ? 'اليوم المحدد' : 'Selected Date', style: TextStyle(color: AppColors.text(context))),
-                      subtitle: Text(DateFormat('yyyy-MM-dd (EEEE)').format(selectedDate), style: TextStyle(color: AppColors.subtext(context))),
-                      trailing: const Icon(Icons.calendar_today, color: AppColors.primaryTeal),
+                      title: Text(l10n.isArabic ? 'اليوم المحدد' : 'Selected Date', style: TextStyle(color: AppDesignTokens.textPrimary(context))),
+                      subtitle: Text(DateFormat('yyyy-MM-dd (EEEE)').format(selectedDate), style: TextStyle(color: AppDesignTokens.textSecondary(context))),
+                      trailing: const Icon(Icons.calendar_today, color: AppDesignTokens.primary),
                       onTap: () async {
                         final daysInMonth = DateTime(rosterMonth.year, rosterMonth.month + 1, 0).day;
-                        final firstD = isGroupA ? 1 : 16;
-                        final lastD = isGroupA ? 15 : daysInMonth;
 
                         final picked = await showDatePicker(
                           context: context,
                           initialDate: selectedDate,
-                          firstDate: DateTime(rosterMonth.year, rosterMonth.month, firstD),
-                          lastDate: DateTime(rosterMonth.year, rosterMonth.month, lastD),
+                          firstDate: DateTime(rosterMonth.year, rosterMonth.month, 1),
+                          lastDate: DateTime(rosterMonth.year, rosterMonth.month, daysInMonth),
                         );
                         if (picked != null) {
                           setDlgState(() => selectedDate = picked);
@@ -123,9 +143,9 @@ class _LeaderAssignmentScreenState extends ConsumerState<LeaderAssignmentScreen>
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
                       value: selectedDeptId,
-                      dropdownColor: AppColors.card(context),
+                      dropdownColor: AppDesignTokens.surface(context),
                       decoration: InputDecoration(labelText: l10n.isArabic ? 'القسم' : 'Department'),
-                      items: depts.map((d) => DropdownMenuItem(value: d.id, child: Text(l10n.isArabic ? d.nameAr : (d.nameEn.isNotEmpty ? d.nameEn : d.nameAr), style: TextStyle(color: AppColors.text(context))))).toList(),
+                      items: depts.map((d) => DropdownMenuItem(value: d.id, child: Text(l10n.isArabic ? d.nameAr : (d.nameEn.isNotEmpty ? d.nameEn : d.nameAr), style: TextStyle(color: AppDesignTokens.textPrimary(context))))).toList(),
                       onChanged: (val) {
                         if (val != null) setDlgState(() => selectedDeptId = val);
                       },
@@ -133,16 +153,16 @@ class _LeaderAssignmentScreenState extends ConsumerState<LeaderAssignmentScreen>
                     const SizedBox(height: 10),
                     DropdownButtonFormField<ShiftType>(
                       value: selectedShift,
-                      dropdownColor: AppColors.card(context),
+                      dropdownColor: AppDesignTokens.surface(context),
                       decoration: InputDecoration(labelText: l10n.isArabic ? 'نوع الشيفت' : 'Shift Type'),
                       items: [ShiftType.night, ShiftType.long, ShiftType.morning, ShiftType.evening]
                           .map((s) => DropdownMenuItem(
                                 value: s,
                                 child: Text(
                                   s == ShiftType.night
-                                      ? l10n.shiftNightShort
-                                      : (s == ShiftType.long ? l10n.shiftLongShort : l10n.shiftMorningShort),
-                                  style: TextStyle(color: AppColors.text(context)),
+                                      ? 'ليلي (12h - 20:00)'
+                                      : (s == ShiftType.long ? 'طويل (12h - 08:00)' : 'صباحي (6h - 08:00)'),
+                                  style: TextStyle(color: AppDesignTokens.textPrimary(context)),
                                 ),
                               ))
                           .toList(),
@@ -156,7 +176,7 @@ class _LeaderAssignmentScreenState extends ConsumerState<LeaderAssignmentScreen>
               actions: [
                 TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l10n.cancel)),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryTeal),
+                  style: ElevatedButton.styleFrom(backgroundColor: AppDesignTokens.primary),
                   onPressed: () {
                     final dept = depts.firstWhere((d) => d.id == selectedDeptId);
                     setState(() {

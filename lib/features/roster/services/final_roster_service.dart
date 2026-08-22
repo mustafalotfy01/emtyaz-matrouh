@@ -3,6 +3,7 @@ import '../../../core/services/supabase_service.dart';
 import '../models/roster_entry.dart';
 import '../models/roster_month.dart';
 import 'roster_preferences_service.dart';
+import 'roster_service.dart';
 
 /// Dedicated Service for the Official Approved Final Roster (الروستر المعتمد)
 /// FINAL ROSTER = What the Leader officially approved (OFFICIAL TRUTH in roster_entries)
@@ -51,6 +52,11 @@ class FinalRosterService {
       }
     }
 
+    final currentMonth = RosterService.getCurrentRosterMonth();
+    if (currentMonth.month == month && currentMonth.year == year) {
+      return currentMonth;
+    }
+
     return RosterMonth(
       id: '00000000-0000-0000-0000-${year.toString().padLeft(4, '0')}${month.toString().padLeft(2, '0')}000000',
       title: 'روستر شهر $month $year',
@@ -76,7 +82,7 @@ class FinalRosterService {
             .eq('roster_id', dbRosterUuid)
             .order('shift_date', ascending: true);
 
-        if (res is List && res.isNotEmpty) {
+        if (res.isNotEmpty) {
           final list = res.map((r) => RosterEntry.fromJson(r)).toList();
           _finalRosterMemory['$month-$year-all'] = list;
           if (kDebugMode) {
@@ -87,6 +93,13 @@ class FinalRosterService {
       } catch (e) {
         if (kDebugMode) print('[FinalRosterService] getFinalApprovedRoster error: $e');
       }
+    }
+
+    // Check memory store from RosterService
+    final localEntries = RosterService.getAllFinalRosterEntriesForMonth(month, year);
+    if (localEntries.isNotEmpty) {
+      _finalRosterMemory['$month-$year-all'] = localEntries;
+      return localEntries;
     }
 
     return _finalRosterMemory['$month-$year-all'] ?? [];
@@ -121,6 +134,12 @@ class FinalRosterService {
       } catch (e) {
         if (kDebugMode) print('[FinalRosterService] getStudentFinalApprovedRoster error: $e');
       }
+    }
+
+    final localStudentEntries = RosterService.getStudentFinalRosterEntriesForMonth(studentId, month, year);
+    if (localStudentEntries.isNotEmpty) {
+      _finalRosterMemory[key] = localStudentEntries;
+      return localStudentEntries;
     }
 
     return _finalRosterMemory[key] ?? [];
@@ -279,5 +298,87 @@ class FinalRosterService {
     }
 
     return {'success': true, 'message': 'تم حفظ وتحديث الروستر المعتمد بنجاح 🟢'};
+  }
+
+  /// Syncs all student submitted preferences to official published roster_entries
+  static Future<Map<String, dynamic>> syncAllStudentPreferencesToApprovedRoster({
+    required int month,
+    required int year,
+    required String leaderId,
+  }) async {
+    final dbRosterUuid = await RosterPreferencesService.getCanonicalRosterUuid(month, year);
+    final defaultDeptId = 'a0000001-0000-0000-0000-000000000001';
+
+    if (SupabaseService.isInitialized) {
+      try {
+        // 1. Fetch all student preferences
+        final prefsRes = await SupabaseService.client
+            .from('roster_preferences')
+            .select()
+            .order('preference_date', ascending: true);
+
+        if (prefsRes.isNotEmpty) {
+          final List<Map<String, dynamic>> payload = [];
+          for (final row in prefsRes) {
+            final shiftTypeStr = row['shift_type']?.toString();
+            final prefTypeStr = row['preference_type']?.toString() ?? 'L';
+            String shiftName = 'long';
+            if (shiftTypeStr != null && shiftTypeStr.isNotEmpty) {
+              shiftName = (shiftTypeStr == 'N' || shiftTypeStr == 'night')
+                  ? 'night'
+                  : (shiftTypeStr == 'M' || shiftTypeStr == 'morning' ? 'morning' : 'long');
+            } else if (prefTypeStr == 'B' || prefTypeStr == 'N') {
+              shiftName = 'night';
+            } else if (prefTypeStr == 'M') {
+              shiftName = 'morning';
+            }
+
+            final prefDate = DateTime.tryParse(row['preference_date']?.toString() ?? '');
+            if (prefDate != null && prefDate.month == month && prefDate.year == year) {
+              payload.add({
+                'roster_id': dbRosterUuid,
+                'student_id': row['student_id'],
+                'department_id': defaultDeptId,
+                'shift_date': '${prefDate.year.toString().padLeft(4, '0')}-${prefDate.month.toString().padLeft(2, '0')}-${prefDate.day.toString().padLeft(2, '0')}',
+                'shift_type': shiftName,
+                'status': 'published',
+                'approved_by': (leaderId.contains('-') && leaderId.length > 20) ? leaderId : null,
+                'approved_at': DateTime.now().toIso8601String(),
+              });
+            }
+          }
+
+          if (payload.isNotEmpty) {
+            await SupabaseService.client
+                .from('rosters')
+                .update({
+                  'status': 'published',
+                  'is_published': true,
+                  'published_at': DateTime.now().toIso8601String(),
+                  'published_by': (leaderId.contains('-') && leaderId.length > 20) ? leaderId : null,
+                })
+                .eq('id', dbRosterUuid);
+
+            await SupabaseService.client
+                .from('roster_entries')
+                .delete()
+                .eq('roster_id', dbRosterUuid);
+
+            await SupabaseService.client
+                .from('roster_entries')
+                .insert(payload);
+
+            return {'success': true, 'message': 'تم استيراد واعتماد ${payload.length} شيفت للطلاب بنجاح 🟢'};
+          }
+        }
+
+        return {'success': false, 'message': 'لم يتم العثور على رغبات مسجلة للطلاب لشهر $month/$year'};
+      } catch (e) {
+        if (kDebugMode) print('[FinalRosterService] syncAllStudentPreferencesToApprovedRoster error: $e');
+        return {'success': false, 'message': 'تعذر استيراد الرغبات: $e'};
+      }
+    }
+
+    return {'success': true, 'message': 'تم التحديث'};
   }
 }

@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
-import '../../../core/constants/app_colors.dart';
 import '../../../core/localization/app_localizations.dart';
-import '../../../core/widgets/custom_button.dart';
-import '../../../core/widgets/custom_card.dart';
+import '../../../core/theme/app_design_tokens.dart';
+import '../../../core/widgets/app_avatar.dart';
+import '../../../core/widgets/app_badge.dart';
+import '../../../core/widgets/app_button.dart';
+import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/app_empty_state.dart';
+import '../../../core/widgets/app_input.dart';
+import '../../../core/widgets/app_table.dart';
 import '../models/user_profile.dart';
 import '../providers/auth_provider.dart';
 import '../providers/student_approvals_provider.dart';
@@ -20,7 +24,6 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
   RegistrationStatus? _filterStatus;
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _rejectionController = TextEditingController();
-  final Set<String> _expandedAuditCards = {};
   String _searchQuery = '';
 
   @override
@@ -45,11 +48,11 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.card(context),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: AppDesignTokens.surface(context),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDesignTokens.radiusLg)),
         title: Text(
           l10n.rejectDialogTitle(student.fullName),
-          style: TextStyle(color: AppColors.text(context), fontSize: 16, fontWeight: FontWeight.bold),
+          style: TextStyle(color: AppDesignTokens.textPrimary(context), fontSize: 16, fontWeight: FontWeight.bold),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -57,17 +60,17 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
           children: [
             Text(
               l10n.rejectReasonPrompt,
-              style: TextStyle(fontSize: 13, color: AppColors.subtext(context)),
+              style: TextStyle(fontSize: 13, color: AppDesignTokens.textSecondary(context)),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _rejectionController,
               maxLines: 3,
-              style: TextStyle(color: AppColors.text(context), fontSize: 13),
+              style: TextStyle(color: AppDesignTokens.textPrimary(context), fontSize: 13),
               decoration: InputDecoration(
                 hintText: l10n.rejectReasonHint,
-                hintStyle: TextStyle(color: AppColors.subtext(context).withValues(alpha: 0.6), fontSize: 12),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                hintStyle: TextStyle(color: AppDesignTokens.textMuted(context), fontSize: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm)),
               ),
             ),
           ],
@@ -78,7 +81,7 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
             child: Text(l10n.cancel),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
+            style: ElevatedButton.styleFrom(backgroundColor: AppDesignTokens.danger),
             onPressed: () async {
               final reason = _rejectionController.text.trim();
               if (reason.isEmpty) {
@@ -95,7 +98,7 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
 
               scaffoldMessenger.showSnackBar(
                 SnackBar(
-                  backgroundColor: success ? AppColors.danger : AppColors.warning,
+                  backgroundColor: success ? AppDesignTokens.danger : AppDesignTokens.warning,
                   content: Text(success ? l10n.rejectSuccessMsg : l10n.actionErrorMsg),
                 ),
               );
@@ -107,19 +110,27 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
     );
   }
 
-  void _showReturnToPendingDialog(BuildContext context, UserProfile student, AppLocalizations l10n) {
+  void _showDeleteDialog(BuildContext context, UserProfile student, AppLocalizations l10n) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.card(context),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          l10n.returnToReviewDialogTitle,
-          style: TextStyle(color: AppColors.text(context), fontSize: 16, fontWeight: FontWeight.bold),
+        backgroundColor: AppDesignTokens.surface(context),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDesignTokens.radiusLg)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppDesignTokens.danger, size: 24),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'حذف حساب الطالب نهائياً 🗑️',
+                style: TextStyle(color: AppDesignTokens.danger, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
         ),
         content: Text(
-          l10n.returnToReviewDialogMessage,
-          style: TextStyle(fontSize: 13, color: AppColors.subtext(context)),
+          'هل أنت متأكد من رغبتك في حذف حساب الطالب (${student.fullName}) نهائياً؟ سيتم مسح بياناته بالكامل من النظام.',
+          style: TextStyle(fontSize: 13, color: AppDesignTokens.textSecondary(context)),
         ),
         actions: [
           TextButton(
@@ -127,7 +138,49 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
             child: Text(l10n.cancel),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryTeal),
+            style: ElevatedButton.styleFrom(backgroundColor: AppDesignTokens.danger),
+            onPressed: () async {
+              final scaffoldMessenger = ScaffoldMessenger.of(context);
+              Navigator.pop(ctx);
+              final success = await ref
+                  .read(studentApprovalsProvider.notifier)
+                  .deleteStudent(student.id.isNotEmpty ? student.id : student.universityCode);
+
+              scaffoldMessenger.showSnackBar(
+                SnackBar(
+                  backgroundColor: success ? AppDesignTokens.danger : AppDesignTokens.warning,
+                  content: Text(success ? 'تم حذف حساب الطالب نهائياً من النظام 🗑️' : l10n.actionErrorMsg),
+                ),
+              );
+            },
+            child: const Text('تأكيد الحذف النهائي', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showReturnToPendingDialog(BuildContext context, UserProfile student, AppLocalizations l10n) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppDesignTokens.surface(context),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDesignTokens.radiusLg)),
+        title: Text(
+          l10n.returnToReviewDialogTitle,
+          style: TextStyle(color: AppDesignTokens.textPrimary(context), fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          l10n.returnToReviewDialogMessage,
+          style: TextStyle(fontSize: 13, color: AppDesignTokens.textSecondary(context)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(l10n.cancel),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppDesignTokens.primary),
             onPressed: () async {
               final scaffoldMessenger = ScaffoldMessenger.of(context);
               Navigator.pop(ctx);
@@ -137,62 +190,12 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
 
               scaffoldMessenger.showSnackBar(
                 SnackBar(
-                  backgroundColor: success ? AppColors.success : AppColors.warning,
+                  backgroundColor: success ? AppDesignTokens.success : AppDesignTokens.warning,
                   content: Text(success ? l10n.returnToReviewSuccessMsg : l10n.actionErrorMsg),
                 ),
               );
             },
             child: Text(l10n.confirmReturnToReview, style: const TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showDeleteDialog(BuildContext context, UserProfile student, AppLocalizations l10n) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.card(context),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 24),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                l10n.deleteStudentDialogTitle,
-                style: const TextStyle(color: AppColors.danger, fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          l10n.deleteStudentDialogMessage,
-          style: TextStyle(fontSize: 13, color: AppColors.subtext(context)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(l10n.cancel),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () async {
-              final scaffoldMessenger = ScaffoldMessenger.of(context);
-              Navigator.pop(ctx);
-              final success = await ref
-                  .read(studentApprovalsProvider.notifier)
-                  .deleteStudent(student.id);
-
-              scaffoldMessenger.showSnackBar(
-                SnackBar(
-                  backgroundColor: success ? AppColors.danger : AppColors.warning,
-                  content: Text(success ? l10n.deleteSuccessMsg : l10n.actionErrorMsg),
-                ),
-              );
-            },
-            child: Text(l10n.confirmDelete, style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -205,17 +208,18 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
     final isLeaderOrAdmin = user?.role == UserRole.leader || user?.role == UserRole.superAdmin;
     final asyncStudents = ref.watch(studentApprovalsProvider);
     final l10n = context.l10n;
+    final isDesktop = MediaQuery.of(context).size.width > 768;
 
     return Scaffold(
-      backgroundColor: AppColors.bg(context),
+      backgroundColor: AppDesignTokens.bg(context),
       appBar: AppBar(
         title: Text(
           l10n.studentApprovalsTitle,
-          style: TextStyle(color: AppColors.text(context), fontWeight: FontWeight.bold, fontSize: 16),
+          style: TextStyle(color: AppDesignTokens.textPrimary(context), fontWeight: FontWeight.bold, fontSize: 16),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh_rounded),
             tooltip: l10n.retry,
             onPressed: () {
               ref.read(studentApprovalsProvider.notifier).fetchStudentRequests();
@@ -224,17 +228,17 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
         ],
       ),
       body: asyncStudents.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const Center(child: CircularProgressIndicator(color: AppDesignTokens.primary)),
         error: (err, stack) => Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(l10n.errorLoadingRequests(err.toString()), style: TextStyle(color: AppColors.text(context))),
+              Text(l10n.errorLoadingRequests(err.toString()), style: TextStyle(color: AppDesignTokens.textPrimary(context))),
               const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: () =>
-                    ref.read(studentApprovalsProvider.notifier).fetchStudentRequests(),
-                child: Text(l10n.retry),
+              AppButton(
+                text: l10n.retry,
+                onPressed: () => ref.read(studentApprovalsProvider.notifier).fetchStudentRequests(),
+                size: AppButtonSize.small,
               ),
             ],
           ),
@@ -245,13 +249,10 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
           final approvedCount = students.where((s) => s.registrationStatus == RegistrationStatus.approved).length;
           final rejectedCount = students.where((s) => s.registrationStatus == RegistrationStatus.rejected).length;
 
-          // Filter by status & search query
           final filteredList = students.where((s) {
-            // Status filter
             if (_filterStatus != null && s.registrationStatus != _filterStatus) {
               return false;
             }
-            // Search query filter (Name, University Code, Email)
             if (_searchQuery.isNotEmpty) {
               final nameMatch = s.fullName.toLowerCase().contains(_searchQuery);
               final codeMatch = s.universityCode.toLowerCase().contains(_searchQuery);
@@ -267,75 +268,33 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
             children: [
               // Sticky Search & Filter Header
               Container(
-                color: AppColors.bg(context),
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                color: AppDesignTokens.bg(context),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                 child: Column(
                   children: [
-                    // Search Bar
-                    TextField(
+                    AppInput(
                       controller: _searchController,
-                      style: TextStyle(color: AppColors.text(context), fontSize: 13),
-                      decoration: InputDecoration(
-                        hintText: l10n.searchStudentsPlaceholder,
-                        hintStyle: TextStyle(color: AppColors.subtext(context).withValues(alpha: 0.6), fontSize: 12.5),
-                        prefixIcon: const Icon(Icons.search, size: 20, color: AppColors.primaryTeal),
-                        suffixIcon: _searchQuery.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
-                                onPressed: () => _searchController.clear(),
-                              )
-                            : null,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        filled: true,
-                        fillColor: AppColors.card(context),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: AppColors.border(context)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: AppColors.border(context)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppColors.primaryTeal, width: 1.5),
-                        ),
-                      ),
+                      hintText: l10n.searchStudentsPlaceholder,
+                      prefixIcon: const Icon(Icons.search_rounded, size: 20, color: AppDesignTokens.primary),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear_rounded, size: 18),
+                              onPressed: () => _searchController.clear(),
+                            )
+                          : null,
                     ),
-
                     const SizedBox(height: 10),
-
-                    // Filter Chips
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
                         children: [
-                          _buildFilterChip(
-                            context,
-                            l10n.filterAllWithCount(totalCount),
-                            null,
-                          ),
+                          _buildFilterChip('الكل ($totalCount)', null),
                           const SizedBox(width: 8),
-                          _buildFilterChip(
-                            context,
-                            l10n.filterPendingWithCount(pendingCount),
-                            RegistrationStatus.pending,
-                            chipColor: AppColors.warning,
-                          ),
+                          _buildFilterChip('قيد الانتظار ($pendingCount)', RegistrationStatus.pending, AppBadgeVariant.warning),
                           const SizedBox(width: 8),
-                          _buildFilterChip(
-                            context,
-                            l10n.filterApprovedWithCount(approvedCount),
-                            RegistrationStatus.approved,
-                            chipColor: AppColors.success,
-                          ),
+                          _buildFilterChip('معتمد ($approvedCount)', RegistrationStatus.approved, AppBadgeVariant.success),
                           const SizedBox(width: 8),
-                          _buildFilterChip(
-                            context,
-                            l10n.filterRejectedWithCount(rejectedCount),
-                            RegistrationStatus.rejected,
-                            chipColor: AppColors.danger,
-                          ),
+                          _buildFilterChip('مرفوض ($rejectedCount)', RegistrationStatus.rejected, AppBadgeVariant.danger),
                         ],
                       ),
                     ),
@@ -343,39 +302,147 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
                 ),
               ),
 
-              const Divider(height: 1, thickness: 1),
+              Divider(height: 1, color: AppDesignTokens.borderSubtle(context)),
 
-              // Student Cards List
+              // Table or Cards depending on viewport width
               Expanded(
                 child: filteredList.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(32.0),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.person_search_outlined, size: 48, color: AppColors.subtext(context).withValues(alpha: 0.5)),
-                              const SizedBox(height: 12),
-                              Text(
-                                l10n.noRequestsMatchingFilter,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: AppColors.subtext(context), fontSize: 13),
-                              ),
-                            ],
-                          ),
-                        ),
+                    ? const AppEmptyState(
+                        title: 'لا توجد طلبات مطابقة للفلتر',
+                        message: 'يرجى تغيير معايير البحث أو اختيار فلتر مختلف',
+                        icon: Icons.person_search_rounded,
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                        itemCount: filteredList.length,
-                        itemBuilder: (ctx, index) {
-                          final student = filteredList[index];
-                          return _buildStudentCard(context, student, isLeaderOrAdmin, l10n);
-                        },
-                      ),
+                    : isDesktop
+                        ? _buildDesktopTable(context, filteredList, isLeaderOrAdmin, l10n)
+                        : ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                            itemCount: filteredList.length,
+                            itemBuilder: (ctx, index) {
+                              final student = filteredList[index];
+                              return _buildStudentCard(context, student, isLeaderOrAdmin, l10n);
+                            },
+                          ),
               ),
             ],
           );
+        },
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String label, RegistrationStatus? status, [AppBadgeVariant variant = AppBadgeVariant.primary]) {
+    final isSelected = _filterStatus == status;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _filterStatus = status;
+        });
+      },
+      borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? AppDesignTokens.primary : AppDesignTokens.surface(context),
+          borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
+          border: Border.all(
+            color: isSelected ? AppDesignTokens.primary : AppDesignTokens.border(context),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+            color: isSelected ? Colors.white : AppDesignTokens.textPrimary(context),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopTable(
+    BuildContext context,
+    List<UserProfile> students,
+    bool isLeaderOrAdmin,
+    AppLocalizations l10n,
+  ) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: AppTable(
+        columns: const [
+          AppTableColumn(label: 'الطالب', flex: 3),
+          AppTableColumn(label: 'الكود الجامعي', flex: 2),
+          AppTableColumn(label: 'المعدل (GPA)', flex: 1),
+          AppTableColumn(label: 'المجموعة', flex: 1),
+          AppTableColumn(label: 'الحالة', flex: 2),
+          AppTableColumn(label: 'الإجراءات', flex: 2),
+        ],
+        itemCount: students.length,
+        rowBuilder: (ctx, index) {
+          final s = students[index];
+          final isPending = s.registrationStatus == RegistrationStatus.pending;
+
+          return [
+            Row(
+              children: [
+                AppAvatar(name: s.fullName, imageUrl: s.avatarUrl, size: AppAvatarSize.small),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    s.fullName,
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppDesignTokens.textPrimary(context)),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            Text(s.universityCode, style: TextStyle(fontSize: 12, color: AppDesignTokens.textSecondary(context))),
+            Text(s.gpa != null ? s.gpa!.toStringAsFixed(2) : '—', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+            Text(s.studentGroup.code, style: const TextStyle(fontWeight: FontWeight.bold, color: AppDesignTokens.primary)),
+            AppBadge(
+              label: s.registrationStatus.displayNameAr,
+              variant: s.registrationStatus == RegistrationStatus.approved
+                  ? AppBadgeVariant.success
+                  : (s.registrationStatus == RegistrationStatus.rejected ? AppBadgeVariant.danger : AppBadgeVariant.warning),
+              size: AppBadgeSize.small,
+            ),
+            if (isLeaderOrAdmin)
+              Row(
+                children: [
+                  if (isPending) ...[
+                    AppButton(
+                      text: 'اعتماد',
+                      variant: AppButtonVariant.primary,
+                      size: AppButtonSize.small,
+                      onPressed: () => ref.read(studentApprovalsProvider.notifier).approveStudent(s.id),
+                    ),
+                    const SizedBox(width: 6),
+                    AppButton(
+                      text: 'رفض',
+                      variant: AppButtonVariant.danger,
+                      size: AppButtonSize.small,
+                      onPressed: () => _showRejectDialog(context, s, l10n),
+                    ),
+                    const SizedBox(width: 6),
+                  ] else if (s.registrationStatus == RegistrationStatus.rejected) ...[
+                    AppButton(
+                      text: 'إعادة للمراجعة',
+                      variant: AppButtonVariant.secondary,
+                      size: AppButtonSize.small,
+                      onPressed: () => _showReturnToPendingDialog(context, s, l10n),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline_rounded, color: AppDesignTokens.danger, size: 20),
+                    tooltip: 'حذف نهائي للحساب',
+                    onPressed: () => _showDeleteDialog(context, s, l10n),
+                  ),
+                ],
+              )
+            else
+              Text('—', style: TextStyle(color: AppDesignTokens.textMuted(context))),
+          ];
         },
       ),
     );
@@ -390,49 +457,20 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
     final isPending = student.registrationStatus == RegistrationStatus.pending;
     final isApproved = student.registrationStatus == RegistrationStatus.approved;
     final isRejected = student.registrationStatus == RegistrationStatus.rejected;
-    final cardId = student.id.isNotEmpty ? student.id : student.universityCode;
-    final isAuditExpanded = _expandedAuditCards.contains(cardId);
 
-    final statusColor = isPending
-        ? AppColors.warning
-        : (isApproved ? AppColors.success : AppColors.danger);
-
-    final statusBg = isPending
-        ? AppColors.warningLight.withValues(alpha: 0.2)
-        : (isApproved
-            ? AppColors.successLight.withValues(alpha: 0.2)
-            : AppColors.dangerLight.withValues(alpha: 0.2));
-
-    final statusLabel = isPending
-        ? l10n.statusPending
-        : (isApproved ? l10n.statusApprovedShort : l10n.statusRejected);
-
-    final notifier = ref.read(studentApprovalsProvider.notifier);
-    final reviewerName = notifier.resolveReviewerName(student.reviewedBy);
+    final statusVariant = isPending
+        ? AppBadgeVariant.warning
+        : (isApproved ? AppBadgeVariant.success : AppBadgeVariant.danger);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: CustomCard(
-        borderColor: statusColor.withValues(alpha: 0.4),
+      padding: const EdgeInsets.only(bottom: 10.0),
+      child: AppCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top Row: Student Name & Status Badge & More Menu
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: AppColors.primaryTeal.withValues(alpha: 0.15),
-                  child: Text(
-                    student.fullName.isNotEmpty ? student.fullName.characters.first : 'S',
-                    style: const TextStyle(
-                      color: AppColors.primaryTeal,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
+                AppAvatar(name: student.fullName, imageUrl: student.avatarUrl, size: AppAvatarSize.medium),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -441,45 +479,17 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
                       Text(
                         student.fullName,
                         style: TextStyle(
-                          fontSize: 15,
+                          fontSize: 14.5,
                           fontWeight: FontWeight.bold,
-                          color: AppColors.text(context),
+                          color: AppDesignTokens.textPrimary(context),
                         ),
                       ),
                       const SizedBox(height: 2),
                       Row(
                         children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: statusBg,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              statusLabel,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: statusColor,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryTeal.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              '${l10n.labelGroup} ${student.studentGroup.code}',
-                              style: const TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.primaryTeal,
-                              ),
-                            ),
-                          ),
+                          AppBadge(label: student.registrationStatus.displayNameAr, variant: statusVariant, size: AppBadgeSize.small),
+                          const SizedBox(width: 6),
+                          AppBadge(label: 'مجموعة ${student.studentGroup.code}', variant: AppBadgeVariant.neutral, size: AppBadgeSize.small),
                         ],
                       ),
                     ],
@@ -487,10 +497,10 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
                 ),
                 if (isLeaderOrAdmin)
                   PopupMenuButton<String>(
-                    icon: Icon(Icons.more_vert, size: 20, color: AppColors.subtext(context)),
-                    tooltip: l10n.moreOptions,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    color: AppColors.card(context),
+                    icon: Icon(Icons.more_vert_rounded, size: 20, color: AppDesignTokens.textMuted(context)),
+                    tooltip: 'خيارات الحساب',
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDesignTokens.radiusMd)),
+                    color: AppDesignTokens.surface(context),
                     onSelected: (val) {
                       if (val == 'delete') {
                         _showDeleteDialog(context, student, l10n);
@@ -500,23 +510,23 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
                     },
                     itemBuilder: (ctx) => [
                       if (isRejected)
-                        PopupMenuItem(
+                        const PopupMenuItem(
                           value: 'return_pending',
                           child: Row(
                             children: [
-                              const Icon(Icons.replay_rounded, color: AppColors.primaryTeal, size: 18),
-                              const SizedBox(width: 8),
-                              Text(l10n.returnToReviewAction, style: TextStyle(fontSize: 12.5, color: AppColors.text(context))),
+                              Icon(Icons.replay_rounded, color: AppDesignTokens.primary, size: 18),
+                              SizedBox(width: 8),
+                              Text('إعادة للمراجعة والاعتماد', style: TextStyle(fontSize: 13)),
                             ],
                           ),
                         ),
-                      PopupMenuItem(
+                      const PopupMenuItem(
                         value: 'delete',
                         child: Row(
                           children: [
-                            const Icon(Icons.delete_outline, color: AppColors.danger, size: 18),
-                            const SizedBox(width: 8),
-                            Text(l10n.deleteStudentAction, style: const TextStyle(fontSize: 12.5, color: AppColors.danger)),
+                            Icon(Icons.delete_outline_rounded, color: AppDesignTokens.danger, size: 18),
+                            SizedBox(width: 8),
+                            Text('حذف نهائي للحساب 🗑️', style: TextStyle(fontSize: 13, color: AppDesignTokens.danger, fontWeight: FontWeight.bold)),
                           ],
                         ),
                       ),
@@ -527,79 +537,37 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
 
             const SizedBox(height: 12),
 
-            // Clean Information Grid
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: AppColors.muted(context).withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(8),
+                color: AppDesignTokens.surfaceMuted(context),
+                borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
               ),
               child: Column(
                 children: [
                   Row(
                     children: [
-                      Expanded(
-                        child: _buildDetailRow(
-                          context,
-                          l10n.labelUniversityCode,
-                          student.universityCode,
-                          Icons.badge_outlined,
-                        ),
-                      ),
-                      Expanded(
-                        child: _buildDetailRow(
-                          context,
-                          l10n.labelGpa,
-                          student.gpa != null ? student.gpa!.toStringAsFixed(2) : 'غير محدد',
-                          Icons.school_outlined,
-                          isHighlight: student.gpa != null,
-                        ),
-                      ),
+                      Expanded(child: _buildDetailRow(context, 'الكود:', student.universityCode)),
+                      Expanded(child: _buildDetailRow(context, 'المعدل GPA:', student.gpa != null ? student.gpa!.toStringAsFixed(2) : 'غير محدد')),
                     ],
                   ),
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Expanded(
-                        child: _buildDetailRow(
-                          context,
-                          l10n.labelEmail,
-                          student.email,
-                          Icons.email_outlined,
-                        ),
-                      ),
-                      Expanded(
-                        child: _buildDetailRow(
-                          context,
-                          l10n.labelPhone,
-                          student.phoneNumber.isNotEmpty ? student.phoneNumber : '—',
-                          Icons.phone_outlined,
-                        ),
-                      ),
+                      Expanded(child: _buildDetailRow(context, 'الهاتف:', student.phoneNumber.isNotEmpty ? student.phoneNumber : '—')),
+                      Expanded(child: _buildDetailRow(context, 'السكن:', student.isMatrouhResident ? 'مقيم مطروح' : 'مغترب')),
                     ],
                   ),
-                  if (student.residenceAddress.isNotEmpty || student.emergencyContact.isNotEmpty) ...[
+                  if (student.rejectionReason != null && student.rejectionReason!.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        if (student.residenceAddress.isNotEmpty)
-                          Expanded(
-                            child: _buildDetailRow(
-                              context,
-                              l10n.labelResidenceAddress,
-                              student.residenceAddress,
-                              Icons.home_outlined,
-                            ),
+                        Expanded(
+                          child: Text(
+                            'سبب الرفض: ${student.rejectionReason}',
+                            style: const TextStyle(fontSize: 11, color: AppDesignTokens.danger, fontWeight: FontWeight.w600),
                           ),
-                        if (student.emergencyContact.isNotEmpty)
-                          Expanded(
-                            child: _buildDetailRow(
-                              context,
-                              l10n.labelEmergencyContact,
-                              student.emergencyContact,
-                              Icons.contact_emergency_outlined,
-                            ),
-                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -607,135 +575,25 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
               ),
             ),
 
-            // Collapsible Audit Log Accordion
-            if (student.reviewedAt != null || student.createdAt != null) ...[
-              const SizedBox(height: 8),
-              InkWell(
-                onTap: () {
-                  setState(() {
-                    if (isAuditExpanded) {
-                      _expandedAuditCards.remove(cardId);
-                    } else {
-                      _expandedAuditCards.add(cardId);
-                    }
-                  });
-                },
-                borderRadius: BorderRadius.circular(6),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 2.0),
-                  child: Row(
-                    children: [
-                      Icon(
-                        isAuditExpanded ? Icons.expand_less : Icons.expand_more,
-                        size: 18,
-                        color: AppColors.primaryTeal,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        isAuditExpanded ? l10n.hideAuditHistory : l10n.showAuditHistory,
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.primaryTeal,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              if (isAuditExpanded) ...[
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.muted(context),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.border(context)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            isApproved
-                                ? Icons.check_circle
-                                : (isRejected ? Icons.cancel : Icons.pending_actions),
-                            size: 14,
-                            color: statusColor,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            isApproved
-                                ? l10n.auditOperationApproved
-                                : (isRejected ? l10n.auditOperationRejected : l10n.auditOperationReturned),
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.bold,
-                              color: statusColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        l10n.reviewedByLabel(reviewerName),
-                        style: TextStyle(fontSize: 11, color: AppColors.text(context), fontWeight: FontWeight.w500),
-                      ),
-                      if (student.reviewedAt != null)
-                        Text(
-                          l10n.reviewDateLabel(DateFormat('yyyy-MM-dd • hh:mm a').format(student.reviewedAt!)),
-                          style: TextStyle(fontSize: 10.5, color: AppColors.subtext(context)),
-                        ),
-                      if (student.rejectionReason != null && student.rejectionReason!.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppColors.danger.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            l10n.rejectionReasonLabel(student.rejectionReason!),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.danger,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ],
-
-            // Action Buttons for Leader/Admin
             if (isLeaderOrAdmin) ...[
-              const SizedBox(height: 12),
               if (isPending) ...[
+                const SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
                       flex: 3,
-                      child: CustomButton(
-                        text: l10n.approveAccountAction,
-                        icon: Icons.check_circle_outline,
-                        color: AppColors.success,
+                      child: AppButton(
+                        text: 'اعتماد الحساب',
+                        icon: Icons.check_circle_outline_rounded,
+                        variant: AppButtonVariant.primary,
+                        size: AppButtonSize.small,
                         onPressed: () async {
-                          final scaffoldMessenger = ScaffoldMessenger.of(context);
-                          final success = await ref
-                              .read(studentApprovalsProvider.notifier)
-                              .approveStudent(student.id);
-
-                          scaffoldMessenger.showSnackBar(
+                          final messenger = ScaffoldMessenger.of(context);
+                          final ok = await ref.read(studentApprovalsProvider.notifier).approveStudent(student.id);
+                          messenger.showSnackBar(
                             SnackBar(
-                              backgroundColor: success ? AppColors.success : AppColors.warning,
-                              content: Text(
-                                success ? l10n.approveSuccessMsg : l10n.actionErrorMsg,
-                              ),
+                              backgroundColor: ok ? AppDesignTokens.success : AppDesignTokens.danger,
+                              content: Text(ok ? 'تم اعتماد الطالب بنجاح ✅' : 'فشل الاعتماد ❌'),
                             ),
                           );
                         },
@@ -744,37 +602,42 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
                     const SizedBox(width: 8),
                     Expanded(
                       flex: 2,
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.danger,
-                          side: const BorderSide(color: AppColors.danger),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        icon: const Icon(Icons.cancel_outlined, size: 16),
-                        label: Text(l10n.rejectRequestAction, style: const TextStyle(fontSize: 12)),
+                      child: AppButton(
+                        text: 'رفض الطلب',
+                        icon: Icons.cancel_outlined,
+                        variant: AppButtonVariant.danger,
+                        size: AppButtonSize.small,
                         onPressed: () => _showRejectDialog(context, student, l10n),
                       ),
                     ),
                   ],
                 ),
               ] else if (isRejected) ...[
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryTeal,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: AppButton(
+                        text: 'إعادة للمراجعة 🔄',
+                        icon: Icons.replay_rounded,
+                        variant: AppButtonVariant.secondary,
+                        size: AppButtonSize.small,
+                        onPressed: () => _showReturnToPendingDialog(context, student, l10n),
+                      ),
                     ),
-                    icon: const Icon(Icons.replay_rounded, size: 16),
-                    label: Text(
-                      l10n.returnToReviewAction,
-                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 2,
+                      child: AppButton(
+                        text: 'حذف نهائي',
+                        icon: Icons.delete_outline_rounded,
+                        variant: AppButtonVariant.danger,
+                        size: AppButtonSize.small,
+                        onPressed: () => _showDeleteDialog(context, student, l10n),
+                      ),
                     ),
-                    onPressed: () => _showReturnToPendingDialog(context, student, l10n),
-                  ),
+                  ],
                 ),
               ],
             ],
@@ -784,56 +647,16 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
     );
   }
 
-  Widget _buildFilterChip(
-    BuildContext context,
-    String label,
-    RegistrationStatus? status, {
-    Color? chipColor,
-  }) {
-    final isSelected = _filterStatus == status;
-    final selectedBg = chipColor ?? AppColors.primaryTeal;
-
-    return ChoiceChip(
-      label: Text(label),
-      selected: isSelected,
-      selectedColor: selectedBg,
-      backgroundColor: AppColors.card(context),
-      side: BorderSide(
-        color: isSelected ? selectedBg : AppColors.border(context),
-        width: isSelected ? 1.5 : 1,
-      ),
-      labelStyle: TextStyle(
-        color: isSelected ? Colors.white : AppColors.text(context),
-        fontSize: 12,
-        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-      ),
-      onSelected: (_) => setState(() => _filterStatus = status),
-    );
-  }
-
-  Widget _buildDetailRow(
-    BuildContext context,
-    String title,
-    String value,
-    IconData icon, {
-    bool isHighlight = false,
-  }) {
+  Widget _buildDetailRow(BuildContext context, String label, String value) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Icon(icon, size: 13, color: isHighlight ? AppColors.accentCyan : AppColors.primaryTeal),
+        Text(label, style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context))),
         const SizedBox(width: 4),
-        Text('$title: ', style: TextStyle(fontSize: 11, color: AppColors.subtext(context))),
         Expanded(
           child: Text(
             value,
-            maxLines: 1,
+            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppDesignTokens.textPrimary(context)),
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: isHighlight ? FontWeight.bold : FontWeight.w600,
-              color: isHighlight ? AppColors.primaryTeal : AppColors.text(context),
-            ),
           ),
         ),
       ],

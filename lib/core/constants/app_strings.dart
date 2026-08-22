@@ -1,8 +1,8 @@
 class AppStrings {
   AppStrings._();
 
-  static const String appName = 'إمتياز مطروح';
-  static const String appSubtitle = 'نظام إدارة ومتابعة طلاب سنة الامتياز التمريضية بمحافظة مطروح';
+  static const String appName = 'MANU';
+  static const String appSubtitle = 'منظومة إدارة ومتابعة تدريب الامتياز التمريضي';
   
   // Roles
   static const String roleStudent = 'طالب امتياز';

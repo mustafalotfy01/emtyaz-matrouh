@@ -139,22 +139,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       latitude: _selectedHomeLat ?? 31.3520,
       longitude: _selectedHomeLng ?? 27.2410,
       role: UserRole.student,
-      studentGroup: _studentGroup,
+      studentGroup: StudentGroup.groupA,
     );
-
-    // Check capacity limit
-    final cap = ref.read(groupCapacityProvider).value ?? const GroupCapacityInfo();
-    if (!cap.isAvailable(_studentGroup, _gender)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'عذراً، اكتمل الحد الأقصى للمجموعة ${_studentGroup.code} (${_gender == "male" ? "20 ذكر" : "35 أنثى"}). يرجى اختيار المجموعة الأخرى.',
-          ),
-          backgroundColor: AppColors.danger,
-        ),
-      );
-      return;
-    }
 
     final success = await ref.read(authProvider.notifier).register(
           newProfile,

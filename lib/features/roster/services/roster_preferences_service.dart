@@ -101,7 +101,7 @@ class RosterPreferencesService {
             .eq('student_id', studentId)
             .order('preference_date', ascending: true);
 
-        if (res is List && res.isNotEmpty) {
+        if (res.isNotEmpty) {
           final rawList = res.map((json) => RosterPreference.fromJson(json)).toList();
           final normalized = normalizePreferences(rawList);
 
@@ -189,11 +189,19 @@ class RosterPreferencesService {
     final longCount = normalized.where((p) => p.preferenceShiftType == PreferenceShiftType.longShift).length;
     final nightCount = normalized.where((p) => p.preferenceShiftType == PreferenceShiftType.night).length;
 
+    // Validate weekly 36-hour rule
+    final weeklySummaries = ShiftRulesHelper.calculateWeeklySummaries(
+      month: month,
+      year: year,
+      preferences: normalized,
+    );
+
     // Validate using ShiftRulesHelper
     final validation = ShiftRulesHelper.validate(
       morningCount: morningCount,
       longCount: longCount,
       nightCount: nightCount,
+      weeklySummaries: weeklySummaries,
     );
 
     if (!validation.canSubmit) {
@@ -203,26 +211,7 @@ class RosterPreferencesService {
       };
     }
 
-    final daysInMonth = DateTime(year, month + 1, 0).day;
     final dbRosterUuid = await getCanonicalRosterUuid(month, year);
-
-    for (final p in normalized) {
-      final day = p.preferenceDate.day;
-      final isAllowed = ShiftRulesHelper.isDayAvailableForGroup(
-        day: day,
-        isGroupA: studentGroup == StudentGroup.groupA,
-        daysInMonth: daysInMonth,
-      );
-
-      if (!isAllowed) {
-        return {
-          'success': false,
-          'message': studentGroup == StudentGroup.groupA
-              ? 'المجموعة A مقيدة بالأيام من 1 إلى 15 فقط. اليوم $day غير صالح.'
-              : 'المجموعة B مقيدة بالأيام من 16 إلى نهاية الشهر. اليوم $day غير صالح.',
-        };
-      }
-    }
 
     final key = '$rosterId-$studentId';
     final submittedList = normalized.map((p) => p.copyWith(

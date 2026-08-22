@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/constants/app_colors.dart';
 import '../../../core/localization/app_localizations.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/widgets/ios/app_card.dart';
-import '../../../core/widgets/ios/app_section_header.dart';
+import '../../../core/theme/app_design_tokens.dart';
+import '../../../core/widgets/app_avatar.dart';
+import '../../../core/widgets/app_badge.dart';
+import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/app_section_header.dart';
 import '../../attendance/providers/attendance_provider.dart';
 import '../../attendance/screens/students_map_overview_screen.dart';
 import '../../auth/models/user_profile.dart';
 import '../../auth/providers/student_approvals_provider.dart';
+import '../../auth/screens/student_approvals_screen.dart';
+import '../../departments/providers/department_provider.dart';
+import '../../notifications/screens/send_notification_screen.dart';
+import '../../app_versions/screens/app_versions_screen.dart';
 import '../../roster/models/roster_preference.dart';
 import '../../roster/providers/roster_provider.dart';
-import '../../notifications/screens/send_notification_screen.dart';
 
 class LeaderDashboardScreen extends ConsumerWidget {
   const LeaderDashboardScreen({super.key});
@@ -22,10 +26,16 @@ class LeaderDashboardScreen extends ConsumerWidget {
     final leaderState = ref.watch(leaderRosterProvider);
     final studentsAsync = ref.watch(studentApprovalsProvider);
     final attendanceState = ref.watch(attendanceProvider);
+    final matrixAsync = ref.watch(distributionMatrixProvider);
     final l10n = context.l10n;
 
     final totalStudentsCount = studentsAsync.maybeWhen(
       data: (list) => list.length,
+      orElse: () => 0,
+    );
+
+    final pendingApprovalCount = studentsAsync.maybeWhen(
+      data: (list) => list.where((s) => s.registrationStatus == RegistrationStatus.pending).length,
       orElse: () => 0,
     );
 
@@ -34,7 +44,7 @@ class LeaderDashboardScreen extends ConsumerWidget {
         .length;
 
     return Scaffold(
-      backgroundColor: AppColors.bg(context),
+      backgroundColor: AppDesignTokens.bg(context),
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
@@ -42,26 +52,23 @@ class LeaderDashboardScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── 1. Leader Header Banner ────────────────────────────────────
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  gradient: AppColors.heroGradient,
-                  borderRadius: BorderRadius.circular(AppTheme.radiusXl),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.deepNavy.withOpacity(0.2),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
+              // ── 1. Supervision Station Header ─────────────────────────────
+              AppCard(
+                padding: const EdgeInsets.all(16),
+                variant: AppCardVariant.accentTeal,
                 child: Row(
                   children: [
-                    const CircleAvatar(
-                      backgroundColor: Colors.white24,
-                      radius: 24,
-                      child: Icon(Icons.admin_panel_settings_rounded, color: Colors.white, size: 28),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppDesignTokens.primary.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
+                      ),
+                      child: const Icon(
+                        Icons.admin_panel_settings_rounded,
+                        color: AppDesignTokens.primary,
+                        size: 26,
+                      ),
                     ),
                     const SizedBox(width: 14),
                     Expanded(
@@ -69,18 +76,22 @@ class LeaderDashboardScreen extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            l10n.isArabic ? 'لوحة تحكم منسق الامتياز' : 'Coordinator Dashboard',
-                            style: const TextStyle(
-                              fontSize: 18,
+                            l10n.isArabic ? 'منظومة إشراف وتنسيق الامتياز' : 'Internship Supervision Hub',
+                            style: TextStyle(
+                              fontSize: 16.5,
                               fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              letterSpacing: -0.2,
+                              color: AppDesignTokens.textPrimary(context),
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            l10n.isArabic ? 'متابعة الجداول، اعتمادات الروستر، وحضور المستشفيات' : 'Monitor schedules, roster approvals, and hospital attendance',
-                            style: const TextStyle(fontSize: 11.5, color: Colors.white70),
+                            l10n.isArabic
+                                ? 'متابعة الجداول، الاعتمادات، والحضور الميداني للأقسام'
+                                : 'Roster approvals, shift assignments, and hospital attendance',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: AppDesignTokens.textSecondary(context),
+                            ),
                           ),
                         ],
                       ),
@@ -91,139 +102,20 @@ class LeaderDashboardScreen extends ConsumerWidget {
 
               const SizedBox(height: 16),
 
-              // ── 2. Student Residence Map Entry Card ────────────────────────
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const StudentsMapOverviewScreen()),
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: AppColors.card(context),
-                      borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-                      border: Border.all(color: AppColors.border(context)),
-                      boxShadow: AppTheme.iosCardShadow(context),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryTeal.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(Icons.map_rounded, color: AppColors.primaryTeal, size: 24),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                l10n.isArabic ? 'خريطة توزيع الطلاب ومنازلهم 🗺️' : 'Intern Geographical Map 🗺️',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14.5,
-                                  color: AppColors.text(context),
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                l10n.isArabic ? 'عرض توزيع سكن الطلاب حول المستشفى (مقيمين / مغتربين)' : 'View student residence geofences around the hospital',
-                                style: TextStyle(color: AppColors.subtext(context), fontSize: 11.5),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppColors.subtext(context)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // ── 2.1 Broadcast Push Notification Entry Card ─────────────────
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const SendNotificationScreen()),
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: AppColors.card(context),
-                      borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-                      border: Border.all(color: AppColors.primaryTeal.withValues(alpha: 0.3)),
-                      boxShadow: AppTheme.iosCardShadow(context),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryTeal.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(Icons.campaign_rounded, color: AppColors.primaryTeal, size: 24),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                l10n.isArabic ? 'بث إشعار فوري للطلاب (Push Broadcast) 📢' : 'Broadcast Push Notification 📢',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14.5,
-                                  color: AppColors.text(context),
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                l10n.isArabic ? 'إرسال تنبيهات الروستر والتدريب للدفعة أو المجموعات أو الأقسام' : 'Send push alerts for roster, groups or departments',
-                                style: TextStyle(color: AppColors.subtext(context), fontSize: 11.5),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppColors.subtext(context)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 18),
-
-              // ── 3. Quick Stats Grid ────────────────────────────────────────
+              // ── 2. Primary KPI Metric Grid ─────────────────────────────────
               Row(
                 children: [
                   Expanded(
                     child: AppCard(
-                      padding: const EdgeInsets.all(14),
+                      padding: const EdgeInsets.all(12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(l10n.isArabic ? 'إجمالي الطلاب' : 'Total Interns', style: TextStyle(fontSize: 11.5, color: AppColors.subtext(context))),
+                          Text('إجمالي الطلاب', style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context))),
                           const SizedBox(height: 4),
                           Text(
                             '$totalStudentsCount',
-                            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.primaryTeal),
+                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppDesignTokens.primary),
                           ),
                         ],
                       ),
@@ -232,15 +124,15 @@ class LeaderDashboardScreen extends ConsumerWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: AppCard(
-                      padding: const EdgeInsets.all(14),
+                      padding: const EdgeInsets.all(12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(l10n.isArabic ? 'سجل الحضور' : 'Attendance Log', style: TextStyle(fontSize: 11.5, color: AppColors.subtext(context))),
+                          Text('الحضور الفعلي', style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context))),
                           const SizedBox(height: 4),
                           Text(
                             '${attendanceState.history.length}',
-                            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.success),
+                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppDesignTokens.success),
                           ),
                         ],
                       ),
@@ -249,15 +141,32 @@ class LeaderDashboardScreen extends ConsumerWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: AppCard(
-                      padding: const EdgeInsets.all(14),
+                      padding: const EdgeInsets.all(12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(l10n.isArabic ? 'بانتظار التقديم' : 'Pending', style: TextStyle(fontSize: 11.5, color: AppColors.subtext(context))),
+                          Text('اعتمادات معلقة', style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context))),
+                          const SizedBox(height: 4),
+                          Text(
+                            '$pendingApprovalCount',
+                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppDesignTokens.warning),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: AppCard(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('بانتظار التقديم', style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context))),
                           const SizedBox(height: 4),
                           Text(
                             '$pendingSubmissions',
-                            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.warning),
+                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppDesignTokens.danger),
                           ),
                         ],
                       ),
@@ -266,23 +175,257 @@ class LeaderDashboardScreen extends ConsumerWidget {
                 ],
               ),
 
+              const SizedBox(height: 16),
+
+              // ── 3. Department Distribution Matrix (Feature 7 & Supervision System) ──
+              AppSectionHeader(
+                title: 'مصفوفة توزيع الأقسام والأطباء المشرفين',
+                subtitle: 'مستشفى مطروح العام — توزيع الحصص والسعة الاستيعابية',
+              ),
+              const SizedBox(height: 8),
+
+              matrixAsync.when(
+                loading: () => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (err, _) => AppCard(
+                  padding: const EdgeInsets.all(12),
+                  child: Text('حدث خطأ أثناء تحميل مصفوفة التوزيع: $err'),
+                ),
+                data: (matrix) {
+                  if (matrix.isEmpty) {
+                    return const AppCard(
+                      padding: EdgeInsets.all(16),
+                      child: Text('لا توجد أقسام مسجلة بالمستشفى حالياً.'),
+                    );
+                  }
+
+                  return AppCard(
+                    padding: const EdgeInsets.all(12),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: DataTable(
+                        headingRowHeight: 40,
+                        dataRowMinHeight: 48,
+                        dataRowMaxHeight: 52,
+                        horizontalMargin: 12,
+                        columnSpacing: 16,
+                        columns: const [
+                          DataColumn(label: Text('القسم', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                          DataColumn(label: Text('المشرف الطبي', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                          DataColumn(label: Text('👨 الذكور', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                          DataColumn(label: Text('👩 الإناث', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                          DataColumn(label: Text('👥 الإجمالي', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                          DataColumn(label: Text('المتبقي', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                          DataColumn(label: Text('الحالة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                        ],
+                        rows: matrix.map((row) {
+                          return DataRow(
+                            cells: [
+                              DataCell(Text(row.departmentName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5))),
+                              DataCell(Text(row.doctorName, style: const TextStyle(fontSize: 12))),
+                              DataCell(Text('${row.currentMale} / ${row.maleCapacity}', style: const TextStyle(fontSize: 12))),
+                              DataCell(Text('${row.currentFemale} / ${row.femaleCapacity}', style: const TextStyle(fontSize: 12))),
+                              DataCell(Text('${row.currentTotal} / ${row.totalCapacity}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                              DataCell(
+                                Text(
+                                  '${row.remainingTotal} شاغر',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: row.remainingTotal > 0 ? AppDesignTokens.success : AppDesignTokens.danger,
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                AppBadge(
+                                  label: row.assignmentStatus == 'approved' ? 'معتمد' : 'مسودة',
+                                  variant: row.assignmentStatus == 'approved' ? AppBadgeVariant.success : AppBadgeVariant.warning,
+                                  size: AppBadgeSize.small,
+                                ),
+                              ),
+                            ],
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  );
+                },
+              ),
+
+              const SizedBox(height: 16),
+
+              // ── 4. Quick Action Hub ────────────────────────────────────────
+              Row(
+                children: [
+                  Expanded(
+                    child: AppCard(
+                      padding: const EdgeInsets.all(14),
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const StudentApprovalsScreen()),
+                        );
+                      },
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppDesignTokens.warning.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
+                            ),
+                            child: const Icon(Icons.how_to_reg_rounded, color: AppDesignTokens.warning, size: 20),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('طلبات التسجيل', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppDesignTokens.textPrimary(context))),
+                                Text('$pendingApprovalCount بانتظار الاعتماد', style: TextStyle(fontSize: 10.5, color: AppDesignTokens.textSecondary(context))),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.arrow_forward_ios_rounded, size: 12),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: AppCard(
+                      padding: const EdgeInsets.all(14),
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const SendNotificationScreen()),
+                        );
+                      },
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppDesignTokens.primary.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
+                            ),
+                            child: const Icon(Icons.campaign_rounded, color: AppDesignTokens.primary, size: 20),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('بث إشعار فوري', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppDesignTokens.textPrimary(context))),
+                                Text('تنبيهات الدفعة والأقسام', style: TextStyle(fontSize: 10.5, color: AppDesignTokens.textSecondary(context))),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.arrow_forward_ios_rounded, size: 12),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 10),
+
+              // Student GPS Map Overview Tile
+              AppCard(
+                padding: const EdgeInsets.all(14),
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const StudentsMapOverviewScreen()),
+                  );
+                },
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppDesignTokens.info.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
+                      ),
+                      child: const Icon(Icons.map_rounded, color: AppDesignTokens.info, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('خريطة توزيع الطلاب وسكنهم الميداني', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: AppDesignTokens.textPrimary(context))),
+                          Text('توزيع المقيمين والمغتربين حول المستشفى والنطاق الجغرافي', style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context))),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward_ios_rounded, size: 12),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              // ── 4.1. App Versions (Read-Only) ──────────────────────────────
+              AppCard(
+                padding: const EdgeInsets.all(14),
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AppVersionsScreen()),
+                  );
+                },
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppDesignTokens.primary.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
+                      ),
+                      child: const Icon(Icons.system_update_rounded, color: AppDesignTokens.primary, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('إصدارات التطبيق الرسمية (متابعة)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: AppDesignTokens.textPrimary(context))),
+                          Text('استعراض الإصدارات النشطة وملاحظات التحديثات (للعرض)', style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context))),
+                        ],
+                      ),
+                    ),
+                    const AppBadge(label: 'للعرض', variant: AppBadgeVariant.neutral, size: AppBadgeSize.small),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.arrow_forward_ios_rounded, size: 12),
+                  ],
+                ),
+              ),
+
               const SizedBox(height: 20),
 
-              // ── 4. Student Preferences Submissions Status ──────────────────
+              // ── 5. Student Roster Preferences Status ───────────────────────
               AppSectionHeader(
                 title: l10n.isArabic ? 'تفضيلات الروستر للطلاب' : 'Intern Shift Proposals',
                 subtitle: l10n.isArabic ? 'حالة تسليم المقترحات ومراجعة المشرف' : 'Submission status and coordinator review',
-                actionText: '${leaderState.summaries.length} ${l10n.isArabic ? "طالب" : "interns"}',
+                actionText: '${leaderState.summaries.length} طالب',
               ),
               const SizedBox(height: 10),
 
               if (leaderState.summaries.isEmpty)
                 AppCard(
-                  padding: const EdgeInsets.all(30),
+                  padding: const EdgeInsets.all(28),
                   child: Center(
                     child: Text(
-                      l10n.isArabic ? 'لا توجد بيانات تفضيلات طلاب مسجلة حالياً ✅' : 'No intern proposals recorded yet ✅',
-                      style: TextStyle(color: AppColors.subtext(context), fontSize: 13),
+                      'لا توجد مقترحات مسجلة حالياً ✅',
+                      style: TextStyle(color: AppDesignTokens.textSecondary(context), fontSize: 13),
                     ),
                   ),
                 )
@@ -291,20 +434,16 @@ class LeaderDashboardScreen extends ConsumerWidget {
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: leaderState.summaries.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  separatorBuilder: (context, index) => const SizedBox(height: 8),
                   itemBuilder: (context, index) {
                     final s = leaderState.summaries[index];
                     return AppCard(
-                      padding: const EdgeInsets.all(14),
+                      padding: const EdgeInsets.all(12),
                       child: Row(
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryTeal.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(Icons.person_rounded, color: AppColors.primaryTeal, size: 20),
+                          AppAvatar(
+                            name: s.studentName,
+                            size: AppAvatarSize.small,
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -313,30 +452,30 @@ class LeaderDashboardScreen extends ConsumerWidget {
                               children: [
                                 Text(
                                   s.studentName,
-                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.text(context)),
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: AppDesignTokens.textPrimary(context)),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  '${s.studentGroup == StudentGroup.groupA ? l10n.groupA : l10n.groupB} • ${l10n.shiftMorningLetter}: ${s.prefMorningCount} | ${l10n.shiftLongLetter}: ${s.prefLongCount} | ${l10n.shiftNightLetter}: ${s.prefNightCount}',
-                                  style: TextStyle(fontSize: 11.5, color: AppColors.subtext(context)),
+                                  '${s.studentGroup == StudentGroup.groupA ? l10n.groupA : l10n.groupB} • صباحي: ${s.prefMorningCount} | طويل: ${s.prefLongCount} | ليلي: ${s.prefNightCount} • ${s.isSubmitted ? 'تم الإرسال 📨' : 'مسودة 📝'}',
+                                  style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
                                 ),
                               ],
                             ),
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: s.isPrefComplete ? AppColors.successLight : AppColors.warningLight,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              s.isPrefComplete ? (l10n.isArabic ? 'مكتمل (12)' : 'Done (12)') : (l10n.isArabic ? 'قيد الاختيار' : 'In Progress'),
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: s.isPrefComplete ? AppColors.success : AppColors.warning,
-                              ),
-                            ),
+                          AppBadge(
+                            label: s.totalPrefCount == 0
+                                ? 'لم يبدأ (0/12)'
+                                : (s.totalPrefCount == 12 && s.isPrefComplete
+                                    ? 'مكتمل ومستوفٍ (12/12) ✅'
+                                    : (s.totalPrefCount > 12
+                                        ? '${s.totalPrefCount}/12 (زيادة ${s.totalPrefCount - 12}) ⚠️'
+                                        : '${s.totalPrefCount}/12 (متبقي ${12 - s.totalPrefCount}) ⏳')),
+                            variant: s.totalPrefCount == 12 && s.isPrefComplete
+                                ? AppBadgeVariant.success
+                                : (s.totalPrefCount > 12
+                                    ? AppBadgeVariant.danger
+                                    : (s.totalPrefCount == 0 ? AppBadgeVariant.neutral : AppBadgeVariant.warning)),
+                            size: AppBadgeSize.small,
                           ),
                         ],
                       ),

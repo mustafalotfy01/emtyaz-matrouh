@@ -148,7 +148,7 @@ class FirebaseMessagingService {
       _foregroundSubscription = FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         if (kDebugMode) print('[FCM] Foreground message received: ${message.messageId}');
 
-        final title = message.notification?.title ?? message.data['title'] ?? 'امتياز مطروح';
+        final title = message.notification?.title ?? message.data['title'] ?? 'MANU';
         final body = message.notification?.body ?? message.data['body'] ?? 'لديك تحديث جديد';
         final route = message.data['route'] ?? '/';
 

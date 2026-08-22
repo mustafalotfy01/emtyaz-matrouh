@@ -131,6 +131,7 @@ class UserProfile {
   final String residenceAddress;
   final double? latitude;
   final double? longitude;
+  final String? avatarUrl;
   final UserRole role;
   final StudentGroup studentGroup;
   final RegistrationStatus registrationStatus;
@@ -155,6 +156,7 @@ class UserProfile {
     required this.residenceAddress,
     this.latitude,
     this.longitude,
+    this.avatarUrl,
     required this.role,
     this.studentGroup = StudentGroup.groupA,
     this.registrationStatus = RegistrationStatus.pending,
@@ -195,6 +197,7 @@ class UserProfile {
       residenceAddress: json['residence_address'] ?? '',
       latitude: json['latitude'] != null ? (json['latitude'] as num).toDouble() : null,
       longitude: json['longitude'] != null ? (json['longitude'] as num).toDouble() : null,
+      avatarUrl: json['avatar_url'] ?? json['avatarUrl'],
       role: UserRole.fromString(json['role'] ?? 'student'),
       studentGroup: StudentGroup.fromString(json['student_group'] ?? json['group']),
       registrationStatus: RegistrationStatus.fromString(json['registration_status'] ?? 'pending'),
@@ -222,6 +225,7 @@ class UserProfile {
       'residence_address': residenceAddress,
       'latitude': latitude,
       'longitude': longitude,
+      'avatar_url': avatarUrl,
       'role': role.toDbString(),
       'student_group': studentGroup.code,
       'registration_status': registrationStatus.toDbString(),
@@ -239,12 +243,16 @@ class UserProfile {
       'university_code': universityCode,
       'phone_number': phoneNumber,
       'national_id': nationalId,
+      'gpa': gpa,
+      'latitude': latitude,
+      'longitude': longitude,
       'gender': gender,
       'marital_status': maritalStatus,
       'children_count': childrenCount,
       'is_matrouh_resident': isMatrouhResident,
       'emergency_contact': emergencyContact,
       'residence_address': residenceAddress,
+      'avatar_url': avatarUrl,
       'role': role.toDbString(),
       'student_group': studentGroup.code,
       'is_approved': isApproved,
@@ -271,6 +279,7 @@ class UserProfile {
     String? residenceAddress,
     double? latitude,
     double? longitude,
+    String? avatarUrl,
     UserRole? role,
     StudentGroup? studentGroup,
     RegistrationStatus? registrationStatus,
@@ -295,6 +304,7 @@ class UserProfile {
       residenceAddress: residenceAddress ?? this.residenceAddress,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
       role: role ?? this.role,
       studentGroup: studentGroup ?? this.studentGroup,
       registrationStatus: registrationStatus ?? this.registrationStatus,

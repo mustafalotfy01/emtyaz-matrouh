@@ -1,21 +1,85 @@
 enum QuestionType { mcq, trueFalse, caseStudy }
 
+extension QuestionTypeExt on QuestionType {
+  String get displayNameAr {
+    switch (this) {
+      case QuestionType.mcq:
+        return 'اختيار من متعدد';
+      case QuestionType.trueFalse:
+        return 'صح أم خطأ';
+      case QuestionType.caseStudy:
+        return 'دراسة حالة سريرية';
+    }
+  }
+
+  String toDbString() {
+    switch (this) {
+      case QuestionType.mcq:
+        return 'mcq';
+      case QuestionType.trueFalse:
+        return 'true_false';
+      case QuestionType.caseStudy:
+        return 'case_study';
+    }
+  }
+}
+
 class QuizQuestion {
   final String id;
+  final String quizId;
   final String questionText;
   final QuestionType type;
   final List<String> options;
   final int correctOptionIndex;
   final String explanation;
+  final int durationSeconds;
+  final int orderIndex;
 
   QuizQuestion({
     required this.id,
+    required this.quizId,
     required this.questionText,
     required this.type,
     required this.options,
     required this.correctOptionIndex,
     required this.explanation,
+    this.durationSeconds = 30,
+    this.orderIndex = 0,
   });
+
+  factory QuizQuestion.fromJson(Map<String, dynamic> json) {
+    QuestionType qType = QuestionType.mcq;
+    final typeStr = json['type']?.toString().toLowerCase();
+    if (typeStr == 'true_false' || typeStr == 'truefalse') {
+      qType = QuestionType.trueFalse;
+    } else if (typeStr == 'case_study' || typeStr == 'casestudy') {
+      qType = QuestionType.caseStudy;
+    }
+
+    List<String> parsedOptions = [];
+    final rawOptions = json['options'];
+    if (rawOptions is List) {
+      parsedOptions = rawOptions.map((o) => o.toString()).toList();
+    } else if (rawOptions is Map) {
+      parsedOptions = rawOptions.values.map((o) => o.toString()).toList();
+    }
+
+    if (parsedOptions.isEmpty && qType == QuestionType.trueFalse) {
+      parsedOptions = ['صح', 'خطأ'];
+    }
+
+    return QuizQuestion(
+      id: json['id']?.toString() ?? '',
+      quizId: json['quiz_id']?.toString() ?? '',
+      questionText: json['question_text']?.toString() ?? '',
+      type: qType,
+      options: parsedOptions,
+      correctOptionIndex: (json['correct_option_index'] as num?)?.toInt() ?? 0,
+      explanation: json['explanation']?.toString() ?? '',
+      durationSeconds: (json['duration_seconds'] as num?)?.toInt() ?? 30,
+      orderIndex: (json['order_index'] as num?)?.toInt() ?? 0,
+    );
+  }
 }
 
 class Quiz {
@@ -23,8 +87,10 @@ class Quiz {
   final String title;
   final String description;
   final String departmentName;
+  final String? departmentId;
   final int timeLimitMinutes;
   final int passingScorePercentage;
+  final bool isActive;
   final List<QuizQuestion> questions;
 
   Quiz({
@@ -32,70 +98,90 @@ class Quiz {
     required this.title,
     required this.description,
     required this.departmentName,
+    this.departmentId,
     required this.timeLimitMinutes,
     required this.passingScorePercentage,
+    this.isActive = true,
     required this.questions,
   });
 
-  static List<Quiz> defaultQuizzes() {
-    return [
-      Quiz(
-        id: 'quiz-1',
-        title: 'اختبار إجراءات قسطرة البول والتغذية الأنبوبية (Emergency & ICU)',
-        description: 'اختبار تقييمي لقياس المعرفة العملية لخطوات Foley Catheter و NG Tube',
-        departmentName: 'قسم الطوارئ والعناية',
-        timeLimitMinutes: 10,
-        passingScorePercentage: 70,
-        questions: [
-          QuizQuestion(
-            id: 'q1',
-            questionText: 'ما هي المسافة السليمة لتشحيم قسطرة البول للذكور قبل الإدخال؟',
-            type: QuestionType.mcq,
-            options: ['1 - 2 سم', '5 - 7 سم', '15 - 20 سم', '30 سم'],
-            correctOptionIndex: 2,
-            explanation: 'في الذكور يجب تشحيم القسطرة بجل المزيّت لمسافة 15 إلى 20 سم لتقليل الاحتكاك بمجرى البول الطويل.',
-          ),
-          QuizQuestion(
-            id: 'q2',
-            questionText: 'عند تركيب الرايل (NG Tube)، يتم قياس الطول المطلوب من أذن المريض إلى الأنف ثم إلى الصدر (Xiphoid process)؟',
-            type: QuestionType.trueFalse,
-            options: ['صح', 'خطأ'],
-            correctOptionIndex: 0,
-            explanation: 'القياس الصحيح هو من أرنبة الأنف إلى شحمة الأذن ثم إلى أسفل العظمة القصية (NEX Measurement).',
-          ),
-          QuizQuestion(
-            id: 'q3',
-            questionText: 'مريض بالعناية الباطنية يعاني من هبوط في مستوى الوعي وتسارع بالأنفاس (ABG: pH 7.25, PaCO2 55). ما هو إجراء التمريض الأولي؟',
-            type: QuestionType.caseStudy,
-            options: [
-              'إعطاء المريض مسكن قوي',
-              'تجهيز أدوات التنفس الصناعي والشفط الهوائي فوراً للتنبيب الوريدي',
-              'إيقاف الأكسجين تماماً',
-              'إعطاء المريض محلول ملحي بالوريد'
-            ],
-            correctOptionIndex: 1,
-            explanation: 'الحالة تعبر عن الحماض التنفسي (Respiratory Acidosis) وتتطلب تأمين مجرى الهواء والتنفس الميكانيكي.',
-          ),
-        ],
-      ),
-      Quiz(
-        id: 'quiz-2',
-        title: 'أساسيات العناية بالقلب وحساب جرعات الأدوية الحرجة',
-        description: 'اختبار الحسابات التمريضية وجرعات الإينوتروبس في قسم CCU',
-        departmentName: 'عناية القلب (CCU)',
-        timeLimitMinutes: 15,
-        passingScorePercentage: 80,
-        questions: [
-          QuizQuestion(
-            id: 'q2-1',
-            questionText: 'مطلوب إعطاء 500 مل محلول على مدار 4 ساعات بواسطة جهاز تنقيط بمعامل 15 نقطة/مل. كم عدد النقاط/دقيقة؟',
-            type: QuestionType.mcq,
-            options: ['31 نقطة/دقيقة', '52 نقطة/دقيقة', '60 نقطة/دقيقة', '100 نقطة/دقيقة'],
-            correctOptionIndex: 0,
-            explanation: 'الحساب: (500 × 15) ÷ (4 × 60) = 7500 ÷ 240 = 31.25 نقطة/دقيقة.',
-          ),
-        ],
-      ),
-    ];
+  factory Quiz.fromJson(Map<String, dynamic> json) {
+    List<QuizQuestion> qList = [];
+    if (json['quiz_questions'] is List) {
+      qList = (json['quiz_questions'] as List)
+          .map((q) => QuizQuestion.fromJson(q as Map<String, dynamic>))
+          .toList();
+    }
+
+    return Quiz(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      description: json['description']?.toString() ?? '',
+      departmentName: json['departments'] != null && json['departments']['name_ar'] != null
+          ? json['departments']['name_ar'].toString()
+          : (json['department_name']?.toString() ?? 'قسم التمريض العام'),
+      departmentId: json['department_id']?.toString(),
+      timeLimitMinutes: (json['time_limit_minutes'] as num?)?.toInt() ?? 10,
+      passingScorePercentage: (json['passing_score_percentage'] ?? json['passing_score'] as num?)?.toInt() ?? 70,
+      isActive: json['is_active'] != false,
+      questions: qList,
+    );
+  }
+}
+
+class QuizAttemptResult {
+  final String quizId;
+  final String studentId;
+  final int totalQuestions;
+  final int correctCount;
+  final int incorrectCount;
+  final int unansweredCount;
+  final double scorePercentage;
+  final bool passed;
+  final int completionTimeSeconds;
+  final Map<int, int?> userAnswers;
+
+  QuizAttemptResult({
+    required this.quizId,
+    required this.studentId,
+    required this.totalQuestions,
+    required this.correctCount,
+    required this.incorrectCount,
+    required this.unansweredCount,
+    required this.scorePercentage,
+    required this.passed,
+    required this.completionTimeSeconds,
+    required this.userAnswers,
+  });
+}
+
+class QuizAttempt {
+  final String id;
+  final String quizId;
+  final String studentId;
+  final double scorePercentage;
+  final bool passed;
+  final DateTime completedAt;
+
+  QuizAttempt({
+    required this.id,
+    required this.quizId,
+    required this.studentId,
+    required this.scorePercentage,
+    required this.passed,
+    required this.completedAt,
+  });
+
+  factory QuizAttempt.fromJson(Map<String, dynamic> json) {
+    return QuizAttempt(
+      id: json['id']?.toString() ?? '',
+      quizId: json['quiz_id']?.toString() ?? '',
+      studentId: json['student_id']?.toString() ?? '',
+      scorePercentage: (json['score_percentage'] as num?)?.toDouble() ?? 0.0,
+      passed: json['passed'] == true,
+      completedAt: json['completed_at'] != null
+          ? DateTime.parse(json['completed_at'].toString())
+          : DateTime.now(),
+    );
   }
 }

@@ -195,10 +195,12 @@ class RosterService {
   static Future<List<RosterPreference>> loadStudentPreferences({
     required String studentId,
     required String rosterId,
-    required int month,
-    required int year,
+    int? month,
+    int? year,
   }) async {
-    final dbRosterUuid = await getRosterUuid(month, year);
+    final m = month ?? int.tryParse(rosterId.split('-').last) ?? _currentMonthState.month;
+    final y = year ?? int.tryParse(rosterId.split('-').first) ?? _currentMonthState.year;
+    final dbRosterUuid = await getRosterUuid(m, y);
     final key = '$rosterId-$studentId';
 
     // 1. Try Supabase by studentId first (Source of Truth)
@@ -210,7 +212,7 @@ class RosterService {
             .eq('student_id', studentId)
             .order('preference_date', ascending: true);
 
-        if (res is List && res.isNotEmpty) {
+        if (res.isNotEmpty) {
           final rawList = res.map((json) => RosterPreference.fromJson(json)).toList();
           final normalized = _normalizePreferences(rawList);
 
@@ -272,12 +274,32 @@ class RosterService {
             'roster_id': dbRosterUuid,
           }).toList();
 
-          await SupabaseService.client
-              .from('roster_preferences')
-              .upsert(
-                payload,
-                onConflict: 'student_id,roster_id,preference_date',
-              );
+          try {
+            await SupabaseService.client
+                .from('roster_preferences')
+                .upsert(
+                  payload,
+                  onConflict: 'student_id,roster_id,preference_date',
+                );
+          } catch (upsertErr) {
+            // Fallback for legacy DB schema where shift_type column is not yet present
+            if (upsertErr.toString().contains('shift_type') || upsertErr.toString().contains('PGRST204')) {
+              final fallbackPayload = payload.map((row) {
+                final copy = Map<String, dynamic>.from(row);
+                copy.remove('shift_type');
+                return copy;
+              }).toList();
+
+              await SupabaseService.client
+                  .from('roster_preferences')
+                  .upsert(
+                    fallbackPayload,
+                    onConflict: 'student_id,roster_id,preference_date',
+                  );
+            } else {
+              rethrow;
+            }
+          }
         }
       } catch (e) {
         if (kDebugMode) print('Supabase savePreferences error: $e');
@@ -357,12 +379,31 @@ class RosterService {
             'roster_id': dbRosterUuid,
           }).toList();
 
-          await SupabaseService.client
-              .from('roster_preferences')
-              .upsert(
-                payload,
-                onConflict: 'student_id,roster_id,preference_date',
-              );
+          try {
+            await SupabaseService.client
+                .from('roster_preferences')
+                .upsert(
+                  payload,
+                  onConflict: 'student_id,roster_id,preference_date',
+                );
+          } catch (upsertErr) {
+            if (upsertErr.toString().contains('shift_type') || upsertErr.toString().contains('PGRST204')) {
+              final fallbackPayload = payload.map((row) {
+                final copy = Map<String, dynamic>.from(row);
+                copy.remove('shift_type');
+                return copy;
+              }).toList();
+
+              await SupabaseService.client
+                  .from('roster_preferences')
+                  .upsert(
+                    fallbackPayload,
+                    onConflict: 'student_id,roster_id,preference_date',
+                  );
+            } else {
+              rethrow;
+            }
+          }
 
           // Clean up any removed dates
           final currentDates = normalized.map((p) =>
@@ -462,7 +503,10 @@ class RosterService {
     final Map<String, UserProfile> studentMap = {};
 
     void addOrMergeStudent(UserProfile s) {
+      // STRICT FILTER: Only approved students can appear on the Roster
       if (s.role != UserRole.student) return;
+      if (!s.isApproved || s.registrationStatus != RegistrationStatus.approved) return;
+
       final dedupKey = s.universityCode.isNotEmpty
           ? s.universityCode
           : (s.email.isNotEmpty ? s.email.toLowerCase() : s.id);
@@ -477,26 +521,27 @@ class RosterService {
       }
     }
 
-    // 1. Add from local memory registry
+    // 1. Add from local memory registry (approved only)
     for (final s in getRegisteredStudentsList()) {
       addOrMergeStudent(s);
     }
 
-    // 2. Add from passed registeredStudents
+    // 2. Add from passed registeredStudents (approved only)
     for (final s in registeredStudents) {
       addOrMergeStudent(s);
     }
 
-    // 3. Always fetch latest from Supabase profiles
+    // 3. Always fetch latest from Supabase profiles (approved only)
     if (SupabaseService.isInitialized) {
       try {
         final res = await SupabaseService.client
             .from('profiles')
             .select()
             .eq('role', 'student')
+            .or('is_approved.eq.true,registration_status.eq.approved')
             .order('full_name', ascending: true);
 
-        if (res is List && res.isNotEmpty) {
+        if (res.isNotEmpty) {
           for (final row in res) {
             final f = UserProfile.fromJson(row);
             addOrMergeStudent(f);
@@ -516,7 +561,7 @@ class RosterService {
             .select('*, profiles!roster_entries_student_id_fkey(full_name), departments(name_ar)')
             .eq('roster_id', dbRosterUuid);
 
-        if (res is List && res.isNotEmpty) {
+        if (res.isNotEmpty) {
           for (final row in res) {
             final entry = RosterEntry.fromJson(row);
             dbEntriesByStudent.putIfAbsent(entry.studentId, () => []).add(entry);
@@ -531,7 +576,9 @@ class RosterService {
     final List<StudentRosterSummary> summaries = [];
 
     for (final student in students) {
-      if (student.role != UserRole.student) continue;
+      if (student.role != UserRole.student || !student.isApproved || student.registrationStatus != RegistrationStatus.approved) {
+        continue;
+      }
 
       var prefs = await loadStudentPreferences(
         studentId: student.id,
@@ -780,9 +827,59 @@ class RosterService {
           'published_by': (leaderId.contains('-') && leaderId.length > 20) ? leaderId : null,
         }).eq('id', dbRosterUuid);
 
-        await SupabaseService.client.from('roster_entries').update({
-          'status': 'published',
-        }).eq('roster_id', dbRosterUuid);
+        // Convert student preferences / assignments to official roster_entries
+        final List<Map<String, dynamic>> entriesPayload = [];
+        final defaultDeptId = 'a0000001-0000-0000-0000-000000000001';
+
+        for (final summary in summaries) {
+          if (summary.assignedShifts.isNotEmpty) {
+            for (final shift in summary.assignedShifts) {
+              entriesPayload.add({
+                'roster_id': dbRosterUuid,
+                'student_id': summary.studentId,
+                'department_id': (shift.departmentId.length == 36 && shift.departmentId.contains('-'))
+                    ? shift.departmentId
+                    : defaultDeptId,
+                'shift_date': shift.shiftDate.toIso8601String().split('T').first,
+                'shift_type': shift.shiftType.name,
+                'status': 'published',
+                'approved_by': (leaderId.contains('-') && leaderId.length > 20) ? leaderId : null,
+                'approved_at': DateTime.now().toIso8601String(),
+              });
+            }
+          } else if (summary.preferences.isNotEmpty) {
+            for (final pref in summary.preferences) {
+              final shiftTypeName = pref.preferenceShiftType == PreferenceShiftType.night
+                  ? 'night'
+                  : (pref.preferenceShiftType == PreferenceShiftType.morning ? 'morning' : 'long');
+              entriesPayload.add({
+                'roster_id': dbRosterUuid,
+                'student_id': summary.studentId,
+                'department_id': defaultDeptId,
+                'shift_date': pref.preferenceDate.toIso8601String().split('T').first,
+                'shift_type': shiftTypeName,
+                'status': 'published',
+                'approved_by': (leaderId.contains('-') && leaderId.length > 20) ? leaderId : null,
+                'approved_at': DateTime.now().toIso8601String(),
+              });
+            }
+          }
+        }
+
+        if (entriesPayload.isNotEmpty) {
+          await SupabaseService.client
+              .from('roster_entries')
+              .delete()
+              .eq('roster_id', dbRosterUuid);
+
+          await SupabaseService.client
+              .from('roster_entries')
+              .insert(entriesPayload);
+        } else {
+          await SupabaseService.client.from('roster_entries').update({
+            'status': 'published',
+          }).eq('roster_id', dbRosterUuid);
+        }
 
         // Audit log
         try {
@@ -791,7 +888,7 @@ class RosterService {
             'action_type': 'roster_published',
             'entity_name': 'rosters',
             'entity_id': dbRosterUuid,
-            'new_values': {'published_at': DateTime.now().toIso8601String(), 'status': 'published'},
+            'new_values': {'published_at': DateTime.now().toIso8601String(), 'status': 'published', 'entries_count': entriesPayload.length},
           });
         } catch (_) {}
       } catch (e) {
@@ -865,7 +962,7 @@ class RosterService {
             .eq('student_id', studentId)
             .order('shift_date', ascending: true);
 
-        if (res is List && res.isNotEmpty) {
+        if (res.isNotEmpty) {
           final list = res.map((r) => RosterEntry.fromJson(r)).toList();
           _finalRosterMemoryStore[key] = list;
           return list;
@@ -876,5 +973,37 @@ class RosterService {
     }
 
     return _finalRosterMemoryStore[key] ?? [];
+  }
+
+  /// Loads all final roster entries across all students for a specific month/year
+  static List<RosterEntry> getAllFinalRosterEntriesForMonth(int month, int year) {
+    final List<RosterEntry> results = [];
+    _finalRosterMemoryStore.forEach((k, list) {
+      for (final e in list) {
+        if (e.shiftDate.month == month && e.shiftDate.year == year) {
+          if (!results.any((r) => r.id == e.id || (r.studentId == e.studentId && r.shiftDate.day == e.shiftDate.day))) {
+            results.add(e);
+          }
+        }
+      }
+    });
+    return results;
+  }
+
+  /// Loads final roster entries for a student for a specific month/year
+  static List<RosterEntry> getStudentFinalRosterEntriesForMonth(String studentId, int month, int year) {
+    final List<RosterEntry> results = [];
+    _finalRosterMemoryStore.forEach((k, list) {
+      if (k.endsWith('-$studentId')) {
+        for (final e in list) {
+          if (e.shiftDate.month == month && e.shiftDate.year == year) {
+            if (!results.any((r) => r.shiftDate.day == e.shiftDate.day)) {
+              results.add(e);
+            }
+          }
+        }
+      }
+    });
+    return results;
   }
 }

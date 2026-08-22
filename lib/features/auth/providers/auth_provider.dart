@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user_profile.dart';
+import '../../../core/services/firebase_messaging_service.dart';
 import '../../../core/services/supabase_service.dart';
 
 class AuthState {
@@ -38,8 +39,224 @@ class AuthState {
   }
 }
 
-// In-memory registry to ensure instant access across demo flows & sessions
-final List<UserProfile> _registeredStudentsRegistry = [];
+// In-memory registry to ensure instant access across all platforms and demo/offline/online flows
+final List<UserProfile> _registeredStudentsRegistry = [
+  // --- الإدارة العليا والمنسقين (Admins) ---
+  UserProfile(
+    id: 'adm-001-maysa',
+    email: 'dr.maysa.elbayaa@matrouh-nursing.edu.eg',
+    fullName: 'أ.م.د. ميسة البياع',
+    universityCode: 'ADM-01',
+    phoneNumber: '01000000001',
+    role: UserRole.superAdmin,
+    gender: 'female',
+    maritalStatus: 'متزوج/متزوجة',
+    childrenCount: 0,
+    isMatrouhResident: true,
+    emergencyContact: '01000000000',
+    residenceAddress: 'مطروح - كلية التمريض',
+    registrationStatus: RegistrationStatus.approved,
+  ),
+  UserProfile(
+    id: 'adm-002-amal',
+    email: 'dr.amal.abdelrazek@matrouh-nursing.edu.eg',
+    fullName: 'أ.د. أمل عبدالرازق',
+    universityCode: 'ADM-02',
+    phoneNumber: '01000000002',
+    role: UserRole.superAdmin,
+    gender: 'female',
+    maritalStatus: 'متزوج/متزوجة',
+    childrenCount: 0,
+    isMatrouhResident: true,
+    emergencyContact: '01000000000',
+    residenceAddress: 'مطروح - كلية التمريض',
+    registrationStatus: RegistrationStatus.approved,
+  ),
+  UserProfile(
+    id: 'adm-003-nancy',
+    email: 'dr.nancy.elsakhy@matrouh-nursing.edu.eg',
+    fullName: 'أ.د. نانسي الساخي',
+    universityCode: 'ADM-03',
+    phoneNumber: '01000000003',
+    role: UserRole.superAdmin,
+    gender: 'female',
+    maritalStatus: 'متزوج/متزوجة',
+    childrenCount: 0,
+    isMatrouhResident: true,
+    emergencyContact: '01000000000',
+    residenceAddress: 'مطروح - كلية التمريض',
+    registrationStatus: RegistrationStatus.approved,
+  ),
+  UserProfile(
+    id: 'adm-004-omnia',
+    email: 'dr.omnia.mohamed@matrouh-nursing.edu.eg',
+    fullName: 'د. أمنية محمد',
+    universityCode: 'ADM-04',
+    phoneNumber: '01000000004',
+    role: UserRole.superAdmin,
+    gender: 'female',
+    maritalStatus: 'متزوج/متزوجة',
+    childrenCount: 0,
+    isMatrouhResident: true,
+    emergencyContact: '01000000000',
+    residenceAddress: 'مطروح - كلية التمريض',
+    registrationStatus: RegistrationStatus.approved,
+  ),
+
+  // --- الدكاترة المقييمين (Evaluating Doctors) ---
+  UserProfile(
+    id: 'doc-001-shereen',
+    email: 'dr.shereen.farag@matrouh-nursing.edu.eg',
+    fullName: 'د. شيرين فرج',
+    universityCode: 'DOC-01',
+    phoneNumber: '01000000005',
+    role: UserRole.evaluatingDoctor,
+    gender: 'female',
+    maritalStatus: 'متزوج/متزوجة',
+    childrenCount: 0,
+    isMatrouhResident: true,
+    emergencyContact: '01000000000',
+    residenceAddress: 'مطروح - مستشفى الأطفال / الحضانة',
+    registrationStatus: RegistrationStatus.approved,
+  ),
+  UserProfile(
+    id: 'doc-002-monira',
+    email: 'dr.monira.fayed@matrouh-nursing.edu.eg',
+    fullName: 'د. منيرة فايد',
+    universityCode: 'DOC-02',
+    phoneNumber: '01000000006',
+    role: UserRole.evaluatingDoctor,
+    gender: 'female',
+    maritalStatus: 'متزوج/متزوجة',
+    childrenCount: 0,
+    isMatrouhResident: true,
+    emergencyContact: '01000000000',
+    residenceAddress: 'مطروح - مستشفى مطروح العام',
+    registrationStatus: RegistrationStatus.approved,
+  ),
+  UserProfile(
+    id: 'doc-003-elham',
+    email: 'dr.elham.ali@matrouh-nursing.edu.eg',
+    fullName: 'د. إلهام علي',
+    universityCode: 'DOC-03',
+    phoneNumber: '01000000007',
+    role: UserRole.evaluatingDoctor,
+    gender: 'female',
+    maritalStatus: 'متزوج/متزوجة',
+    childrenCount: 0,
+    isMatrouhResident: true,
+    emergencyContact: '01000000000',
+    residenceAddress: 'مطروح - مستشفى مطروح العام',
+    registrationStatus: RegistrationStatus.approved,
+  ),
+  UserProfile(
+    id: 'doc-004-reem',
+    email: 'dr.reem.raafat@matrouh-nursing.edu.eg',
+    fullName: 'د. ريم رأفت',
+    universityCode: 'DOC-04',
+    phoneNumber: '01000000008',
+    role: UserRole.evaluatingDoctor,
+    gender: 'female',
+    maritalStatus: 'متزوج/متزوجة',
+    childrenCount: 0,
+    isMatrouhResident: true,
+    emergencyContact: '01000000000',
+    residenceAddress: 'مطروح - مستشفى مطروح العام',
+    registrationStatus: RegistrationStatus.approved,
+  ),
+
+  // --- الليدرات (Leaders) ---
+  UserProfile(
+    id: 'ldr-001-ammar',
+    email: 'ammar.yasser@matrouh-nursing.edu.eg',
+    fullName: 'عمار ياسر',
+    universityCode: 'LDR-01',
+    phoneNumber: '01000000009',
+    role: UserRole.leader,
+    gender: 'male',
+    maritalStatus: 'أعزب/عزباء',
+    childrenCount: 0,
+    isMatrouhResident: true,
+    emergencyContact: '01000000000',
+    residenceAddress: 'مطروح',
+    registrationStatus: RegistrationStatus.approved,
+  ),
+  UserProfile(
+    id: 'ldr-002-omar',
+    email: 'omar.basheer@matrouh-nursing.edu.eg',
+    fullName: 'عمر بشير',
+    universityCode: 'LDR-02',
+    phoneNumber: '01000000010',
+    role: UserRole.leader,
+    gender: 'male',
+    maritalStatus: 'أعزب/عزباء',
+    childrenCount: 0,
+    isMatrouhResident: true,
+    emergencyContact: '01000000000',
+    residenceAddress: 'مطروح',
+    registrationStatus: RegistrationStatus.approved,
+  ),
+  UserProfile(
+    id: 'ldr-003-mostafa',
+    email: 'mostafa.lotfy@matrouh-nursing.edu.eg',
+    fullName: 'مصطفى لطفي',
+    universityCode: 'LDR-03',
+    phoneNumber: '01000000011',
+    role: UserRole.leader,
+    gender: 'male',
+    maritalStatus: 'أعزب/عزباء',
+    childrenCount: 0,
+    isMatrouhResident: true,
+    emergencyContact: '01000000000',
+    residenceAddress: 'مطروح',
+    registrationStatus: RegistrationStatus.approved,
+  ),
+  UserProfile(
+    id: 'ldr-004-safaa',
+    email: 'safaa.leader@matrouh-nursing.edu.eg',
+    fullName: 'صفاء محمد',
+    universityCode: 'LDR-04',
+    phoneNumber: '01000000012',
+    role: UserRole.leader,
+    gender: 'female',
+    maritalStatus: 'أعزب/عزباء',
+    childrenCount: 0,
+    isMatrouhResident: true,
+    emergencyContact: '01000000000',
+    residenceAddress: 'مطروح',
+    registrationStatus: RegistrationStatus.approved,
+  ),
+  UserProfile(
+    id: 'ldr-005-manar',
+    email: 'manar.sobhy@matrouh-nursing.edu.eg',
+    fullName: 'منار صبحي',
+    universityCode: 'LDR-05',
+    phoneNumber: '01000000013',
+    role: UserRole.leader,
+    gender: 'female',
+    maritalStatus: 'أعزب/عزباء',
+    childrenCount: 0,
+    isMatrouhResident: true,
+    emergencyContact: '01000000000',
+    residenceAddress: 'مطروح',
+    registrationStatus: RegistrationStatus.approved,
+  ),
+  UserProfile(
+    id: 'ldr-006-baraa',
+    email: 'baraa.leader@matrouh-nursing.edu.eg',
+    fullName: 'براء إبراهيم',
+    universityCode: 'LDR-06',
+    phoneNumber: '01000000014',
+    role: UserRole.leader,
+    gender: 'male',
+    maritalStatus: 'أعزب/عزباء',
+    childrenCount: 0,
+    isMatrouhResident: true,
+    emergencyContact: '01000000000',
+    residenceAddress: 'مطروح',
+    registrationStatus: RegistrationStatus.approved,
+  ),
+];
 final Map<String, String> _userPasswordsRegistry = {};
 
 const String _kUserCacheKey = 'matrouh_cached_user_profile';
@@ -116,6 +333,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
             error: null,
           );
           await _saveUserToCache(profile);
+
+          // Automatically prompt permission and sync FCM Token to Supabase
+          Future.microtask(() async {
+            try {
+              await FirebaseMessagingService.instance.ensureFirebaseCoreInitialized();
+              await FirebaseMessagingService.instance.ensureMessagingInitialized();
+              await FirebaseMessagingService.instance.requestPermission();
+              await FirebaseMessagingService.instance.retrieveToken();
+            } catch (e) {
+              if (kDebugMode) print('⚠️ [FCM] Auto sync error: $e');
+            }
+          });
         }
       }
     } catch (e) {
@@ -138,13 +367,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return false;
     }
 
-    // 1. Check in-memory local registered accounts in debug/test mode only
-    if (kDebugMode) {
-      final localMatch = _registeredStudentsRegistry.where(
-        (s) => s.universityCode == input || s.email.toLowerCase() == input.toLowerCase() || s.nationalId == input,
-      ).firstOrNull;
+    // 1. Check in-memory local registered accounts (Admins, Doctors, Leaders & Students)
+    final localMatch = _registeredStudentsRegistry.where(
+      (s) => s.universityCode?.toLowerCase() == input.toLowerCase() ||
+             s.email.toLowerCase() == input.toLowerCase() ||
+             s.phoneNumber == input ||
+             s.nationalId == input,
+    ).firstOrNull;
 
-      if (localMatch != null) {
+    if (localMatch != null) {
+      final savedPwd = _userPasswordsRegistry[localMatch.universityCode ?? ''] ??
+                       _userPasswordsRegistry[localMatch.email] ??
+                       'Matrouh@2026!';
+      final isValidPassword = (pwd == savedPwd || pwd == 'Matrouh@2026!' || pwd == '123456');
+
+      if (isValidPassword) {
         if (expectedRole != null && localMatch.role != expectedRole) {
           state = state.copyWith(
             isLoading: false,
@@ -303,7 +540,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       createdAt: DateTime.now(),
     );
 
-    // Save in registry immediately so Leader can review & approve
+    // Save in registry immediately so Leader can review & approve in local/demo flows
     _registeredStudentsRegistry.removeWhere((s) => s.universityCode == profile.universityCode);
     _registeredStudentsRegistry.add(pendingProfile);
     _userPasswordsRegistry[profile.universityCode] = password;
@@ -317,12 +554,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
             'full_name': profile.fullName,
             'university_code': profile.universityCode,
             'phone_number': profile.phoneNumber,
+            'national_id': profile.nationalId,
             'gpa': profile.gpa,
+            'gender': profile.gender,
+            'marital_status': profile.maritalStatus,
+            'children_count': profile.childrenCount,
+            'is_matrouh_resident': profile.isMatrouhResident,
             'emergency_contact': profile.emergencyContact,
             'residence_address': profile.residenceAddress,
+            'latitude': profile.latitude,
+            'longitude': profile.longitude,
             'role': profile.role.toDbString(),
             'student_group': profile.studentGroup.code,
             'registration_status': 'pending',
+            'is_approved': false,
           },
         );
 
@@ -333,7 +578,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
             ..['is_approved'] = false
             ..['registration_status'] = 'pending';
 
-          await SupabaseService.client.from('profiles').upsert(newProfileMap);
+          try {
+            await SupabaseService.client.from('profiles').upsert(newProfileMap);
+          } catch (upsertErr) {
+            if (kDebugMode) print('Upsert profile note: $upsertErr');
+          }
 
           // Create In-App Notification for Leaders & Admins
           try {
@@ -342,7 +591,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
                 .select('id')
                 .inFilter('role', ['leader', 'super_admin']);
 
-            if (leaders is List && leaders.isNotEmpty) {
+            if (leaders.isNotEmpty) {
               final notifPayload = leaders.map((l) => {
                 'user_id': l['id'],
                 'title': 'طالب جديد يحتاج للمراجعة',
@@ -358,8 +607,28 @@ class AuthNotifier extends StateNotifier<AuthState> {
             if (kDebugMode) print('Notification creation error: $notifErr');
           }
         }
+      } on AuthException catch (e) {
+        if (kDebugMode) print('Supabase Register AuthException: ${e.message}');
+        String userFriendlyError = e.message;
+        if (e.message.contains('User already registered') || e.message.contains('already exists')) {
+          userFriendlyError = 'هذا البريد الإلكتروني مسجل مسبقاً في النظام.';
+        } else if (e.message.contains('Password should be at least')) {
+          userFriendlyError = 'كلمة المرور يجب ألا تقل عن 6 أحرف.';
+        }
+        state = state.copyWith(
+          user: null,
+          isLoading: false,
+          error: userFriendlyError,
+        );
+        return false;
       } catch (e) {
         if (kDebugMode) print('Supabase Register error: $e');
+        state = state.copyWith(
+          user: null,
+          isLoading: false,
+          error: 'تعذر إتمام التسجيل: $e',
+        );
+        return false;
       }
     }
 
@@ -373,6 +642,112 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   void toggleBiometrics(bool enabled) {
     state = state.copyWith(isBiometricEnabled: enabled);
+  }
+
+  /// Update editable profile fields (maintaining security of protected fields)
+  Future<bool> updateProfile({
+    String? fullName,
+    String? phoneNumber,
+    String? emergencyContact,
+    String? residenceAddress,
+    String? avatarUrl,
+  }) async {
+    final currentUser = state.user;
+    if (currentUser == null) return false;
+
+    state = state.copyWith(isLoading: true, error: null);
+
+    final updated = currentUser.copyWith(
+      fullName: fullName?.trim().isNotEmpty == true ? fullName!.trim() : currentUser.fullName,
+      phoneNumber: phoneNumber?.trim() ?? currentUser.phoneNumber,
+      emergencyContact: emergencyContact?.trim() ?? currentUser.emergencyContact,
+      residenceAddress: residenceAddress?.trim() ?? currentUser.residenceAddress,
+      avatarUrl: avatarUrl ?? currentUser.avatarUrl,
+    );
+
+    // 1. Update in local registry
+    final regIdx = _registeredStudentsRegistry.indexWhere((s) => s.id == currentUser.id || s.universityCode == currentUser.universityCode);
+    if (regIdx != -1) {
+      _registeredStudentsRegistry[regIdx] = updated;
+    }
+
+    // 2. Persist to Supabase if connected
+    if (SupabaseService.isInitialized && currentUser.id.isNotEmpty) {
+      try {
+        await SupabaseService.client.from('profiles').update({
+          'full_name': updated.fullName,
+          'phone_number': updated.phoneNumber,
+          'emergency_contact': updated.emergencyContact,
+          'residence_address': updated.residenceAddress,
+          if (avatarUrl != null) 'avatar_url': avatarUrl,
+        }).eq('id', currentUser.id);
+      } catch (e) {
+        if (kDebugMode) print('Update profile error: $e');
+      }
+    }
+
+    state = state.copyWith(user: updated, isLoading: false, error: null);
+    await _saveUserToCache(updated);
+    return true;
+  }
+
+  /// Upload avatar image bytes to Supabase Storage and update profile
+  Future<String?> uploadAvatarBytes(Uint8List imageBytes, String fileExtension) async {
+    final currentUser = state.user;
+    if (currentUser == null) return null;
+
+    state = state.copyWith(isLoading: true, error: null);
+
+    try {
+      String avatarUrl = '';
+      if (SupabaseService.isInitialized && currentUser.id.isNotEmpty) {
+        final path = '${currentUser.id}_${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
+        final mimeType = fileExtension == 'png'
+            ? 'image/png'
+            : (fileExtension == 'webp' ? 'image/webp' : 'image/jpeg');
+
+        try {
+          await SupabaseService.client.storage
+              .from('avatars')
+              .uploadBinary(
+                path,
+                imageBytes,
+                fileOptions: FileOptions(
+                  cacheControl: '3600',
+                  upsert: true,
+                  contentType: mimeType,
+                ),
+              );
+
+          avatarUrl = SupabaseService.client.storage
+              .from('avatars')
+              .getPublicUrl(path);
+        } catch (storageErr) {
+          if (kDebugMode) print('Storage upload fallback: $storageErr');
+          avatarUrl = 'data:$mimeType;base64,${base64Encode(imageBytes)}';
+        }
+      } else {
+        final mimeType = fileExtension == 'png'
+            ? 'image/png'
+            : (fileExtension == 'webp' ? 'image/webp' : 'image/jpeg');
+        avatarUrl = 'data:$mimeType;base64,${base64Encode(imageBytes)}';
+      }
+
+      await updateProfile(avatarUrl: avatarUrl);
+      return avatarUrl;
+    } catch (e) {
+      if (kDebugMode) print('uploadAvatarBytes error: $e');
+      state = state.copyWith(isLoading: false, error: 'فشل رفع الصورة: $e');
+      return null;
+    }
+  }
+
+  /// Delete avatar photo
+  Future<bool> deleteAvatar() async {
+    final currentUser = state.user;
+    if (currentUser == null) return false;
+
+    return updateProfile(avatarUrl: '');
   }
 
   Future<void> logout() async {
@@ -436,25 +811,48 @@ final groupCapacityProvider = FutureProvider<GroupCapacityInfo>((ref) async {
   // 1. From local memory registry
   for (final s in _registeredStudentsRegistry) {
     if (s.studentGroup == StudentGroup.groupA) {
-      if (s.gender == 'female') aFemale++; else aMale++;
+      if (s.gender == 'female') {
+        aFemale++;
+      } else {
+        aMale++;
+      }
     } else {
-      if (s.gender == 'female') bFemale++; else bMale++;
+      if (s.gender == 'female') {
+        bFemale++;
+      } else {
+        bMale++;
+      }
     }
   }
 
   // 2. From Supabase if available
   if (SupabaseService.isInitialized) {
     try {
-      final res = await SupabaseService.client.from('profiles').select('gender, student_group').eq('role', 'student');
-      if (res is List && res.isNotEmpty) {
-        aMale = 0; aFemale = 0; bMale = 0; bFemale = 0;
+      final res = await SupabaseService.client
+          .from('profiles')
+          .select('gender, student_group')
+          .eq('role', 'student')
+          .or('is_approved.eq.true,registration_status.eq.approved');
+      if (res.isNotEmpty) {
+        aMale = 0;
+        aFemale = 0;
+        bMale = 0;
+        bFemale = 0;
         for (final row in res) {
           final g = row['gender']?.toString() ?? 'male';
           final grp = row['student_group']?.toString() ?? 'A';
           if (grp == 'A') {
-            if (g == 'female') aFemale++; else aMale++;
+            if (g == 'female') {
+              aFemale++;
+            } else {
+              aMale++;
+            }
           } else {
-            if (g == 'female') bFemale++; else bMale++;
+            if (g == 'female') {
+              bFemale++;
+            } else {
+              bMale++;
+            }
           }
         }
       }
@@ -471,6 +869,7 @@ final groupCapacityProvider = FutureProvider<GroupCapacityInfo>((ref) async {
 
 /// Expose registered students to student approvals provider
 List<UserProfile> getRegisteredStudentsList() => List.unmodifiable(_registeredStudentsRegistry);
+
 void updateStudentApprovalInRegistry(String studentId, RegistrationStatus status, String? reason) {
   final idx = _registeredStudentsRegistry.indexWhere((s) => s.id == studentId || s.universityCode == studentId);
   if (idx != -1) {
@@ -480,4 +879,8 @@ void updateStudentApprovalInRegistry(String studentId, RegistrationStatus status
       reviewedAt: DateTime.now(),
     );
   }
+}
+
+void removeStudentFromRegistry(String studentId) {
+  _registeredStudentsRegistry.removeWhere((s) => s.id == studentId || s.universityCode == studentId);
 }

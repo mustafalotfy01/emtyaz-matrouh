@@ -9,6 +9,7 @@ import '../models/roster_preference.dart';
 import '../models/student_roster_summary.dart';
 import '../services/roster_service.dart';
 import '../services/suggestion_engine.dart';
+import 'final_roster_provider.dart';
 
 // â”€â”€ Department Provider â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 final departmentsProvider = Provider<List<Department>>((ref) {
@@ -113,66 +114,39 @@ class StudentPreferencesNotifier extends StateNotifier<StudentPreferencesState> 
     final rosterMonth = ref.read(currentRosterMonthProvider);
     if (user == null) return;
 
-    state = state.copyWith(isLoading: true, clearError: true);
-    final prefs = await RosterService.loadStudentPreferences(
-      studentId: user.id,
-      rosterId: rosterMonth.id,
-      month: rosterMonth.month,
-      year: rosterMonth.year,
-    );
-
-    final isSubmitted = prefs.isNotEmpty &&
-        prefs.any((p) => p.status == PreferenceStatus.submitted || p.status == PreferenceStatus.locked);
-
-    state = state.copyWith(
-      preferences: prefs,
-      isLoading: false,
-      isSubmitted: isSubmitted,
-    );
+    state = state.copyWith(isLoading: true);
+    try {
+      final prefs = await RosterService.loadStudentPreferences(
+        studentId: user.id,
+        rosterId: rosterMonth.id,
+        month: rosterMonth.month,
+        year: rosterMonth.year,
+      );
+      state = state.copyWith(
+        preferences: prefs,
+        isLoading: false,
+        isSubmitted: prefs.any((p) => p.status == PreferenceStatus.submitted),
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'فشل تحميل التفضيلات: $e',
+      );
+    }
   }
 
   /// تبديل اليوم بين: Morning → Long → Night → إلغاء
-  /// يتحقق من قواعد الشيفتات وحدود المجموعة تلقائياً
-  void toggleDateShift(DateTime date, StudentGroup group) {
+  /// يتيح اختيار أي يوم في الشهر مع مراعاة قاعدة 36 ساعة أسبوعياً
+  void toggleDateShift(DateTime date, [StudentGroup? group]) {
     if (state.isSubmitted) return;
 
-    final day = date.day;
     final rosterMonth = ref.read(currentRosterMonthProvider);
-    final daysInMonth = DateTime(rosterMonth.year, rosterMonth.month + 1, 0).day;
-
-    // التحقق من حدود المجموعة (أول 15 يوم للمجموعة A وثاني 15 يوم للمجموعة B)
-    final isAllowed = ShiftRulesHelper.isDayAvailableForGroup(
-      day: day,
-      isGroupA: group == StudentGroup.groupA,
-      daysInMonth: daysInMonth,
-    );
-
-    if (!isAllowed) {
-      if (group == StudentGroup.groupA) {
-        state = state.copyWith(
-          errorMessage: 'المجموعة A متاحة للأيام 1 إلى 15 فقط.',
-        );
-      } else {
-        state = state.copyWith(
-          errorMessage: 'المجموعة B متاحة للأيام 16 إلى نهاية الشهر فقط.',
-        );
-      }
-      return;
-    }
-
     final user = ref.read(authProvider).user;
     final currentShift = state.getShiftTypeForDate(date);
 
     List<RosterPreference> updated = List.from(state.preferences);
 
     if (currentShift == null) {
-      // الحد الأقصى للأيام الممكنة في نصف الشهر (15 يوم)
-      if (state.totalCount >= 15) {
-        state = state.copyWith(
-          errorMessage: 'تم الوصول للحد الأقصى المتاح لأيام مجموعتك.',
-        );
-        return;
-      }
       // يبدأ بـ Morning
       updated.add(RosterPreference(
         id: 'pref-${DateTime.now().millisecondsSinceEpoch}',
@@ -238,57 +212,28 @@ class StudentPreferencesNotifier extends StateNotifier<StudentPreferencesState> 
   }
 
   /// Legacy compat - toggle day (used by calendar)
-  void toggleDatePreference(DateTime date, StudentGroup group) {
+  void toggleDatePreference(DateTime date, [StudentGroup? group]) {
     toggleDateShift(date, group);
   }
 
   /// تعيين شيفت محدد ليوم معين مباشرة
-  void selectShiftForDate(DateTime date, PreferenceShiftType shiftType, StudentGroup group) {
+  void selectShiftForDate(DateTime date, PreferenceShiftType shiftType, [StudentGroup? group]) {
     if (state.isSubmitted) return;
 
-    final day = date.day;
     final rosterMonth = ref.read(currentRosterMonthProvider);
-    final daysInMonth = DateTime(rosterMonth.year, rosterMonth.month + 1, 0).day;
-
-    final isAllowed = ShiftRulesHelper.isDayAvailableForGroup(
-      day: day,
-      isGroupA: group == StudentGroup.groupA,
-      daysInMonth: daysInMonth,
-    );
-
-    if (!isAllowed) {
-      if (group == StudentGroup.groupA) {
-        state = state.copyWith(errorMessage: 'المجموعة A متاحة للأيام 1 إلى 15 فقط.');
-      } else {
-        state = state.copyWith(errorMessage: 'المجموعة B متاحة للأيام 16 إلى نهاية الشهر فقط.');
-      }
-      return;
-    }
-
     final user = ref.read(authProvider).user;
     final currentShift = state.getShiftTypeForDate(date);
 
     List<RosterPreference> updated = List.from(state.preferences);
 
-    if (currentShift == null && state.totalCount >= ShiftRulesHelper.requiredDays) {
-      state = state.copyWith(
-        errorMessage: 'ØªÙ… Ø§ÙƒØªÙ…Ø§Ù„ ${ShiftRulesHelper.requiredDays} ÙŠÙˆÙ…. Ù‚Ù… Ø¨Ø¥Ù„ØºØ§Ø¡ ÙŠÙˆÙ… Ø¢Ø®Ø± Ø£ÙˆÙ„Ø§Ù‹.',
-      );
-      return;
-    }
-
     if (currentShift == shiftType) {
-      // Ø¥Ù„ØºØ§Ø¡ Ø§Ù„ÙŠÙˆÙ…
+      // إلغاء اليوم
       updated.removeWhere((p) =>
           p.preferenceDate.year == date.year &&
           p.preferenceDate.month == date.month &&
           p.preferenceDate.day == date.day);
     } else {
       updated = _replaceShift(updated, date, rosterMonth.id, user?.id ?? '', shiftType);
-      if (currentShift == null) {
-        // Ø¥Ø¶Ø§ÙØ© Ø¬Ø¯ÙŠØ¯Ø©ØŒ ØªØ£ÙƒØ¯ Ù…Ù† Ø§Ù„Ø¥Ø¶Ø§ÙØ© Ø¨Ø´ÙƒÙ„ ØµØ­ÙŠØ­
-        // ØªÙ… ÙÙŠ _replaceShift Ø¨Ø§Ù„ÙØ¹Ù„ Ù„ÙƒÙ† Ø¨Ø¯ÙˆÙ† Ø§Ù„Ø¹Ù†ØµØ± Ø§Ù„Ù‚Ø¯ÙŠÙ…
-      }
     }
 
     state = state.copyWith(preferences: updated, clearError: true, clearSuccess: true);
@@ -311,14 +256,6 @@ class StudentPreferencesNotifier extends StateNotifier<StudentPreferencesState> 
 
   void selectOptionB(DateTime date, StudentGroup group) {
     selectShiftForDate(date, PreferenceShiftType.night, group);
-  }
-
-  void _setPreference(DateTime date, PreferenceType type, StudentGroup group) {
-    selectShiftForDate(
-      date,
-      type == PreferenceType.optionB ? PreferenceShiftType.night : PreferenceShiftType.morning,
-      group,
-    );
   }
 
   /// Submit preferences to Leader
@@ -372,30 +309,33 @@ final studentPublishedRosterProvider =
   );
 });
 
-// â”€â”€ Leader Dashboard State & Notifier â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Leader Dashboard State & Notifier ───────────────────────────────────────
 class LeaderRosterState {
   final List<StudentRosterSummary> summaries;
   final bool isLoading;
   final String? errorMessage;
   final String? successMessage;
-  final String filterGroup; // 'ALL', 'A', 'B'
-  final String filterStatus; // 'ALL', 'SUBMITTED', 'PENDING'
+  final String filterStatus; // 'ALL', 'SUBMITTED', 'DRAFT', 'NEEDS_REVIEW', 'COMPLETED'
+  final String searchQuery;
 
   LeaderRosterState({
     required this.summaries,
     this.isLoading = false,
     this.errorMessage,
     this.successMessage,
-    this.filterGroup = 'ALL',
     this.filterStatus = 'ALL',
+    this.searchQuery = '',
   });
 
   List<StudentRosterSummary> get filteredSummaries {
     return summaries.where((s) {
-      if (filterGroup == 'A' && s.studentGroup != StudentGroup.groupA) return false;
-      if (filterGroup == 'B' && s.studentGroup != StudentGroup.groupB) return false;
-      if (filterStatus == 'SUBMITTED' && s.submissionStatus != PreferenceStatus.submitted) return false;
-      if (filterStatus == 'PENDING' && s.submissionStatus == PreferenceStatus.submitted) return false;
+      if (searchQuery.isNotEmpty && !s.studentName.toLowerCase().contains(searchQuery.toLowerCase())) {
+        return false;
+      }
+      if (filterStatus == 'SUBMITTED' && !s.isSubmitted) return false;
+      if (filterStatus == 'DRAFT' && s.isSubmitted) return false;
+      if (filterStatus == 'COMPLETED' && s.totalFinalShifts != ShiftRulesHelper.requiredDays) return false;
+      if (filterStatus == 'NEEDS_REVIEW' && (s.fairnessLevel == FairnessLevel.fair && s.totalFinalShifts == ShiftRulesHelper.requiredDays)) return false;
       return true;
     }).toList();
   }
@@ -405,8 +345,8 @@ class LeaderRosterState {
     bool? isLoading,
     String? errorMessage,
     String? successMessage,
-    String? filterGroup,
     String? filterStatus,
+    String? searchQuery,
     bool clearError = false,
     bool clearSuccess = false,
   }) {
@@ -415,8 +355,8 @@ class LeaderRosterState {
       isLoading: isLoading ?? this.isLoading,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       successMessage: clearSuccess ? null : (successMessage ?? this.successMessage),
-      filterGroup: filterGroup ?? this.filterGroup,
       filterStatus: filterStatus ?? this.filterStatus,
+      searchQuery: searchQuery ?? this.searchQuery,
     );
   }
 }
@@ -432,7 +372,7 @@ class LeaderRosterNotifier extends StateNotifier<LeaderRosterState> {
     final rosterMonth = ref.read(currentRosterMonthProvider);
     final studentsAsync = ref.read(studentApprovalsProvider);
     final registeredStudents = studentsAsync.maybeWhen(
-      data: (list) => list,
+      data: (list) => list.where((u) => u.isApproved && u.registrationStatus == RegistrationStatus.approved).toList(),
       orElse: () => <UserProfile>[],
     );
 
@@ -452,8 +392,8 @@ class LeaderRosterNotifier extends StateNotifier<LeaderRosterState> {
     state = state.copyWith(summaries: summaries, isLoading: false);
   }
 
-  void setFilterGroup(String group) {
-    state = state.copyWith(filterGroup: group);
+  void setSearchQuery(String query) {
+    state = state.copyWith(searchQuery: query);
   }
 
   void setFilterStatus(String status) {
@@ -491,6 +431,9 @@ class LeaderRosterNotifier extends StateNotifier<LeaderRosterState> {
 
     ref.read(currentRosterMonthProvider.notifier).state =
         RosterService.getCurrentRosterMonth();
+    ref.invalidate(finalApprovedRosterProvider);
+    ref.invalidate(finalRosterMonthMetaProvider);
+    ref.invalidate(studentFinalApprovedRosterProvider);
     await loadDashboard();
     state = state.copyWith(
       isLoading: false,
@@ -621,6 +564,9 @@ class LeaderRosterNotifier extends StateNotifier<LeaderRosterState> {
     if (res['success'] == true) {
       ref.read(currentRosterMonthProvider.notifier).state =
           RosterService.getCurrentRosterMonth();
+      ref.invalidate(finalApprovedRosterProvider);
+      ref.invalidate(finalRosterMonthMetaProvider);
+      ref.invalidate(studentFinalApprovedRosterProvider);
       await loadDashboard();
       state = state.copyWith(
         isLoading: false,

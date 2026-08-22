@@ -13,10 +13,11 @@ class StudentDisciplineHistoryScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authProvider).user;
-    final actions = ref.watch(disciplinaryProvider);
+    final actionsAsync = ref.watch(disciplinaryProvider);
+    final actionsList = actionsAsync.value ?? <DisciplinaryAction>[];
     final metrics = ref.read(disciplinaryProvider.notifier).getStudentMetrics(user?.id ?? 'student-001');
 
-    final studentActions = actions.where((a) => a.studentId == (user?.id ?? 'student-001')).toList();
+    final studentActions = actionsList.where((a) => a.studentId == (user?.id ?? 'student-001')).toList();
 
     return Scaffold(
       appBar: AppBar(

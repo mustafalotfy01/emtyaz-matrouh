@@ -74,12 +74,11 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
           .order('created_at', ascending: false)
           .limit(100);
 
-      if (res is List) {
-        final notifications = res.map((r) => NotificationItem.fromJson(r)).toList();
-        state = state.copyWith(items: notifications, isLoading: false);
-      } else {
-        state = state.copyWith(items: const [], isLoading: false);
-      }
+      final notifications = res
+          .where((r) => r['metadata']?['is_broadcast_campaign'] != true)
+          .map((r) => NotificationItem.fromJson(r))
+          .toList();
+      state = state.copyWith(items: notifications, isLoading: false);
     } catch (e) {
       if (kDebugMode) print('[NotificationsNotifier] fetch error: $e');
       state = state.copyWith(isLoading: false, errorMessage: e.toString());
@@ -111,7 +110,7 @@ class NotificationsNotifier extends StateNotifier<NotificationsState> {
                 print('[Notifications Realtime] New notification arrived: ${payload.newRecord['id']}');
               }
               final newRecord = payload.newRecord;
-              if (newRecord.isNotEmpty) {
+              if (newRecord.isNotEmpty && newRecord['metadata']?['is_broadcast_campaign'] != true) {
                 final newItem = NotificationItem.fromJson(newRecord);
                 _addNewNotification(newItem);
               }

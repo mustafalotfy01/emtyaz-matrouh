@@ -1,15 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/constants/app_colors.dart';
+import 'package:intl/intl.dart';
 import '../../../core/localization/app_localizations.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/widgets/ios/app_badge.dart';
-import '../../../core/widgets/ios/app_button.dart';
-import '../../../core/widgets/ios/app_card.dart';
-import '../../../core/widgets/ios/app_section_header.dart';
+import '../../../core/services/location_service.dart';
+import '../../../core/services/platform_service.dart';
+import '../../../core/theme/app_design_tokens.dart';
+import '../../../core/widgets/app_avatar.dart';
+import '../../../core/widgets/app_badge.dart';
+import '../../../core/widgets/app_button.dart';
+import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/app_section_header.dart';
 import '../../attendance/providers/attendance_provider.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../fingerprint/models/fingerprint_request.dart';
+import '../../fingerprint/providers/fingerprint_provider.dart';
+import '../../groups/screens/group_selection_screen.dart';
+import '../../handover/screens/shift_handover_screen.dart';
+import '../../leaderboard/screens/clinical_leaderboard_screen.dart';
+import '../../quizzes/screens/quiz_list_screen.dart';
+import '../../roster/models/roster_entry.dart';
 import '../../roster/providers/final_roster_provider.dart';
 
 class StudentDashboardScreen extends ConsumerWidget {
@@ -22,23 +32,30 @@ class StudentDashboardScreen extends ConsumerWidget {
     final user = ref.watch(authProvider).user;
     final attendanceState = ref.watch(attendanceProvider);
     final finalApprovedShifts = ref.watch(studentFinalApprovedRosterProvider).value ?? [];
+    final activeFingerprintReq = ref.watch(studentActiveFingerprintRequestProvider);
     final l10n = context.l10n;
-    
-    final studentName = user?.fullName.isNotEmpty == true 
-        ? user!.fullName.split(' ')[0] 
-        : 'أحمد';
-    final groupName = user?.studentGroup.name == 'groupB' ? l10n.groupB : l10n.groupA;
-    final universityCode = user?.universityCode.isNotEmpty == true 
-        ? user!.universityCode 
-        : 'NUR-2026-081';
 
-    final longCount = finalApprovedShifts.where((s) => s.shiftType.name == 'longShift').length;
-    final nightCount = finalApprovedShifts.where((s) => s.shiftType.name == 'night').length;
-    final morningCount = finalApprovedShifts.where((s) => s.shiftType.name == 'morning').length;
+    final studentName = user?.fullName.isNotEmpty == true
+        ? user!.fullName
+        : 'طالب امتياز';
+    final groupName = 'طالب امتياز سريري';
+    final universityCode = user?.universityCode.isNotEmpty == true
+        ? user!.universityCode
+        : (user != null ? 'NUR-${user.id.substring(0, 6)}' : 'دفعة 2026');
+
+    final now = DateTime.now();
+    final todayShift = finalApprovedShifts.where((s) =>
+        s.shiftDate.year == now.year &&
+        s.shiftDate.month == now.month &&
+        s.shiftDate.day == now.day).firstOrNull;
+
+    final longCount = finalApprovedShifts.where((s) => s.shiftType == ShiftType.long).length;
+    final nightCount = finalApprovedShifts.where((s) => s.shiftType == ShiftType.night).length;
+    final morningCount = finalApprovedShifts.where((s) => s.shiftType == ShiftType.morning).length;
     final totalAssigned = finalApprovedShifts.length;
 
     return Scaffold(
-      backgroundColor: AppColors.bg(context),
+      backgroundColor: AppDesignTokens.bg(context),
       body: SafeArea(
         bottom: false,
         child: SingleChildScrollView(
@@ -47,41 +64,54 @@ class StudentDashboardScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── 1. iOS Top User Header ─────────────────────────────────────
+              // ── 1. Clean Clinical Top Header ──────────────────────────────
               _buildTopHeader(
                 context,
                 l10n: l10n,
                 studentName: studentName,
                 groupName: groupName,
                 universityCode: universityCode,
+                avatarUrl: user?.avatarUrl,
               ),
+
+              if (activeFingerprintReq != null) ...[
+                const SizedBox(height: 12),
+                _buildUrgentFingerprintBanner(context, ref, activeFingerprintReq),
+              ],
+
+              const SizedBox(height: 14),
+
+              // ── 1.1 Restrained Gold Leaderboard Banner ─────────────────────
+              _buildLeaderboardBanner(context),
 
               const SizedBox(height: 16),
 
-              // ── 2. Today's Shift Hero Card ─────────────────────────────────
-              _buildTodayShiftHeroCard(
+              // ── 2. Today's Clinical Shift Card ────────────────────────────
+              _buildTodayShiftCard(
                 context,
                 l10n: l10n,
                 attendanceState: attendanceState,
-                onCheckinTap: () => onNavigateTab(2), // Attendance tab
+                todayShift: todayShift,
+                onCheckinTap: () => onNavigateTab(3), // Attendance tab (index 3)
+                onViewRosterTap: () => onNavigateTab(1), // Roster tab (index 1)
               ),
 
               const SizedBox(height: 18),
 
-              // ── 3. Your Month Summary Card ─────────────────────────────────
+              // ── 3. Monthly Roster & 36-Hour Progress ──────────────────────
               _buildMonthSummaryCard(
                 context,
                 l10n: l10n,
-                total: totalAssigned > 0 ? totalAssigned : 12,
-                longCount: longCount > 0 ? longCount : 10,
-                nightCount: nightCount > 0 ? nightCount : 2,
+                total: totalAssigned,
+                longCount: longCount,
+                nightCount: nightCount,
                 morningCount: morningCount,
-                onViewRosterTap: () => onNavigateTab(1), // Roster tab
+                onViewRosterTap: () => onNavigateTab(1), // Roster tab (index 1)
               ),
 
               const SizedBox(height: 20),
 
-              // ── 4. Quick Actions (2x2 Compact iOS Grid) ────────────────────
+              // ── 4. Quick Actions Grid (2x2 Clean Clinical Tiles) ──────────
               AppSectionHeader(
                 title: l10n.quickAccessTitle,
                 subtitle: l10n.quickAccessSubtitle,
@@ -91,28 +121,33 @@ class StudentDashboardScreen extends ConsumerWidget {
 
               const SizedBox(height: 20),
 
-              // ── 5. Daily Quiz Banner Card ──────────────────────────────────
-              _buildDailyQuizBanner(
+              // ── 5. Daily Clinical Case / Quiz Card ────────────────────────
+              _buildDailyQuizCard(
                 context,
                 l10n: l10n,
-                onStartQuiz: () => onNavigateTab(3), // Quiz tab
+                onStartQuiz: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const QuizListScreen()),
+                  );
+                },
               ),
 
               const SizedBox(height: 20),
 
-              // ── 6. Clinical Learning Carousel ──────────────────────────────
+              // ── 6. Nursing Procedures Library Carousel ────────────────────
               AppSectionHeader(
                 title: l10n.whatToLearnTitle,
                 subtitle: l10n.whatToLearnSubtitle,
                 actionText: l10n.libraryViewAll,
-                onActionTap: () => onNavigateTab(4), // Knowledge tab
+                onActionTap: () => onNavigateTab(4), // Knowledge tab (index 4)
               ),
               const SizedBox(height: 10),
               _buildLearningCarousel(context),
 
               const SizedBox(height: 20),
 
-              // ── 7. Recent Activity Timeline ────────────────────────────────
+              // ── 7. Shift Activity Log ─────────────────────────────────────
               AppSectionHeader(
                 title: l10n.recentActivityTitle,
                 subtitle: l10n.recentActivitySubtitle,
@@ -133,73 +168,76 @@ class StudentDashboardScreen extends ConsumerWidget {
     required String studentName,
     required String groupName,
     required String universityCode,
+    String? avatarUrl,
   }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Row(
           children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: AppColors.primaryTeal.withOpacity(0.12),
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.primaryTeal.withOpacity(0.3), width: 1.5),
-              ),
-              child: const Icon(
-                Icons.person_rounded,
-                color: AppColors.primaryTeal,
-                size: 26,
-              ),
+            AppAvatar(
+              name: studentName,
+              imageUrl: avatarUrl,
+              size: AppAvatarSize.medium,
             ),
             const SizedBox(width: 12),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  l10n.greetingMorning(studentName),
+                  l10n.greetingMorning(studentName.split(' ')[0]),
                   style: TextStyle(
-                    fontSize: 17,
+                    fontSize: 16.5,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.text(context),
+                    color: AppDesignTokens.textPrimary(context),
                     letterSpacing: -0.3,
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  '${l10n.roleStudent} • $groupName',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.subtext(context),
-                    fontWeight: FontWeight.w500,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      l10n.roleStudent,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppDesignTokens.textSecondary(context),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    Text(
+                      ' • $groupName',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppDesignTokens.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ],
         ),
 
-        // University Code Pill Badge
+        // University Code Pill
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4.5),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
-            color: AppColors.card(context),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.border(context), width: 1),
-            boxShadow: AppTheme.iosCardShadow(context),
+            color: AppDesignTokens.surfaceMuted(context),
+            borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
+            border: Border.all(color: AppDesignTokens.border(context)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.badge_outlined, size: 13, color: AppColors.primaryTeal),
-              const SizedBox(width: 4),
+              const Icon(Icons.badge_outlined, size: 13, color: AppDesignTokens.primary),
+              const SizedBox(width: 5),
               Text(
                 universityCode,
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 11.5,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.text(context),
+                  color: AppDesignTokens.textPrimary(context),
                 ),
               ),
             ],
@@ -209,150 +247,185 @@ class StudentDashboardScreen extends ConsumerWidget {
     );
   }
 
-  // ── Today's Shift Hero Card ────────────────────────────────────────────────
-  Widget _buildTodayShiftHeroCard(
+  // ── Today's Clinical Shift Card ────────────────────────────────────────────
+  Widget _buildTodayShiftCard(
     BuildContext context, {
     required AppLocalizations l10n,
-    required dynamic attendanceState,
+    required AttendanceState attendanceState,
+    required RosterEntry? todayShift,
     required VoidCallback onCheckinTap,
+    required VoidCallback onViewRosterTap,
   }) {
     final isCheckedIn = attendanceState.activeRecord != null;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      decoration: BoxDecoration(
-        gradient: isDark ? AppColors.heroDarkGradient : AppColors.heroGradient,
-        borderRadius: BorderRadius.circular(AppTheme.radiusXl),
-        border: isDark ? Border.all(color: AppColors.darkDivider) : null,
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.deepNavy.withOpacity(isDark ? 0.35 : 0.18),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            left: -20,
-            bottom: -30,
-            child: Container(
-              width: 130,
-              height: 130,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.05),
-              ),
-            ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    if (todayShift == null) {
+      return AppCard(
+        variant: AppCardVariant.standard,
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(14),
+                        color: AppDesignTokens.slateMuted.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.calendar_today_rounded, size: 12, color: Colors.white),
-                          const SizedBox(width: 5),
-                          Text(
-                            l10n.todayShiftTitle,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
+                      child: const Icon(
+                        Icons.weekend_rounded,
+                        size: 16,
+                        color: AppDesignTokens.slateMuted,
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: isCheckedIn
-                            ? AppColors.success.withOpacity(0.9)
-                            : Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            isCheckedIn ? Icons.check_circle : Icons.radio_button_checked,
-                            size: 12,
-                            color: Colors.white,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            isCheckedIn ? l10n.checkedInStatus : '${l10n.shiftLongShort} (12h)',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 14),
-
-                Text(
-                  '${l10n.hospitalName} — ${l10n.deptEmergency}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16.5,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: -0.2,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(Icons.access_time_rounded, size: 14, color: Colors.white.withOpacity(0.8)),
-                    const SizedBox(width: 5),
+                    const SizedBox(width: 8),
                     Text(
-                      l10n.shiftLongTiming,
+                      l10n.todayShiftTitle,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.85),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.bold,
+                        color: AppDesignTokens.textPrimary(context),
                       ),
                     ),
                   ],
                 ),
-
-                const SizedBox(height: 16),
-
-                AppButton(
-                  text: isCheckedIn ? l10n.viewCheckInDetails : l10n.checkInNow,
-                  icon: isCheckedIn ? Icons.verified_rounded : Icons.fingerprint_rounded,
-                  variant: AppButtonVariant.whitePill,
-                  height: 44,
-                  onPressed: onCheckinTap,
+                const AppBadge(
+                  label: 'يوم راحة (Off)',
+                  icon: Icons.event_available_rounded,
+                  variant: AppBadgeVariant.neutral,
+                  size: AppBadgeSize.medium,
                 ),
               ],
             ),
+            const SizedBox(height: 14),
+            Text(
+              'أنت لست على الروستر اليوم',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: AppDesignTokens.textPrimary(context),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'لا يوجد لديك شيفت معتمد مسجل لتاريخ اليوم. استمتع بيوم الراحة أو راجع جدول الروستر الشهري.',
+              style: TextStyle(
+                fontSize: 12.5,
+                color: AppDesignTokens.textSecondary(context),
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 16),
+            AppButton(
+              text: 'عرض الروستر الشهري',
+              icon: Icons.calendar_month_rounded,
+              variant: AppButtonVariant.secondary,
+              onPressed: onViewRosterTap,
+            ),
+          ],
+        ),
+      );
+    }
+
+    final shiftType = todayShift.shiftType;
+    final shiftInitial = shiftType == ShiftType.night
+        ? '${l10n.shiftNightShort} (12h)'
+        : (shiftType == ShiftType.long ? '${l10n.shiftLongShort} (12h)' : '${l10n.shiftMorningShort} (6h)');
+    final shiftBadgeVariant = shiftType == ShiftType.night
+        ? AppBadgeVariant.shiftNight
+        : (shiftType == ShiftType.long ? AppBadgeVariant.shiftLong : AppBadgeVariant.shiftMorning);
+
+    final shiftTimeText = shiftType == ShiftType.morning
+        ? '08:00 ص - 02:00 م (6 ساعات تدريبية)'
+        : (shiftType == ShiftType.night
+            ? '08:00 م - 08:00 ص (12 ساعة تدريبية)'
+            : '08:00 ص - 08:00 م (12 ساعة تدريبية)');
+
+    return AppCard(
+      variant: AppCardVariant.accentTeal,
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: AppDesignTokens.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
+                    ),
+                    child: const Icon(
+                      Icons.local_hospital_rounded,
+                      size: 16,
+                      color: AppDesignTokens.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    l10n.todayShiftTitle,
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.bold,
+                      color: AppDesignTokens.textPrimary(context),
+                    ),
+                  ),
+                ],
+              ),
+              AppBadge(
+                label: isCheckedIn ? l10n.checkedInStatus : shiftInitial,
+                icon: isCheckedIn ? Icons.check_circle_rounded : Icons.access_time_rounded,
+                variant: isCheckedIn ? AppBadgeVariant.success : shiftBadgeVariant,
+                size: AppBadgeSize.medium,
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            todayShift.departmentName.isNotEmpty == true
+                ? '${l10n.hospitalName} — ${todayShift.departmentName}'
+                : '${l10n.hospitalName} — ${l10n.deptEmergency}',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: AppDesignTokens.textPrimary(context),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Icon(Icons.schedule_rounded, size: 14, color: AppDesignTokens.textSecondary(context)),
+              const SizedBox(width: 5),
+              Text(
+                shiftTimeText,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: AppDesignTokens.textSecondary(context),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          AppButton(
+            text: isCheckedIn ? l10n.viewCheckInDetails : l10n.checkInNow,
+            icon: isCheckedIn ? Icons.verified_rounded : Icons.fingerprint_rounded,
+            variant: isCheckedIn ? AppButtonVariant.secondary : AppButtonVariant.primary,
+            onPressed: onCheckinTap,
           ),
         ],
       ),
     );
   }
 
-  // ── Your Month Summary Card ────────────────────────────────────────────────
+  // ── Month Summary Card ─────────────────────────────────────────────────────
   Widget _buildMonthSummaryCard(
     BuildContext context, {
     required AppLocalizations l10n,
@@ -365,7 +438,7 @@ class StudentDashboardScreen extends ConsumerWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return AppCard(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -374,133 +447,138 @@ class StudentDashboardScreen extends ConsumerWidget {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.event_note_rounded, size: 20, color: AppColors.primaryTeal),
-                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(
+                      color: AppDesignTokens.primary.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
+                    ),
+                    child: const Icon(
+                      Icons.calendar_month_rounded,
+                      size: 18,
+                      color: AppDesignTokens.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
                   Text(
                     l10n.monthlyRosterSummary,
                     style: TextStyle(
-                      fontSize: 15.5,
+                      fontSize: 15,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.text(context),
+                      color: AppDesignTokens.textPrimary(context),
                     ),
                   ),
                 ],
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
-                decoration: BoxDecoration(
-                  color: isDark ? AppColors.successDarkBg : AppColors.successLight,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  l10n.daysCount(total, 12),
-                  style: const TextStyle(
-                    color: AppColors.success,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+              AppBadge(
+                label: l10n.daysCount(total, 12),
+                variant: total >= 12 ? AppBadgeVariant.success : AppBadgeVariant.warning,
+                size: AppBadgeSize.medium,
               ),
             ],
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
 
           Row(
             children: [
+              // Morning Shift
               Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: isDark ? AppColors.longPurpleDarkBg : AppColors.longPurpleBg,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        l10n.shiftLongShort,
-                        style: const TextStyle(fontSize: 11, color: AppColors.longPurple, fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        l10n.shiftCount(longCount),
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.longPurple),
-                      ),
-                    ],
-                  ),
+                child: _buildShiftStatChip(
+                  context,
+                  title: l10n.shiftMorningShort,
+                  countText: l10n.shiftCount(morningCount),
+                  icon: Icons.wb_sunny_rounded,
+                  bgColor: isDark ? AppDesignTokens.shiftMorningBgDark : AppDesignTokens.shiftMorningBgLight,
+                  borderColor: AppDesignTokens.shiftMorning.withOpacity(isDark ? 0.35 : 0.2),
+                  accentColor: isDark ? const Color(0xFF7DD3FC) : AppDesignTokens.shiftMorning,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
+              // Long Shift
               Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: isDark ? AppColors.nightDarkThemeBg : AppColors.nightDarkBg,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        l10n.shiftNightShort,
-                        style: TextStyle(fontSize: 11, color: isDark ? Colors.white70 : AppColors.nightDark, fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        l10n.shiftCount(nightCount),
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: isDark ? Colors.white : AppColors.nightDark),
-                      ),
-                    ],
-                  ),
+                child: _buildShiftStatChip(
+                  context,
+                  title: l10n.shiftLongShort,
+                  countText: l10n.shiftCount(longCount),
+                  icon: Icons.timelapse_rounded,
+                  bgColor: isDark ? AppDesignTokens.shiftLongBgDark : AppDesignTokens.shiftLongBgLight,
+                  borderColor: AppDesignTokens.shiftLong.withOpacity(isDark ? 0.35 : 0.2),
+                  accentColor: isDark ? const Color(0xFFC4B5FD) : AppDesignTokens.shiftLong,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
+              // Night Shift
               Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: isDark ? AppColors.morningBlueDarkBg : AppColors.morningBlueBg,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        l10n.shiftMorningShort,
-                        style: const TextStyle(fontSize: 11, color: AppColors.morningBlue, fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        l10n.shiftCount(morningCount),
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.morningBlue),
-                      ),
-                    ],
-                  ),
+                child: _buildShiftStatChip(
+                  context,
+                  title: 'ليلي',
+                  countText: l10n.shiftCount(nightCount),
+                  icon: Icons.nightlight_round,
+                  bgColor: isDark ? AppDesignTokens.shiftNightBgDark : const Color(0xFFE2E8F0),
+                  borderColor: isDark ? const Color(0xFF22D3EE).withOpacity(0.3) : AppDesignTokens.navyDark.withOpacity(0.2),
+                  accentColor: isDark ? const Color(0xFF22D3EE) : AppDesignTokens.navyDark,
                 ),
               ),
             ],
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
 
-          InkWell(
-            onTap: onViewRosterTap,
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    l10n.viewFullApprovedRoster,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primaryTeal,
-                    ),
+          AppButton(
+            text: l10n.viewFullApprovedRoster,
+            icon: Icons.event_available_rounded,
+            variant: AppButtonVariant.secondary,
+            onPressed: onViewRosterTap,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShiftStatChip(
+    BuildContext context, {
+    required String title,
+    required String countText,
+    required IconData icon,
+    required Color bgColor,
+    required Color borderColor,
+    required Color accentColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(AppDesignTokens.radiusMd),
+        border: Border.all(color: borderColor, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: accentColor),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: accentColor,
                   ),
-                  const SizedBox(width: 6),
-                  const Icon(Icons.arrow_forward_rounded, size: 14, color: AppColors.primaryTeal),
-                ],
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            countText,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: accentColor,
             ),
           ),
         ],
@@ -515,33 +593,39 @@ class StudentDashboardScreen extends ConsumerWidget {
         title: l10n.quickActionCheckIn,
         subtitle: l10n.quickActionCheckInSub,
         icon: Icons.fingerprint_rounded,
-        color: AppColors.primaryTeal,
-        bgColor: AppColors.primaryTeal.withOpacity(0.1),
-        onTap: () => onNavigateTab(2),
+        color: AppDesignTokens.primary,
+        onTap: () => onNavigateTab(3), // Attendance tab
       ),
       _QuickActionItem(
         title: l10n.quickActionRoster,
         subtitle: l10n.quickActionRosterSub,
         icon: Icons.calendar_month_rounded,
-        color: AppColors.tilePurple,
-        bgColor: AppColors.tilePurple.withOpacity(0.1),
-        onTap: () => onNavigateTab(1),
+        color: AppDesignTokens.shiftLong,
+        onTap: () => onNavigateTab(1), // Roster tab
       ),
       _QuickActionItem(
-        title: l10n.quickActionQuizzes,
-        subtitle: l10n.quickActionQuizzesSub,
-        icon: Icons.quiz_rounded,
-        color: AppColors.tileOrange,
-        bgColor: AppColors.tileOrange.withOpacity(0.1),
-        onTap: () => onNavigateTab(3),
+        title: 'تسليم واستلام',
+        subtitle: 'محاضر الشيفتات',
+        icon: Icons.assignment_turned_in_rounded,
+        color: AppDesignTokens.success,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ShiftHandoverScreen()),
+          );
+        },
       ),
       _QuickActionItem(
-        title: l10n.quickActionLogbook,
-        subtitle: l10n.quickActionLogbookSub,
-        icon: Icons.folder_shared_rounded,
-        color: AppColors.info,
-        bgColor: AppColors.info.withOpacity(0.1),
-        onTap: () => onNavigateTab(4),
+        title: 'تفضيلات المجموعة',
+        subtitle: 'اقتراح الزملاء',
+        icon: Icons.group_add_rounded,
+        color: AppDesignTokens.warning,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const GroupSelectionScreen()),
+          );
+        },
       ),
     ];
 
@@ -557,184 +641,104 @@ class StudentDashboardScreen extends ConsumerWidget {
       itemCount: tiles.length,
       itemBuilder: (context, index) {
         final tile = tiles[index];
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              tile.onTap();
-            },
-            borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: AppColors.card(context),
-                borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-                border: Border.all(color: AppColors.border(context), width: 1),
-                boxShadow: AppTheme.iosCardShadow(context),
+        return AppCard(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          onTap: () {
+            HapticFeedback.lightImpact();
+            tile.onTap();
+          },
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: tile.color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
+                ),
+                child: Icon(tile.icon, color: tile.color, size: 20),
               ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: tile.bgColor,
-                      borderRadius: BorderRadius.circular(14),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      tile.title,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: AppDesignTokens.textPrimary(context),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    child: Icon(tile.icon, color: tile.color, size: 23),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          tile.title,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.text(context),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          tile.subtitle,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: AppColors.subtext(context),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+                    const SizedBox(height: 2),
+                    Text(
+                      tile.subtitle,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppDesignTokens.textSecondary(context),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
         );
       },
     );
   }
 
-  // ── Daily Quiz Banner ──────────────────────────────────────────────────────
-  Widget _buildDailyQuizBanner(BuildContext context, {required AppLocalizations l10n, required VoidCallback onStartQuiz}) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: AppColors.quizBannerGradient,
-        borderRadius: BorderRadius.circular(AppTheme.radiusXl),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFEA580C).withOpacity(0.25),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Stack(
+  // ── Daily Clinical Quiz Card ───────────────────────────────────────────────
+  Widget _buildDailyQuizCard(BuildContext context, {required AppLocalizations l10n, required VoidCallback onStartQuiz}) {
+    return AppCard(
+      padding: const EdgeInsets.all(16),
+      variant: AppCardVariant.standard,
+      child: Row(
         children: [
-          Positioned(
-            left: 12,
-            top: 10,
-            bottom: 10,
-            child: Opacity(
-              opacity: 0.18,
-              child: const Icon(
-                Icons.lightbulb_rounded,
-                size: 90,
-                color: Colors.white,
-              ),
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppDesignTokens.warning.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
             ),
+            child: const Icon(Icons.psychology_rounded, color: AppDesignTokens.warning, size: 24),
           ),
-
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-            child: Row(
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        l10n.dailyQuizBannerTitle,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16.5,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        l10n.dailyQuizBannerSubtitle,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.9),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      GestureDetector(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          onStartQuiz();
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.06),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                l10n.startDailyQuiz,
-                                style: const TextStyle(
-                                  color: Color(0xFFEA580C),
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              const Icon(
-                                Icons.play_arrow_rounded,
-                                size: 16,
-                                color: Color(0xFFEA580C),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
+                Text(
+                  l10n.dailyQuizBannerTitle,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: AppDesignTokens.textPrimary(context),
                   ),
                 ),
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.psychology_rounded,
-                    color: Colors.white,
-                    size: 30,
+                const SizedBox(height: 2),
+                Text(
+                  l10n.dailyQuizBannerSubtitle,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: AppDesignTokens.textSecondary(context),
                   ),
                 ),
               ],
             ),
+          ),
+          AppButton(
+            text: l10n.startDailyQuiz,
+            variant: AppButtonVariant.outline,
+            size: AppButtonSize.small,
+            onPressed: onStartQuiz,
           ),
         ],
       ),
@@ -744,15 +748,15 @@ class StudentDashboardScreen extends ConsumerWidget {
   // ── Clinical Learning Carousel ─────────────────────────────────────────────
   Widget _buildLearningCarousel(BuildContext context) {
     final procedures = [
-      _LearningItem(title: 'Foley Catheter', subtitle: 'قسطرة بولية', icon: Icons.healing_rounded, color: AppColors.primaryTeal),
-      _LearningItem(title: 'NG Tube', subtitle: 'أنبوبة أنفية معدية', icon: Icons.medical_services_rounded, color: AppColors.tilePurple),
-      _LearningItem(title: 'CPR Protocol', subtitle: 'إنعاش قلبي رئوي', icon: Icons.favorite_rounded, color: AppColors.danger),
-      _LearningItem(title: 'IV Cannulation', subtitle: 'تركيب الكانولا', icon: Icons.vaccines_rounded, color: AppColors.info),
-      _LearningItem(title: 'Emergency Triage', subtitle: 'فرز الطوارئ', icon: Icons.emergency_rounded, color: AppColors.warning),
+      _LearningItem(title: 'Foley Catheter', subtitle: 'قسطرة بولية', icon: Icons.healing_rounded, color: AppDesignTokens.primary),
+      _LearningItem(title: 'NG Tube', subtitle: 'أنبوبة أنفية معدية', icon: Icons.medical_services_rounded, color: AppDesignTokens.shiftLong),
+      _LearningItem(title: 'CPR Protocol', subtitle: 'إنعاش قلبي رئوي', icon: Icons.favorite_rounded, color: AppDesignTokens.danger),
+      _LearningItem(title: 'IV Cannulation', subtitle: 'تركيب الكانولا', icon: Icons.vaccines_rounded, color: AppDesignTokens.info),
+      _LearningItem(title: 'Emergency Triage', subtitle: 'فرز الطوارئ', icon: Icons.emergency_rounded, color: AppDesignTokens.warning),
     ];
 
     return SizedBox(
-      height: 95,
+      height: 84,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
@@ -762,63 +766,51 @@ class StudentDashboardScreen extends ConsumerWidget {
           return Container(
             width: 140,
             margin: EdgeInsets.only(left: index == procedures.length - 1 ? 0 : 10),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  onNavigateTab(4); // Knowledge tab
-                },
-                borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.card(context),
-                    borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-                    border: Border.all(color: AppColors.border(context), width: 1),
-                    boxShadow: AppTheme.iosCardShadow(context),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
+            child: AppCard(
+              padding: const EdgeInsets.all(10),
+              onTap: () {
+                HapticFeedback.lightImpact();
+                onNavigateTab(4); // Knowledge tab
+              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(5),
-                            decoration: BoxDecoration(
-                              color: item.color.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(item.icon, size: 16, color: item.color),
-                          ),
-                          const Spacer(),
-                          const Icon(Icons.arrow_forward_ios_rounded, size: 10, color: AppColors.textMuted),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        item.title,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.text(context),
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: item.color.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(6),
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        child: Icon(item.icon, size: 14, color: item.color),
                       ),
-                      Text(
-                        item.subtitle,
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: AppColors.subtext(context),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      const Spacer(),
+                      Icon(Icons.arrow_forward_ios_rounded, size: 9, color: AppDesignTokens.textMuted(context)),
                     ],
                   ),
-                ),
+                  const SizedBox(height: 6),
+                  Text(
+                    item.title,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.bold,
+                      color: AppDesignTokens.textPrimary(context),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    item.subtitle,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      color: AppDesignTokens.textSecondary(context),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             ),
           );
@@ -838,25 +830,25 @@ class StudentDashboardScreen extends ConsumerWidget {
           _buildActivityRow(
             context,
             icon: Icons.fingerprint_rounded,
-            color: AppColors.primaryTeal,
+            color: AppDesignTokens.primary,
             title: l10n.attendanceScreenTitle,
             subtitle: isCheckedIn ? '07:55 AM • ${l10n.checkedInStatus}' : l10n.checkInNow,
             time: 'اليوم',
           ),
-          Divider(height: 12, color: AppColors.border(context)),
+          Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
           _buildActivityRow(
             context,
             icon: Icons.verified_rounded,
-            color: AppColors.success,
+            color: AppDesignTokens.success,
             title: l10n.approvedRosterTitle,
             subtitle: l10n.statusApproved,
             time: 'أمس',
           ),
-          Divider(height: 12, color: AppColors.border(context)),
+          Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
           _buildActivityRow(
             context,
             icon: Icons.quiz_rounded,
-            color: AppColors.tileOrange,
+            color: AppDesignTokens.warning,
             title: l10n.quizzesScreenTitle,
             subtitle: '100% (5/5)',
             time: 'منذ يومين',
@@ -884,7 +876,7 @@ class StudentDashboardScreen extends ConsumerWidget {
               color: color.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, size: 18, color: color),
+            child: Icon(icon, size: 16, color: color),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -894,16 +886,16 @@ class StudentDashboardScreen extends ConsumerWidget {
                 Text(
                   title,
                   style: TextStyle(
-                    fontSize: 13.5,
+                    fontSize: 13,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.text(context),
+                    color: AppDesignTokens.textPrimary(context),
                   ),
                 ),
                 Text(
                   subtitle,
                   style: TextStyle(
-                    fontSize: 11.5,
-                    color: AppColors.subtext(context),
+                    fontSize: 11,
+                    color: AppDesignTokens.textSecondary(context),
                   ),
                 ),
               ],
@@ -911,23 +903,318 @@ class StudentDashboardScreen extends ConsumerWidget {
           ),
           Text(
             time,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
-              color: AppColors.textMuted,
+              color: AppDesignTokens.textMuted(context),
             ),
           ),
         ],
       ),
     );
   }
+
+  Widget _buildLeaderboardBanner(BuildContext context) {
+    return InkWell(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ClinicalLeaderboardScreen()),
+        );
+      },
+      borderRadius: BorderRadius.circular(AppDesignTokens.radiusMd),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
+            begin: Alignment.topRight,
+            end: Alignment.bottomLeft,
+          ),
+          borderRadius: BorderRadius.circular(AppDesignTokens.radiusMd),
+          border: Border.all(color: const Color(0xFFF59E0B)),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFF59E0B).withOpacity(0.15),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD97706).withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.emoji_events_rounded,
+                color: Color(0xFFB45309),
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '🏆 لوحة المتصدرين',
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF78350F),
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'اعرف ترتيبك بين زملائك',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF92400E),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 14,
+              color: Color(0xFFB45309),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUrgentFingerprintBanner(BuildContext context, WidgetRef ref, FingerprintRequest req) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFEF4444).withOpacity(0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFEF4444), width: 1.8),
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFEF4444),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.fingerprint_rounded, color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '🚨 تنبيه عاجل: مطلوب بصمة تأكيد التواجد فوراً!',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFDC2626),
+                      ),
+                    ),
+                    Text(
+                      'مرسل من: ${req.senderName} • ${DateFormat('hh:mm a', 'ar').format(req.sentAt)}',
+                      style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (req.notes != null && req.notes!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              req.notes!,
+              style: TextStyle(fontSize: 12, color: AppDesignTokens.textPrimary(context)),
+            ),
+          ],
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFDC2626),
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              icon: const Icon(Icons.touch_app_rounded, color: Colors.white, size: 18),
+              label: const Text(
+                'تأكيد البصمة وتحديد الموقع الآن 📱📍',
+                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13),
+              ),
+              onPressed: () => _showUrgentFingerprintDialog(context, ref, req),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showUrgentFingerprintDialog(BuildContext context, WidgetRef ref, FingerprintRequest req) {
+    HapticFeedback.heavyImpact();
+    bool isSubmitting = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Container(
+          decoration: BoxDecoration(
+            color: AppDesignTokens.surface(context),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppDesignTokens.border(context),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                width: 68,
+                height: 68,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444).withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.fingerprint_rounded, size: 42, color: Color(0xFFDC2626)),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'تأكيد التواجد الفوري بالبصمة الحيوية',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'طلب رسمي صادر من: ${req.senderName}\nيرجى البصمة وإرسال إحداثيات موقعك الجغرافي لتأكيد تواجدك بالقسم السريري.',
+                style: TextStyle(fontSize: 12.5, color: AppDesignTokens.textSecondary(context), height: 1.4),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              if (isSubmitting)
+                const Column(
+                  children: [
+                    CircularProgressIndicator(color: Color(0xFFDC2626)),
+                    SizedBox(height: 10),
+                    Text('جارٍ التحقق البيومتري وتحديد الموقع بدقة...', style: TextStyle(fontSize: 12)),
+                  ],
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('إغلاق'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFDC2626),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        icon: const Icon(Icons.fingerprint_rounded, color: Colors.white),
+                        label: const Text('بصم الآن 📱📍', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        onPressed: () async {
+                          setModalState(() => isSubmitting = true);
+                          try {
+                            // 1. Biometric verification
+                            final bioRes = await PlatformService.biometric.authenticate(
+                              reason: 'تأكيد بصمة التواجد الفوري بالقسم',
+                            );
+
+                            if (!bioRes.success && !PlatformService.isWeb) {
+                              setModalState(() => isSubmitting = false);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    backgroundColor: AppDesignTokens.danger,
+                                    content: Text('فشل التحقق البيومتري من البصمة ❌'),
+                                  ),
+                                );
+                              }
+                              return;
+                            }
+
+                            // 2. Fetch GPS coordinates
+                            final loc = await LocationService.getCurrentLocation();
+
+                            // 3. Confirm in Supabase
+                            await ref.read(fingerprintRequestsProvider.notifier).confirmFingerprint(
+                              requestId: req.id,
+                              latitude: loc.latitude,
+                              longitude: loc.longitude,
+                            );
+
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx);
+                            }
+
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  backgroundColor: AppDesignTokens.success,
+                                  content: Text('تم تأكيد التواجد والبصمة الحيوية بنجاح وإرسالها للمشرف ✅📍'),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            setModalState(() => isSubmitting = false);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  backgroundColor: AppDesignTokens.danger,
+                                  content: Text('حدث خطأ أثناء تأكيد البصمة: $e'),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
+
 
 class _QuickActionItem {
   final String title;
   final String subtitle;
   final IconData icon;
   final Color color;
-  final Color bgColor;
   final VoidCallback onTap;
 
   _QuickActionItem({
@@ -935,7 +1222,6 @@ class _QuickActionItem {
     required this.subtitle,
     required this.icon,
     required this.color,
-    required this.bgColor,
     required this.onTap,
   });
 }

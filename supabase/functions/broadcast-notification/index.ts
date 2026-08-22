@@ -448,6 +448,38 @@ serve(async (req) => {
       }
     }
 
+    // ──────────────────────────────────────────────────────────────────────────
+    // PATH C: Insert Sender Broadcast History Record in notifications (Server-Side Owned)
+    // ──────────────────────────────────────────────────────────────────────────
+    try {
+      await adminClient.from("notifications").insert({
+        user_id: user.id,
+        title: title.trim(),
+        message: body.trim(),
+        type: notification_type || "GENERAL",
+        is_read: true,
+        created_at: new Date().toISOString(),
+        metadata: {
+          is_broadcast_campaign: true,
+          sender_id: user.id,
+          sender_name: callerProfile.full_name,
+          sender_role: callerProfile.role,
+          audience_type: audience_type,
+          audience_value: audience_value,
+          target_route: target_route,
+          recipient_count: targetStudentIds.length,
+          device_count: tokensFound,
+          success_count: pushSuccessCount,
+          failure_count: pushFailedCount,
+          sent_at: new Date().toISOString(),
+          ...metadata,
+        }
+      });
+      console.log("[EDGE_BROADCAST] SENDER_CAMPAIGN_RECORD_SAVED");
+    } catch (senderRecordErr) {
+      console.warn("[EDGE_BROADCAST] Failed to save sender campaign record:", senderRecordErr);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
