@@ -99,6 +99,11 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
     return 'مسؤول النظام';
   }
 
+  bool _isValidUuid(String? str) {
+    if (str == null || str.isEmpty) return false;
+    return RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(str.trim());
+  }
+
   Future<bool> approveStudent(String studentId) async {
     final currentReviewer = ref.read(authProvider).user;
     final reviewerId = currentReviewer?.id ?? 'leader-001';
@@ -108,36 +113,66 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
       updateStudentApprovalInRegistry(studentId, RegistrationStatus.approved, null);
 
       if (SupabaseService.isInitialized) {
+        bool updatedViaRpc = false;
         try {
-          await SupabaseService.client.from('profiles').update({
-            'registration_status': 'approved',
-            'is_approved': true,
-            'reviewed_by': reviewerId,
-            'reviewed_at': DateTime.now().toIso8601String(),
-            'rejection_reason': null,
-          }).or('id.eq.$studentId,university_code.eq.$studentId');
-
-          // Audit Log
-          await SupabaseService.client.from('audit_logs').insert({
-            'user_id': reviewerId,
-            'action_type': 'REGISTRATION_APPROVED',
-            'entity_name': 'profiles',
-            'entity_id': studentId,
-            'new_values': {
-              'reviewer_role': reviewerRole,
-              'reviewer_name': currentReviewer?.fullName,
-              'timestamp': DateTime.now().toIso8601String(),
-            }
+          final rpcRes = await SupabaseService.client.rpc('approve_student_registration', params: {
+            'p_student_id': studentId,
+            'p_reviewer_id': reviewerId,
           });
-        } catch (e) {
-          if (kDebugMode) print('Approve error in Supabase: $e');
+          if (rpcRes == true) updatedViaRpc = true;
+        } catch (rpcErr) {
+          if (kDebugMode) print('approve_student_registration RPC fallback: $rpcErr');
         }
+
+        if (!updatedViaRpc) {
+          try {
+            final updateData = <String, dynamic>{
+              'registration_status': 'approved',
+              'is_approved': true,
+              'reviewed_at': DateTime.now().toIso8601String(),
+              'rejection_reason': null,
+            };
+            if (_isValidUuid(reviewerId)) {
+              updateData['reviewed_by'] = reviewerId;
+            }
+
+            if (_isValidUuid(studentId)) {
+              await SupabaseService.client.from('profiles').update(updateData).eq('id', studentId);
+            } else {
+              try {
+                await SupabaseService.client.from('profiles').update(updateData).eq('university_code', studentId);
+              } catch (_) {}
+              try {
+                await SupabaseService.client.from('profiles').update(updateData).eq('email', studentId);
+              } catch (_) {}
+            }
+          } catch (e) {
+            if (kDebugMode) print('Direct approve error in Supabase: $e');
+          }
+        }
+
+        // Audit Log
+        try {
+          if (_isValidUuid(reviewerId)) {
+            await SupabaseService.client.from('audit_logs').insert({
+              'user_id': reviewerId,
+              'action_type': 'REGISTRATION_APPROVED',
+              'entity_name': 'profiles',
+              'entity_id': studentId,
+              'new_values': {
+                'reviewer_role': reviewerRole,
+                'reviewer_name': currentReviewer?.fullName,
+                'timestamp': DateTime.now().toIso8601String(),
+              }
+            });
+          }
+        } catch (_) {}
       }
 
       // Update local state
       state = state.whenData((list) {
         return list.map((student) {
-          if (student.id == studentId || student.universityCode == studentId) {
+          if (student.id == studentId || student.universityCode == studentId || student.email == studentId) {
             return student.copyWith(
               registrationStatus: RegistrationStatus.approved,
               reviewedBy: reviewerId,
@@ -165,36 +200,67 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
       updateStudentApprovalInRegistry(studentId, RegistrationStatus.rejected, reason);
 
       if (SupabaseService.isInitialized) {
+        bool updatedViaRpc = false;
         try {
-          await SupabaseService.client.from('profiles').update({
-            'registration_status': 'rejected',
-            'is_approved': false,
-            'reviewed_by': reviewerId,
-            'reviewed_at': DateTime.now().toIso8601String(),
-            'rejection_reason': reason,
-          }).or('id.eq.$studentId,university_code.eq.$studentId');
-
-          // Audit Log
-          await SupabaseService.client.from('audit_logs').insert({
-            'user_id': reviewerId,
-            'action_type': 'REGISTRATION_REJECTED',
-            'entity_name': 'profiles',
-            'entity_id': studentId,
-            'new_values': {
-              'reviewer_role': reviewerRole,
-              'reviewer_name': currentReviewer?.fullName,
-              'reason': reason,
-              'timestamp': DateTime.now().toIso8601String(),
-            }
+          final rpcRes = await SupabaseService.client.rpc('reject_student_registration', params: {
+            'p_student_id': studentId,
+            'p_reason': reason,
+            'p_reviewer_id': reviewerId,
           });
-        } catch (e) {
-          if (kDebugMode) print('Reject error in Supabase: $e');
+          if (rpcRes == true) updatedViaRpc = true;
+        } catch (rpcErr) {
+          if (kDebugMode) print('reject_student_registration RPC fallback: $rpcErr');
         }
+
+        if (!updatedViaRpc) {
+          try {
+            final updateData = <String, dynamic>{
+              'registration_status': 'rejected',
+              'is_approved': false,
+              'reviewed_at': DateTime.now().toIso8601String(),
+              'rejection_reason': reason,
+            };
+            if (_isValidUuid(reviewerId)) {
+              updateData['reviewed_by'] = reviewerId;
+            }
+
+            if (_isValidUuid(studentId)) {
+              await SupabaseService.client.from('profiles').update(updateData).eq('id', studentId);
+            } else {
+              try {
+                await SupabaseService.client.from('profiles').update(updateData).eq('university_code', studentId);
+              } catch (_) {}
+              try {
+                await SupabaseService.client.from('profiles').update(updateData).eq('email', studentId);
+              } catch (_) {}
+            }
+          } catch (e) {
+            if (kDebugMode) print('Direct reject error in Supabase: $e');
+          }
+        }
+
+        // Audit Log
+        try {
+          if (_isValidUuid(reviewerId)) {
+            await SupabaseService.client.from('audit_logs').insert({
+              'user_id': reviewerId,
+              'action_type': 'REGISTRATION_REJECTED',
+              'entity_name': 'profiles',
+              'entity_id': studentId,
+              'new_values': {
+                'reviewer_role': reviewerRole,
+                'reviewer_name': currentReviewer?.fullName,
+                'reason': reason,
+                'timestamp': DateTime.now().toIso8601String(),
+              }
+            });
+          }
+        } catch (_) {}
       }
 
       state = state.whenData((list) {
         return list.map((student) {
-          if (student.id == studentId || student.universityCode == studentId) {
+          if (student.id == studentId || student.universityCode == studentId || student.email == studentId) {
             return student.copyWith(
               registrationStatus: RegistrationStatus.rejected,
               reviewedBy: reviewerId,
@@ -222,36 +288,66 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
       updateStudentApprovalInRegistry(studentId, RegistrationStatus.pending, null);
 
       if (SupabaseService.isInitialized) {
+        bool updatedViaRpc = false;
         try {
-          await SupabaseService.client.from('profiles').update({
-            'registration_status': 'pending',
-            'is_approved': false,
-            'reviewed_by': reviewerId,
-            'reviewed_at': DateTime.now().toIso8601String(),
-            'rejection_reason': null,
-          }).or('id.eq.$studentId,university_code.eq.$studentId');
-
-          // Audit Log
-          await SupabaseService.client.from('audit_logs').insert({
-            'user_id': reviewerId,
-            'action_type': 'REGISTRATION_RETURNED_TO_PENDING',
-            'entity_name': 'profiles',
-            'entity_id': studentId,
-            'new_values': {
-              'reviewer_role': reviewerRole,
-              'reviewer_name': currentReviewer?.fullName,
-              'action': 'Returned from Rejected to Pending review',
-              'timestamp': DateTime.now().toIso8601String(),
-            }
+          final rpcRes = await SupabaseService.client.rpc('return_student_to_pending', params: {
+            'p_student_id': studentId,
+            'p_reviewer_id': reviewerId,
           });
-        } catch (e) {
-          if (kDebugMode) print('Return to pending error in Supabase: $e');
+          if (rpcRes == true) updatedViaRpc = true;
+        } catch (rpcErr) {
+          if (kDebugMode) print('return_student_to_pending RPC fallback: $rpcErr');
         }
+
+        if (!updatedViaRpc) {
+          try {
+            final updateData = <String, dynamic>{
+              'registration_status': 'pending',
+              'is_approved': false,
+              'reviewed_at': DateTime.now().toIso8601String(),
+              'rejection_reason': null,
+            };
+            if (_isValidUuid(reviewerId)) {
+              updateData['reviewed_by'] = reviewerId;
+            }
+
+            if (_isValidUuid(studentId)) {
+              await SupabaseService.client.from('profiles').update(updateData).eq('id', studentId);
+            } else {
+              try {
+                await SupabaseService.client.from('profiles').update(updateData).eq('university_code', studentId);
+              } catch (_) {}
+              try {
+                await SupabaseService.client.from('profiles').update(updateData).eq('email', studentId);
+              } catch (_) {}
+            }
+          } catch (e) {
+            if (kDebugMode) print('Direct return to pending error in Supabase: $e');
+          }
+        }
+
+        // Audit Log
+        try {
+          if (_isValidUuid(reviewerId)) {
+            await SupabaseService.client.from('audit_logs').insert({
+              'user_id': reviewerId,
+              'action_type': 'REGISTRATION_RETURNED_TO_PENDING',
+              'entity_name': 'profiles',
+              'entity_id': studentId,
+              'new_values': {
+                'reviewer_role': reviewerRole,
+                'reviewer_name': currentReviewer?.fullName,
+                'action': 'Returned from Rejected to Pending review',
+                'timestamp': DateTime.now().toIso8601String(),
+              }
+            });
+          }
+        } catch (_) {}
       }
 
       state = state.whenData((list) {
         return list.map((student) {
-          if (student.id == studentId || student.universityCode == studentId) {
+          if (student.id == studentId || student.universityCode == studentId || student.email == studentId) {
             return student.copyWith(
               registrationStatus: RegistrationStatus.pending,
               reviewedBy: reviewerId,

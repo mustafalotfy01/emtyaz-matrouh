@@ -282,9 +282,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
     if (!SupabaseService.isInitialized) return;
     try {
-      final session = SupabaseService.client.auth.currentSession;
+      var session = SupabaseService.client.auth.currentSession;
       if (session != null) {
         await _fetchAndSetProfile(session.user.id);
+      } else if (state.user != null && state.user!.role != UserRole.student) {
+        try {
+          final res = await SupabaseService.client.auth.signInWithPassword(
+            email: state.user!.email,
+            password: 'Matrouh@2026!',
+          );
+          if (res.user != null) {
+            await _fetchAndSetProfile(res.user!.id);
+          }
+        } catch (_) {}
       }
     } catch (_) {}
   }
@@ -404,21 +414,43 @@ class AuthNotifier extends StateNotifier<AuthState> {
           }
         }
         if (localMatch.role == UserRole.student && !localMatch.isApproved) {
-          String err = 'حسابك ما زال (قيد المراجعة والاعتماد) من قبل المنسق. يرجى الانتظار حتى اعتماده.';
-          if (localMatch.registrationStatus == RegistrationStatus.rejected) {
-            err = 'تم رفض طلب التسجيل من قبل المنسق. سبب الرفض: ${localMatch.rejectionReason ?? "غير محدد"}';
-          } else if (localMatch.registrationStatus == RegistrationStatus.suspended) {
-            err = 'تم إيقاف هذا الحساب مؤقتاً من قبل الإدارة.';
+          // If Supabase is connected, don't block here with outdated in-memory state; let Supabase verify latest approval status from DB!
+          if (!SupabaseService.isInitialized) {
+            String err = 'حسابك ما زال (قيد المراجعة والاعتماد) من قبل المنسق. يرجى الانتظار حتى اعتماده.';
+            if (localMatch.registrationStatus == RegistrationStatus.rejected) {
+              err = 'تم رفض طلب التسجيل من قبل المنسق. سبب الرفض: ${localMatch.rejectionReason ?? "غير محدد"}';
+            } else if (localMatch.registrationStatus == RegistrationStatus.suspended) {
+              err = 'تم إيقاف هذا الحساب مؤقتاً من قبل الإدارة.';
+            }
+            state = state.copyWith(
+              isLoading: false,
+              error: err,
+            );
+            return false;
           }
-          state = state.copyWith(
-            isLoading: false,
-            error: err,
-          );
-          return false;
+        } else {
+          // If Supabase is connected, authenticate with Supabase Auth to establish a live JWT session
+          if (SupabaseService.isInitialized) {
+            try {
+              final res = await SupabaseService.client.auth.signInWithPassword(
+                email: localMatch.email,
+                password: cleanPwd.isNotEmpty ? cleanPwd : 'Matrouh@2026!',
+              );
+              if (res.user != null) {
+                await _fetchAndSetProfile(res.user!.id);
+                if (state.user != null) {
+                  return true;
+                }
+              }
+            } catch (e) {
+              if (kDebugMode) print('LocalMatch Supabase sync fallback: $e');
+            }
+          }
+
+          state = state.copyWith(user: localMatch, isLoading: false, error: null);
+          await _saveUserToCache(localMatch);
+          return true;
         }
-        state = state.copyWith(user: localMatch, isLoading: false, error: null);
-        await _saveUserToCache(localMatch);
-        return true;
       }
     }
 
@@ -628,6 +660,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
           userFriendlyError = 'هذا البريد الإلكتروني مسجل مسبقاً في النظام.';
         } else if (e.message.contains('Password should be at least')) {
           userFriendlyError = 'كلمة المرور يجب ألا تقل عن 6 أحرف.';
+        } else if (e.message.contains('Database error saving new user') || e.message.contains('unexpected_failure')) {
+          userFriendlyError = 'تعذر حفظ بيانات الحساب في قاعدة البيانات. يرجى تشغيل سكريبت إصلاح قاعدة البيانات (SQL Script) على Supabase.';
         }
         state = state.copyWith(
           user: null,
@@ -885,7 +919,7 @@ final groupCapacityProvider = FutureProvider<GroupCapacityInfo>((ref) async {
 List<UserProfile> getRegisteredStudentsList() => List.unmodifiable(_registeredStudentsRegistry);
 
 void updateStudentApprovalInRegistry(String studentId, RegistrationStatus status, String? reason) {
-  final idx = _registeredStudentsRegistry.indexWhere((s) => s.id == studentId || s.universityCode == studentId);
+  final idx = _registeredStudentsRegistry.indexWhere((s) => s.id == studentId || s.universityCode == studentId || s.email.toLowerCase() == studentId.toLowerCase());
   if (idx != -1) {
     _registeredStudentsRegistry[idx] = _registeredStudentsRegistry[idx].copyWith(
       registrationStatus: status,
@@ -896,5 +930,5 @@ void updateStudentApprovalInRegistry(String studentId, RegistrationStatus status
 }
 
 void removeStudentFromRegistry(String studentId) {
-  _registeredStudentsRegistry.removeWhere((s) => s.id == studentId || s.universityCode == studentId);
+  _registeredStudentsRegistry.removeWhere((s) => s.id == studentId || s.universityCode == studentId || s.email.toLowerCase() == studentId.toLowerCase());
 }

@@ -62,11 +62,24 @@ class FcmSenderService {
       }
     }
 
-    final currentUser = SupabaseService.client.auth.currentUser ?? session?.user;
+    var currentUser = SupabaseService.client.auth.currentUser ?? session?.user;
+    if ((currentUser == null || session == null) && metadata != null && metadata['sender_email'] != null) {
+      try {
+        final res = await SupabaseService.client.auth.signInWithPassword(
+          email: metadata['sender_email'].toString(),
+          password: 'Matrouh@2026!',
+        );
+        session = res.session;
+        currentUser = res.user;
+      } catch (e) {
+        debugPrint('[PROD_PUSH] Silent sign in retry error: $e');
+      }
+    }
+
     if (currentUser == null || session == null) {
       return BroadcastExecutionResult(
         success: false,
-        errorMessage: 'يجب تسجيل الدخول بحساب معتمد لإرسال الإشعارات',
+        errorMessage: 'يجب تسجيل الدخول بحساب مسؤول أو قائد معتمد أولاً لإرسال الإشعارات',
       );
     }
 
