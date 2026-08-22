@@ -203,6 +203,11 @@ class AppVersionsRepository {
       'force_update': forceUpdate,
       'minimum_supported_version': minimumSupportedVersion,
       'is_active': isActive,
+      'platform': platform,
+      if (fileName != null) 'file_name': fileName,
+      if (fileSize != null) 'file_size': fileSize,
+      if (checksum != null) 'checksum': checksum,
+      if (_client.auth.currentUser != null) 'created_by': _client.auth.currentUser!.id,
       'release_date': DateTime.now().toIso8601String(),
     };
 

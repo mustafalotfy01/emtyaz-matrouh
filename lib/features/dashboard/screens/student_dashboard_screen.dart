@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../core/localization/app_localizations.dart';
+import '../../../core/services/hospital_location_service.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/platform_service.dart';
 import '../../../core/theme/app_design_tokens.dart';
@@ -1231,10 +1232,11 @@ class StudentDashboardScreen extends ConsumerWidget {
                             final userLat = loc.latitude ?? 0.0;
                             final userLon = loc.longitude ?? 0.0;
 
-                            // 4. Verify Hospital Geofence (Matrouh General Hospital)
-                            const hospitalLat = 31.3543;
-                            const hospitalLon = 27.2373;
-                            const allowedRadiusMeters = 200.0;
+                            // 4. Verify Hospital Geofence dynamically from HospitalConfig
+                            final hospitalCfg = ref.read(hospitalConfigProvider);
+                            final hospitalLat = hospitalCfg.latitude;
+                            final hospitalLon = hospitalCfg.longitude;
+                            final allowedRadiusMeters = hospitalCfg.radiusMeters;
                             final isInsideHospital = (loc.latitude != null && loc.longitude != null) &&
                                 DistanceCalculator.isWithinZone(
                                   userLat: userLat,
