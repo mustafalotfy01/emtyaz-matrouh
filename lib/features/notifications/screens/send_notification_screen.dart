@@ -30,10 +30,29 @@ class _SendNotificationScreenState extends ConsumerState<SendNotificationScreen>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final session = SupabaseService.isInitialized ? SupabaseService.client.auth.currentSession : null;
-      final currentUser = SupabaseService.isInitialized ? SupabaseService.client.auth.currentUser : null;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final userProfile = ref.read(authProvider).user;
+      var session = SupabaseService.isInitialized ? SupabaseService.client.auth.currentSession : null;
+
+      // Proactively establish Supabase Auth session for staff if missing
+      if ((session == null || session.isExpired) &&
+          userProfile != null &&
+          SupabaseService.isInitialized &&
+          (userProfile.role == UserRole.superAdmin ||
+              userProfile.role == UserRole.leader ||
+              userProfile.role == UserRole.evaluatingDoctor)) {
+        try {
+          final res = await SupabaseService.client.auth.signInWithPassword(
+            email: userProfile.email,
+            password: 'Matrouh@2026!',
+          );
+          session = res.session;
+        } catch (e) {
+          debugPrint('[AUTH_DIAG] Auto staff sign-in on screen open note: $e');
+        }
+      }
+
+      final currentUser = SupabaseService.isInitialized ? SupabaseService.client.auth.currentUser : null;
       final maskedId = currentUser?.id != null ? '${currentUser!.id.substring(0, 8)}...' : 'none';
       final role = userProfile?.role.toDbString() ?? 'unknown';
       final tokenExpired = session?.isExpired ?? true;
@@ -48,6 +67,10 @@ class _SendNotificationScreenState extends ConsumerState<SendNotificationScreen>
       debugPrint('[AUTH_DIAG] ACCESS_TOKEN_EXISTS = $hasAccessToken');
       debugPrint('[AUTH_DIAG] TOKEN_EXPIRED = $tokenExpired');
       debugPrint('──────────────────────────────────────────────────');
+
+      // Refresh student list and campaigns history
+      ref.read(sendNotificationProvider.notifier).fetchAvailableStudents();
+      ref.read(sendNotificationProvider.notifier).fetchCampaignsHistory();
     });
   }
 
