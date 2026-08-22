@@ -29,7 +29,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _addressController = TextEditingController();
   final _passwordController = TextEditingController();
 
-  StudentGroup _studentGroup = StudentGroup.groupA;
   String _gender = 'male';
   final String _maritalStatus = 'أعزب/عزباء';
   final int _childrenCount = 0;
@@ -293,7 +292,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Gender selector placed first so capacity is clear
+                      // Gender selector
                       Row(
                         children: [
                           Text('النوع / الجنس: ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.text(context))),
@@ -303,164 +302,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                             activeColor: AppColors.primaryTeal,
                             onChanged: (v) => setState(() => _gender = v!),
                           ),
-                          Text('ذكر (حد أقصى 20)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.text(context))),
-                          const SizedBox(width: 10),
+                          Text('ذكر', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.text(context))),
+                          const SizedBox(width: 16),
                           Radio<String>(
                             value: 'female',
                             groupValue: _gender,
                             activeColor: AppColors.primaryTeal,
                             onChanged: (v) => setState(() => _gender = v!),
                           ),
-                          Text('أنثى (حد أقصى 35)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.text(context))),
+                          Text('أنثى', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.text(context))),
                         ],
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Student Group Selection with Live Capacity Limits (20 Males / 35 Females)
-                      Text(
-                        'المجموعة المحددة لتوزيع الروستر (السعة المتبقية):',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.text(context)),
-                      ),
-                      const SizedBox(height: 8),
-
-                      Builder(
-                        builder: (context) {
-                          final capacityAsync = ref.watch(groupCapacityProvider);
-                          final cap = capacityAsync.value ?? const GroupCapacityInfo();
-
-                          final remainingA = cap.getRemaining(StudentGroup.groupA, _gender);
-                          final remainingB = cap.getRemaining(StudentGroup.groupB, _gender);
-                          final maxCount = cap.getMax(_gender);
-
-                          final isAAvailable = remainingA > 0;
-                          final isBAvailable = remainingB > 0;
-
-                          return Column(
-                            children: [
-                              InkWell(
-                                onTap: isAAvailable ? () => setState(() => _studentGroup = StudentGroup.groupA) : null,
-                                borderRadius: BorderRadius.circular(12),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                  decoration: BoxDecoration(
-                                    color: _studentGroup == StudentGroup.groupA
-                                        ? AppColors.primaryTeal.withValues(alpha: 0.15)
-                                        : AppColors.card(context),
-                                    border: Border.all(
-                                      color: _studentGroup == StudentGroup.groupA
-                                          ? AppColors.primaryTeal
-                                          : AppColors.border(context),
-                                      width: _studentGroup == StudentGroup.groupA ? 2 : 1,
-                                    ),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Radio<StudentGroup>(
-                                        value: StudentGroup.groupA,
-                                        groupValue: _studentGroup,
-                                        activeColor: AppColors.primaryTeal,
-                                        onChanged: isAAvailable ? (v) => setState(() => _studentGroup = v!) : null,
-                                      ),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              'المجموعة A (الأيام 1 إلى 16)',
-                                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.text(context)),
-                                            ),
-                                            Text(
-                                              'تتيح اختيار 12 Option A و 12 Option B من الأيام 1-16',
-                                              style: TextStyle(fontSize: 10, color: AppColors.subtext(context)),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: isAAvailable ? AppColors.successLight.withValues(alpha: 0.2) : AppColors.dangerLight.withValues(alpha: 0.2),
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: Text(
-                                          isAAvailable ? 'متبقي: $remainingA / $maxCount' : 'اكتملت السعة ❌',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: isAAvailable ? AppColors.success : AppColors.danger,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(height: 8),
-
-                              InkWell(
-                                onTap: isBAvailable ? () => setState(() => _studentGroup = StudentGroup.groupB) : null,
-                                borderRadius: BorderRadius.circular(12),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                  decoration: BoxDecoration(
-                                    color: _studentGroup == StudentGroup.groupB
-                                        ? AppColors.primaryTeal.withValues(alpha: 0.15)
-                                        : AppColors.card(context),
-                                    border: Border.all(
-                                      color: _studentGroup == StudentGroup.groupB
-                                          ? AppColors.primaryTeal
-                                          : AppColors.border(context),
-                                      width: _studentGroup == StudentGroup.groupB ? 2 : 1,
-                                    ),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Radio<StudentGroup>(
-                                        value: StudentGroup.groupB,
-                                        groupValue: _studentGroup,
-                                        activeColor: AppColors.primaryTeal,
-                                        onChanged: isBAvailable ? (v) => setState(() => _studentGroup = v!) : null,
-                                      ),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              'المجموعة B (الأيام 17 إلى نهاية الشهر)',
-                                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.text(context)),
-                                            ),
-                                            Text(
-                                              'تتيح اختيار 12 Option A و 12 Option B من الأيام 17-31',
-                                              style: TextStyle(fontSize: 10, color: AppColors.subtext(context)),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: isBAvailable ? AppColors.successLight.withValues(alpha: 0.2) : AppColors.dangerLight.withValues(alpha: 0.2),
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: Text(
-                                          isBAvailable ? 'متبقي: $remainingB / $maxCount' : 'اكتملت السعة ❌',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: isBAvailable ? AppColors.success : AppColors.danger,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          );
-                        },
                       ),
                       const SizedBox(height: 14),
 
