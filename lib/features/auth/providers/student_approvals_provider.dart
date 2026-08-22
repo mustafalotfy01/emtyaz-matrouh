@@ -30,7 +30,7 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
               final role = r['role']?.toString();
               if (id != null && name != null) {
                 final roleArabic = role == 'leader'
-                    ? 'منسق'
+                    ? 'ليدر'
                     : (role == 'super_admin' ? 'مدير النظام' : (role == 'evaluating_doctor' ? 'مشرف طبي' : ''));
                 _reviewerNames[id] = roleArabic.isNotEmpty ? '$name — $roleArabic' : name;
               }
@@ -93,7 +93,7 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
       return _reviewerNames[reviewerId]!;
     }
     // If it is a known static ID
-    if (reviewerId.startsWith('leader')) return 'منسق الامتياز والجدولة';
+    if (reviewerId.startsWith('leader')) return 'ليدر الامتياز والجدولة';
     if (reviewerId.startsWith('admin')) return 'مدير النظام العام';
     if (reviewerId.startsWith('supervisor') || reviewerId.startsWith('doctor')) return 'المشرف الطبي المقيّم';
     return 'مسؤول النظام';
@@ -366,48 +366,113 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
     }
   }
 
-  Future<bool> deleteStudent(String studentId) async {
+  Future<bool> deleteStudent(
+    String studentId, {
+    String? universityCode,
+    String? email,
+  }) async {
     final currentReviewer = ref.read(authProvider).user;
     final reviewerId = currentReviewer?.id ?? 'admin-001';
 
     try {
       // 1. Remove from local in-memory registry so it never resurrects
       removeStudentFromRegistry(studentId);
+      if (universityCode != null && universityCode.isNotEmpty) {
+        removeStudentFromRegistry(universityCode);
+      }
+      if (email != null && email.isNotEmpty) {
+        removeStudentFromRegistry(email);
+      }
 
       if (SupabaseService.isInitialized) {
+        bool deletedViaRpc = false;
         try {
           // Try RPC first for clean atomic server-side cascade
-          try {
-            await SupabaseService.client.rpc('delete_student_account', params: {
-              'p_student_id': studentId,
-            });
-          } catch (_) {
-            // Fallback manual cascades
-            await SupabaseService.client.from('roster_entries').delete().eq('student_id', studentId);
-            await SupabaseService.client.from('roster_preferences').delete().eq('student_id', studentId);
-            await SupabaseService.client.from('notifications').delete().eq('user_id', studentId);
-            await SupabaseService.client.from('attendance').delete().eq('student_id', studentId);
-            await SupabaseService.client.from('quiz_answers').delete().eq('student_id', studentId);
-            await SupabaseService.client.from('quiz_attempts').delete().eq('student_id', studentId);
-            await SupabaseService.client.from('evaluations').delete().eq('student_id', studentId);
-            await SupabaseService.client.from('case_handovers').delete().or('from_student_id.eq.$studentId,to_student_id.eq.$studentId');
-            await SupabaseService.client.from('cases').delete().eq('student_id', studentId);
-            await SupabaseService.client.from('disciplinary_actions').delete().eq('student_id', studentId);
-            await SupabaseService.client.from('confirmation_requests').delete().or('target_student_id.eq.$studentId,sender_id.eq.$studentId');
-            await SupabaseService.client.from('community_comments').delete().eq('author_id', studentId);
-            await SupabaseService.client.from('community_posts').delete().eq('author_id', studentId);
-            
-            // Delete from profiles
-            await SupabaseService.client.from('profiles').delete().or('id.eq.$studentId,university_code.eq.$studentId');
+          final rpcRes = await SupabaseService.client.rpc('delete_student_account', params: {
+            'p_student_id': studentId,
+          });
+          if (rpcRes == true) {
+            deletedViaRpc = true;
           }
+        } catch (rpcErr) {
+          if (kDebugMode) print('delete_student_account RPC fallback: $rpcErr');
+        }
 
-          // Delete from Auth if valid UUID
+        if (!deletedViaRpc) {
+          // Fallback manual cascading delete
           try {
-            await SupabaseService.client.auth.admin.deleteUser(studentId);
-          } catch (_) {}
+            // 1. Find profile record to get exact UUID and codes
+            String? resolvedUuid;
+            String? resolvedCode = universityCode;
+            String? resolvedEmail = email;
 
-          // Audit Log
-          try {
+            if (_isValidUuid(studentId)) {
+              resolvedUuid = studentId;
+            } else {
+              try {
+                final match = await SupabaseService.client
+                    .from('profiles')
+                    .select('id, university_code, email')
+                    .or('university_code.eq.$studentId,email.eq.$studentId,id.eq.$studentId')
+                    .maybeSingle();
+                if (match != null) {
+                  resolvedUuid = match['id']?.toString();
+                  resolvedCode = match['university_code']?.toString() ?? resolvedCode;
+                  resolvedEmail = match['email']?.toString() ?? resolvedEmail;
+                }
+              } catch (_) {}
+            }
+
+            final idToUse = resolvedUuid ?? studentId;
+
+            // Delete dependent records from all modules
+            if (_isValidUuid(idToUse)) {
+              try { await SupabaseService.client.from('quiz_answers').delete().eq('attempt_id', idToUse); } catch (_) {}
+              try { await SupabaseService.client.from('quiz_attempts').delete().eq('student_id', idToUse); } catch (_) {}
+              try { await SupabaseService.client.from('attendance').delete().eq('student_id', idToUse); } catch (_) {}
+              try { await SupabaseService.client.from('roster_entries').delete().eq('student_id', idToUse); } catch (_) {}
+              try { await SupabaseService.client.from('roster_preferences').delete().eq('student_id', idToUse); } catch (_) {}
+              try { await SupabaseService.client.from('shift_requests').delete().eq('student_id', idToUse); } catch (_) {}
+              try { await SupabaseService.client.from('notifications').delete().eq('user_id', idToUse); } catch (_) {}
+              try { await SupabaseService.client.from('evaluations').delete().eq('student_id', idToUse); } catch (_) {}
+              try { await SupabaseService.client.from('case_handovers').delete().or('from_student_id.eq.$idToUse,to_student_id.eq.$idToUse'); } catch (_) {}
+              try { await SupabaseService.client.from('cases').delete().eq('current_student_id', idToUse); } catch (_) {}
+              try { await SupabaseService.client.from('disciplinary_actions').delete().eq('student_id', idToUse); } catch (_) {}
+              try { await SupabaseService.client.from('confirmation_requests').delete().or('target_student_id.eq.$idToUse,sender_id.eq.$idToUse'); } catch (_) {}
+              try { await SupabaseService.client.from('community_comments').delete().eq('author_id', idToUse); } catch (_) {}
+              try { await SupabaseService.client.from('community_posts').delete().eq('author_id', idToUse); } catch (_) {}
+              try { await SupabaseService.client.from('audit_logs').delete().eq('user_id', idToUse); } catch (_) {}
+
+              // Nullify foreign key references where cascade is not configured
+              try { await SupabaseService.client.from('profiles').update({'reviewed_by': null}).eq('reviewed_by', idToUse); } catch (_) {}
+              try { await SupabaseService.client.from('roster_entries').update({'approved_by': null}).eq('approved_by', idToUse); } catch (_) {}
+              try { await SupabaseService.client.from('disciplinary_actions').update({'approved_by': null}).eq('approved_by', idToUse); } catch (_) {}
+              try { await SupabaseService.client.from('community_posts').update({'featured_by': null}).eq('featured_by', idToUse); } catch (_) {}
+
+              // Delete from profiles
+              await SupabaseService.client.from('profiles').delete().eq('id', idToUse);
+
+              // Delete from Auth
+              try {
+                await SupabaseService.client.auth.admin.deleteUser(idToUse);
+              } catch (_) {}
+            } else {
+              // Delete by code / email from profiles
+              if (resolvedCode != null && resolvedCode.isNotEmpty) {
+                try { await SupabaseService.client.from('profiles').delete().eq('university_code', resolvedCode); } catch (_) {}
+              }
+              if (resolvedEmail != null && resolvedEmail.isNotEmpty) {
+                try { await SupabaseService.client.from('profiles').delete().eq('email', resolvedEmail); } catch (_) {}
+              }
+            }
+          } catch (manualErr) {
+            if (kDebugMode) print('Manual delete student error in Supabase: $manualErr');
+          }
+        }
+
+        // Audit Log
+        try {
+          if (_isValidUuid(reviewerId)) {
             await SupabaseService.client.from('audit_logs').insert({
               'user_id': reviewerId,
               'action_type': 'STUDENT_PERMANENTLY_DELETED',
@@ -415,18 +480,25 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
               'entity_id': studentId,
               'new_values': {
                 'deleted_by': currentReviewer?.fullName,
+                'university_code': universityCode,
+                'email': email,
                 'timestamp': DateTime.now().toIso8601String(),
               }
             });
-          } catch (_) {}
-        } catch (e) {
-          if (kDebugMode) print('Delete student error in Supabase: $e');
-        }
+          }
+        } catch (_) {}
       }
 
       // Remove from local list state
       state = state.whenData((list) {
-        return list.where((s) => s.id != studentId && s.universityCode != studentId).toList();
+        return list.where((s) {
+          if (s.id == studentId) return false;
+          if (s.universityCode == studentId) return false;
+          if (s.email.toLowerCase() == studentId.toLowerCase()) return false;
+          if (universityCode != null && universityCode.isNotEmpty && s.universityCode == universityCode) return false;
+          if (email != null && email.isNotEmpty && s.email.toLowerCase() == email.toLowerCase()) return false;
+          return true;
+        }).toList();
       });
 
       return true;

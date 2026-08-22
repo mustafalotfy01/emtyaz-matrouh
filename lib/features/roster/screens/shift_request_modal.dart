@@ -138,7 +138,7 @@ class _ShiftRequestModalState extends ConsumerState<ShiftRequestModal> {
               onPressed: () {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('تم تقديم طلب الشيفت بنجاح وقيد مراجعة المنسق')),
+                  const SnackBar(content: Text('تم تقديم طلب الشيفت بنجاح وقيد مراجعة الليدر')),
                 );
               },
             ),

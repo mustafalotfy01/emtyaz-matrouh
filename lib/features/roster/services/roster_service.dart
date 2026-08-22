@@ -439,7 +439,7 @@ class RosterService {
       }
     }
 
-    return {'success': true, 'message': 'تم إرسال تفضيلات الروستر بنجاح للمنسق ✓'};
+    return {'success': true, 'message': 'تم إرسال تفضيلات الروستر بنجاح لليدر ✓'};
   }
 
   /// Reopens preferences (Leader action)

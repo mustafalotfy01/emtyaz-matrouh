@@ -402,7 +402,7 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
         targetRoute: state.targetRoute,
         metadata: {
           'sender_id': userId,
-          'sender_name': userProfile?.fullName ?? 'المنسق',
+          'sender_name': userProfile?.fullName ?? 'الليدر',
           'sender_role': userRole,
           'sender_email': userProfile?.email,
         },
@@ -432,7 +432,7 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
       final newCampaign = NotificationCampaign(
         id: 'camp-${DateTime.now().millisecondsSinceEpoch}',
         senderId: userId,
-        senderName: userProfile?.fullName ?? 'المنسق',
+        senderName: userProfile?.fullName ?? 'الليدر',
         senderRole: userRole,
         audienceType: audienceTypeStr,
         audienceValue: audienceValueStr,

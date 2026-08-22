@@ -324,7 +324,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       if (profileData != null) {
         final profile = UserProfile.fromJson(profileData);
         if (profile.role == UserRole.student && !profile.isApproved) {
-          String err = 'حسابك قيد المراجعة والاعتماد من قبل منسق الإمتياز.';
+          String err = 'حسابك قيد المراجعة والاعتماد من قبل الليدر.';
           if (profile.registrationStatus == RegistrationStatus.rejected) {
             err = 'تم رفض طلب التسجيل. السبب: ${profile.rejectionReason ?? "غير محدد"}';
           } else if (profile.registrationStatus == RegistrationStatus.suspended) {
@@ -416,9 +416,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
         if (localMatch.role == UserRole.student && !localMatch.isApproved) {
           // If Supabase is connected, don't block here with outdated in-memory state; let Supabase verify latest approval status from DB!
           if (!SupabaseService.isInitialized) {
-            String err = 'حسابك ما زال (قيد المراجعة والاعتماد) من قبل المنسق. يرجى الانتظار حتى اعتماده.';
+            String err = 'حسابك ما زال (قيد المراجعة والاعتماد) من قبل الليدر. يرجى الانتظار حتى اعتماده.';
             if (localMatch.registrationStatus == RegistrationStatus.rejected) {
-              err = 'تم رفض طلب التسجيل من قبل المنسق. سبب الرفض: ${localMatch.rejectionReason ?? "غير محدد"}';
+              err = 'تم رفض طلب التسجيل من قبل الليدر. سبب الرفض: ${localMatch.rejectionReason ?? "غير محدد"}';
             } else if (localMatch.registrationStatus == RegistrationStatus.suspended) {
               err = 'تم إيقاف هذا الحساب مؤقتاً من قبل الإدارة.';
             }
@@ -481,13 +481,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
               if (regStatus == 'pending') {
                 state = state.copyWith(
                   isLoading: false,
-                  error: 'حسابك قيد المراجعة والاعتماد من قبل منسق الإمتياز. يرجى الانتظار حتى اعتماده.',
+                  error: 'حسابك قيد المراجعة والاعتماد من قبل الليدر. يرجى الانتظار حتى اعتماده.',
                 );
                 return false;
               } else if (regStatus == 'rejected') {
                 state = state.copyWith(
                   isLoading: false,
-                  error: 'تم رفض طلب التسجيل من قبل المنسق. سبب الرفض: ${rpcRes['rejection_reason'] ?? "غير محدد"}',
+                  error: 'تم رفض طلب التسجيل من قبل الليدر. سبب الرفض: ${rpcRes['rejection_reason'] ?? "غير محدد"}',
                 );
                 return false;
               } else if (regStatus == 'suspended') {
@@ -537,9 +537,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
             }
 
             if (!state.user!.isApproved && state.user!.role == UserRole.student) {
-              String err = 'حسابك قيد المراجعة والاعتماد من قبل منسق الإمتياز.';
+              String err = 'حسابك قيد المراجعة والاعتماد من قبل الليدر.';
               if (state.user!.registrationStatus == RegistrationStatus.rejected) {
-                err = 'تم رفض طلب التسجيل من قبل المنسق. سبب الرفض: ${state.user!.rejectionReason ?? "غير محدد"}';
+                err = 'تم رفض طلب التسجيل من قبل الليدر. سبب الرفض: ${state.user!.rejectionReason ?? "غير محدد"}';
               } else if (state.user!.registrationStatus == RegistrationStatus.suspended) {
                 err = 'تم إيقاف هذا الحساب مؤقتاً من قبل الإدارة.';
               }
@@ -562,7 +562,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         if (e.message.contains('Invalid login credentials')) {
           userFriendlyError = 'بيانات الدخول غير صحيحة، أو الحساب لم يتم اعتماده بعد.';
         } else if (e.message.contains('Email not confirmed')) {
-          userFriendlyError = 'حسابك بانتظار اعتماد وموافقة منسق الإمتياز.';
+          userFriendlyError = 'حسابك بانتظار اعتماد وموافقة الليدر.';
         }
         state = state.copyWith(isLoading: false, error: userFriendlyError);
         return false;
@@ -573,7 +573,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
     state = state.copyWith(
       isLoading: false,
-      error: 'بيانات الدخول غير صحيحة، أو أن الحساب لم يتم اعتماده بعد من المنسق.',
+      error: 'بيانات الدخول غير صحيحة، أو أن الحساب لم يتم اعتماده بعد من الليدر.',
     );
     return false;
   }
@@ -683,7 +683,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(
       user: null,
       isLoading: false,
-      infoMessage: 'تم استلام طلب التسجيل بنجاح! وجارٍ مراجعته من قبل المنسق.',
+      infoMessage: 'تم استلام طلب التسجيل بنجاح! وجارٍ مراجعته من قبل الليدر.',
     );
     return true;
   }

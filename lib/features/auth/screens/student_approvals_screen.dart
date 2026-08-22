@@ -144,7 +144,11 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
               Navigator.pop(ctx);
               final success = await ref
                   .read(studentApprovalsProvider.notifier)
-                  .deleteStudent(student.id.isNotEmpty ? student.id : student.universityCode);
+                  .deleteStudent(
+                    student.id.isNotEmpty ? student.id : student.universityCode,
+                    universityCode: student.universityCode,
+                    email: student.email,
+                  );
 
               scaffoldMessenger.showSnackBar(
                 SnackBar(

@@ -72,7 +72,7 @@ class _EvaluationLoggerScreenState extends ConsumerState<EvaluationLoggerScreen>
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'ملاحظة: تخضع الجزاءات وخصومات الشيفتات لاعتماد الإدارة ومنسق الامتياز قبل تطبيقها النهائي.',
+                        'ملاحظة: تخضع الجزاءات وخصومات الشيفتات لاعتماد الإدارة والليدر قبل تطبيقها النهائي.',
                         style: TextStyle(fontSize: 12, color: AppDesignTokens.textPrimary(context), height: 1.3),
                       ),
                     ),
@@ -222,7 +222,7 @@ class _EvaluationLoggerScreenState extends ConsumerState<EvaluationLoggerScreen>
                   if (_formKey.currentState!.validate()) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('تم تسجيل التقييم بنجاح وإرساله للمنسق والإدارة للاعتماد ✅'),
+                        content: Text('تم تسجيل التقييم بنجاح وإرساله لليدر والإدارة للاعتماد ✅'),
                         backgroundColor: AppDesignTokens.success,
                       ),
                     );

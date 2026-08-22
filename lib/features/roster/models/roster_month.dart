@@ -16,7 +16,7 @@ enum RosterMonthStatus {
       case RosterMonthStatus.studentSubmission:
         return 'مفتوح لاختيار الطلاب';
       case RosterMonthStatus.leaderReview:
-        return 'قيد مراجعة المنسق';
+        return 'قيد مراجعة الليدر';
       case RosterMonthStatus.assignment:
         return 'مرحلة توزيع الشيفتات';
       case RosterMonthStatus.readyForApproval:

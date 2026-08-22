@@ -123,7 +123,7 @@ class _GroupSelectionScreenState extends ConsumerState<GroupSelectionScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(success ? 'تم إرسال تفضيلات المجموعة للمنسق بنجاح ✓' : 'تعذر حفظ التفضيلات. حاول مجدداً.'),
+          content: Text(success ? 'تم إرسال تفضيلات المجموعة لليدر بنجاح ✓' : 'تعذر حفظ التفضيلات. حاول مجدداً.'),
           backgroundColor: success ? AppDesignTokens.success : AppDesignTokens.danger,
         ),
       );
@@ -195,7 +195,7 @@ class _GroupSelectionScreenState extends ConsumerState<GroupSelectionScreen> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                'هذه التفضيلات تساعد المنسق في توزيع المجموعات، ولا تضمن وجود جميع الأسماء معًا.',
+                                'هذه التفضيلات تساعد الليدر في توزيع المجموعات، ولا تضمن وجود جميع الأسماء معًا.',
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
@@ -210,7 +210,7 @@ class _GroupSelectionScreenState extends ConsumerState<GroupSelectionScreen> {
                     ),
                     const Divider(height: 20),
                     Text(
-                      'المسار المعتمد: تفضيلات الطالب ← اقتراح المنسق ← مراجعة واعتماد الإدارة',
+                      'المسار المعتمد: تفضيلات الطالب ← اقتراح الليدر ← مراجعة واعتماد الإدارة',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
@@ -314,7 +314,7 @@ class _GroupSelectionScreenState extends ConsumerState<GroupSelectionScreen> {
               // ── 3. Notes Input ────────────────────────────────────────────
               AppInput(
                 controller: _notesController,
-                label: 'ملاحظات إضافية للمنسق (اختياري)',
+                label: 'ملاحظات إضافية لليدر (اختياري)',
                 hintText: 'مثال: أسباب تتعلق بالسكن المشترك أو وسائل النقل لمطروح...',
                 maxLines: 2,
               ),
@@ -404,7 +404,7 @@ class _GroupSelectionScreenState extends ConsumerState<GroupSelectionScreen> {
                     ? 'جاري إرسال التفضيلات...'
                     : (_isSubmitted
                         ? 'تحديث تفضيلات المجموعة (${_selectedStudentIds.length} زملاء)'
-                        : 'إرسال تفضيلات المجموعة للمنسق (${_selectedStudentIds.length} زملاء)'),
+                        : 'إرسال تفضيلات المجموعة لليدر (${_selectedStudentIds.length} زملاء)'),
                 icon: Icons.send_rounded,
                 size: AppButtonSize.large,
                 isLoading: _isSaving,

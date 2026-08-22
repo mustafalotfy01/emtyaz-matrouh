@@ -39,7 +39,7 @@ class CommunityComment {
       case 'evaluating_doctor':
         return 'طبيب مقيّـم 🩺';
       case 'leader':
-        return 'منسق الامتياز 📋';
+        return 'ليدر 📋';
       case 'student':
       default:
         return 'طالب امتياز 🎓';

@@ -550,6 +550,26 @@ class _PublishReleaseBottomSheetState extends ConsumerState<_PublishReleaseBotto
     super.dispose();
   }
 
+  String _normalizeDownloadUrl(String url) {
+    var raw = url.trim();
+    if (raw.isEmpty) return raw;
+
+    // Google Drive share link converter:
+    // https://drive.google.com/file/d/FILE_ID/view?usp=sharing -> https://drive.google.com/uc?export=download&id=FILE_ID
+    final gdMatch = RegExp(r'drive\.google\.com/file/d/([a-zA-Z0-9_-]+)').firstMatch(raw);
+    if (gdMatch != null) {
+      final fileId = gdMatch.group(1);
+      return 'https://drive.google.com/uc?export=download&id=$fileId';
+    }
+
+    // Dropbox dl=0 -> dl=1
+    if (raw.contains('dropbox.com') && raw.contains('dl=0')) {
+      return raw.replaceAll('dl=0', 'dl=1');
+    }
+
+    return raw;
+  }
+
   Future<void> _pickApkFile() async {
     setState(() => _isPickingFile = true);
     try {
@@ -595,12 +615,27 @@ class _PublishReleaseBottomSheetState extends ConsumerState<_PublishReleaseBotto
       return;
     }
 
-    // 2. Check APK provided
-    if (_apkBytes == null && _urlCtrl.text.trim().isEmpty) {
+    final directUrl = _normalizeDownloadUrl(_urlCtrl.text.trim());
+    final isLargeFile = _apkBytes != null && _apkBytes!.length > 48 * 1024 * 1024;
+
+    // 2. Check APK provided or Direct Link
+    if (_apkBytes == null && directUrl.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('⚠️ يرجى اختيار ملف APK أو إدخال رابط التحميل المباشر'),
           backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    // If large file > 48MB and no direct URL, alert user
+    if (isLargeFile && directUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('⚠️ ملف الـ APK المختار (${(_apkBytes!.length / 1048576).toStringAsFixed(1)} MB) يتجاوز 50 MB.\nيرجى لصق رابط التحميل المباشر للـ APK (Google Drive / GitHub Releases / MediaFire) في الخانة المخصصة.'),
+          backgroundColor: Colors.orange.shade900,
+          duration: const Duration(seconds: 6),
         ),
       );
       return;
@@ -611,14 +646,14 @@ class _PublishReleaseBottomSheetState extends ConsumerState<_PublishReleaseBotto
     final success = await ref.read(appVersionsProvider.notifier).publishNewRelease(
       versionName: _nameCtrl.text.trim(),
       versionCode: versionCode,
-      apkUrl: _urlCtrl.text.trim(),
+      apkUrl: directUrl,
       releaseNotes: _notesCtrl.text.trim(),
       forceUpdate: _forceUpdate,
       minimumSupportedVersion: minVersion,
       isActive: _isActive,
       fileName: _pickedApk?.name,
       fileSize: _pickedApk?.size,
-      apkBytes: _apkBytes,
+      apkBytes: (isLargeFile && directUrl.isNotEmpty) ? null : _apkBytes,
     );
 
     if (success && mounted) {
@@ -639,7 +674,7 @@ class _PublishReleaseBottomSheetState extends ConsumerState<_PublishReleaseBotto
         SnackBar(
           content: Text(helpfulMsg),
           backgroundColor: Colors.redAccent,
-          duration: const Duration(seconds: 5),
+          duration: const Duration(seconds: 6),
         ),
       );
     }
@@ -782,8 +817,17 @@ class _PublishReleaseBottomSheetState extends ConsumerState<_PublishReleaseBotto
                             ),
                             if (_pickedApk != null)
                               Text(
-                                '${(_pickedApk!.size / (1024 * 1024)).toStringAsFixed(1)} MB • جاهز للرفع إلى Storage',
-                                style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
+                                '${(_pickedApk!.size / (1024 * 1024)).toStringAsFixed(1)} MB' +
+                                    (_pickedApk!.size > 48 * 1024 * 1024
+                                        ? ' • حجم كبير (يتطلب رابط مباشر)'
+                                        : ' • جاهز للرفع إلى Storage'),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: _pickedApk!.size > 48 * 1024 * 1024
+                                      ? Colors.orange.shade800
+                                      : AppDesignTokens.textSecondary(context),
+                                ),
                               ),
                           ],
                         ),
@@ -801,11 +845,35 @@ class _PublishReleaseBottomSheetState extends ConsumerState<_PublishReleaseBotto
                 ),
               ),
 
+              if (_pickedApk != null && _pickedApk!.size > 48 * 1024 * 1024) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
+                    border: Border.all(color: Colors.orange.withOpacity(0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline_rounded, color: Colors.orange, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'حجم الملف (${(_pickedApk!.size / 1048576).toStringAsFixed(1)} MB) يتجاوز حد الرفع المباشر (50 MB). يرجى لصق رابط التحميل المباشر للـ APK في الخانة أدناه (Google Drive / GitHub / MediaFire).',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.orange.shade900, height: 1.3),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
               const SizedBox(height: 10),
 
               // Alternative Direct APK URL
               AppInput(
-                label: 'أو أدخل رابط التحميل المباشر للـ APK (اختياري في حال الرفع)',
+                label: 'رابط التحميل المباشر للـ APK (Google Drive / GitHub / MediaFire)',
                 hint: 'https://...',
                 controller: _urlCtrl,
                 keyboardType: TextInputType.url,

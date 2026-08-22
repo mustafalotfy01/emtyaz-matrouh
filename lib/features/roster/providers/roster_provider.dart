@@ -404,7 +404,7 @@ class LeaderRosterNotifier extends StateNotifier<LeaderRosterState> {
   Future<Map<String, dynamic>> reopenStudentPreferences(String studentId) async {
     final leader = ref.read(authProvider).user;
     final rosterMonth = ref.read(currentRosterMonthProvider);
-    if (leader == null) return {'success': false, 'message': 'يجب تسجيل الدخول كمنسق أو قائد'};
+    if (leader == null) return {'success': false, 'message': 'يجب تسجيل الدخول كليدر'};
 
     final res = await RosterService.reopenPreferences(
       leaderId: leader.id,

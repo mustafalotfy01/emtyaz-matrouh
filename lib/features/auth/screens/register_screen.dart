@@ -199,7 +199,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'بانتظار مراجعة واعتماد منسق الامتياز (Leader)',
+                      'بانتظار مراجعة واعتماد الليدر (Leader)',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: AppColors.subtext(context), fontSize: 11),
                     ),
@@ -210,7 +210,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               Text(
                 '• الكود الجامعي: ${_universityCodeController.text.trim()}\n'
                 '• البريد المسجل: ${_emailController.text.trim()}\n\n'
-                '📌 لا يلزم تأكيد البريد الإلكتروني. سيتم تفعيل حسابك مباشرة فور اعتماد المنسق لبياناتك.',
+                '📌 لا يلزم تأكيد البريد الإلكتروني. سيتم تفعيل حسابك مباشرة فور اعتماد الليدر لبياناتك.',
                 style: TextStyle(fontSize: 12, color: AppColors.subtext(context), height: 1.5),
               ),
             ],

@@ -1,7 +1,8 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nurse_matrouh/features/auth/models/user_profile.dart';
 import 'package:nurse_matrouh/features/auth/providers/auth_provider.dart';
+import 'package:nurse_matrouh/features/auth/providers/student_approvals_provider.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -114,6 +115,32 @@ void main() {
       expect(loginRes, isTrue);
       expect(container.read(authProvider).user!.role, equals(UserRole.superAdmin));
       expect(container.read(authProvider).user!.fullName, equals('أ.م.د. ميسة البياع'));
+    });
+
+    test('7. Deleting student account permanently removes student from registry and approval list', () async {
+      final approvalsNotifier = container.read(studentApprovalsProvider.notifier);
+
+      // Verify test student exists from test 1
+      var list = getRegisteredStudentsList();
+      expect(list.any((s) => s.universityCode == 'NUR-TEST-999'), isTrue);
+
+      // Delete student
+      final deleteSuccess = await approvalsNotifier.deleteStudent(
+        'NUR-TEST-999',
+        universityCode: 'NUR-TEST-999',
+        email: 'test.student@matrouh.edu.eg',
+      );
+      expect(deleteSuccess, isTrue);
+
+      // Verify student is removed from local registry
+      list = getRegisteredStudentsList();
+      expect(list.any((s) => s.universityCode == 'NUR-TEST-999'), isFalse);
+
+      // Verify approvals state does not contain student
+      final asyncState = container.read(studentApprovalsProvider);
+      asyncState.whenData((students) {
+        expect(students.any((s) => s.universityCode == 'NUR-TEST-999'), isFalse);
+      });
     });
   });
 }

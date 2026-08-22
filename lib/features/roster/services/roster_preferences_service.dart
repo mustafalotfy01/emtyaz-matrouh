@@ -276,7 +276,7 @@ class RosterPreferencesService {
       }
     }
 
-    return {'success': true, 'message': 'تم إرسال تفضيلات الروستر بنجاح للمنسق ✓'};
+    return {'success': true, 'message': 'تم إرسال تفضيلات الروستر بنجاح لليدر ✓'};
   }
 
   /// Reopens student preferences (affects ONLY student preferences, does NOT touch final roster)

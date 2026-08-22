@@ -1,7 +1,7 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart' as ll;
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_design_tokens.dart';
@@ -31,31 +31,23 @@ class StudentsMapOverviewScreen extends StatefulWidget {
 class _StudentsMapOverviewScreenState extends State<StudentsMapOverviewScreen> {
   static const double _hospitalLat = 31.3543;
   static const double _hospitalLng = 27.2373;
-  static const double _geofenceRadiusMeters = 150.0;
+  static const double _geofenceRadiusMeters = 200.0;
 
   bool _isLoading = true;
   String? _errorMessage;
   List<StudentHousingLocation> _allLocations = [];
   List<StudentHousingLocation> _filteredLocations = [];
-  
+
   String _searchQuery = '';
   String _selectedFilter = 'all'; // all, groupA, groupB, outside
-  
-  GoogleMapController? _mapController;
-  Set<Marker> _markers = {};
-  Set<Circle> _circles = {};
+
+  final MapController _mapController = MapController();
   UserProfile? _selectedStudent;
 
   @override
   void initState() {
     super.initState();
     _fetchStudentsData();
-  }
-
-  @override
-  void dispose() {
-    _mapController?.dispose();
-    super.dispose();
   }
 
   Future<void> _fetchStudentsData() async {
@@ -72,35 +64,10 @@ class _StudentsMapOverviewScreenState extends State<StudentsMapOverviewScreen> {
           .order('full_name', ascending: true);
 
       final List<StudentHousingLocation> locations = [];
-      final Set<Marker> markers = {};
-
-      // 1. Add Hospital Geofence Marker & Circle
-      markers.add(
-        Marker(
-          markerId: const MarkerId('hospital_center'),
-          position: const LatLng(_hospitalLat, _hospitalLng),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-          infoWindow: const InfoWindow(
-            title: 'مستشفى مطروح العام 🏥',
-            snippet: 'نطاق الحضور الجغرافي: 150 متر',
-          ),
-        ),
-      );
-
-      final circles = <Circle>{
-        Circle(
-          circleId: const CircleId('hospital_geofence'),
-          center: const LatLng(_hospitalLat, _hospitalLng),
-          radius: _geofenceRadiusMeters,
-          fillColor: AppColors.primaryTeal.withOpacity(0.2),
-          strokeColor: AppColors.primaryTeal,
-          strokeWidth: 2,
-        ),
-      };
 
       for (var row in (res as List)) {
         final profile = UserProfile.fromJson(Map<String, dynamic>.from(row));
-        
+
         double distanceKm = 0.0;
         if (profile.latitude != null && profile.longitude != null) {
           final meters = Geolocator.distanceBetween(
@@ -110,26 +77,6 @@ class _StudentsMapOverviewScreenState extends State<StudentsMapOverviewScreen> {
             profile.longitude!,
           );
           distanceKm = (meters / 1000.0);
-
-          // Add Student Marker
-          markers.add(
-            Marker(
-              markerId: MarkerId('student_${profile.id}'),
-              position: LatLng(profile.latitude!, profile.longitude!),
-              icon: BitmapDescriptor.defaultMarkerWithHue(
-                profile.studentGroup == StudentGroup.groupA
-                    ? BitmapDescriptor.hueCyan
-                    : BitmapDescriptor.hueOrange,
-              ),
-              infoWindow: InfoWindow(
-                title: profile.fullName,
-                snippet: 'المسافة: ${distanceKm.toStringAsFixed(1)} كم • ${profile.residenceAddress}',
-              ),
-              onTap: () {
-                setState(() => _selectedStudent = profile);
-              },
-            ),
-          );
         }
 
         locations.add(StudentHousingLocation(
@@ -140,8 +87,6 @@ class _StudentsMapOverviewScreenState extends State<StudentsMapOverviewScreen> {
 
       setState(() {
         _allLocations = locations;
-        _markers = markers;
-        _circles = circles;
         _isLoading = false;
       });
       _applyFilter();
@@ -180,14 +125,20 @@ class _StudentsMapOverviewScreenState extends State<StudentsMapOverviewScreen> {
 
   void _focusOnStudent(StudentHousingLocation loc) {
     setState(() => _selectedStudent = loc.profile);
-    if (loc.profile.latitude != null && loc.profile.longitude != null && _mapController != null) {
-      _mapController!.animateCamera(
-        CameraUpdate.newLatLngZoom(
-          LatLng(loc.profile.latitude!, loc.profile.longitude!),
-          15.5,
-        ),
+    if (loc.profile.latitude != null && loc.profile.longitude != null) {
+      _mapController.move(
+        ll.LatLng(loc.profile.latitude!, loc.profile.longitude!),
+        15.5,
       );
     }
+  }
+
+  void _recenterHospital() {
+    setState(() => _selectedStudent = null);
+    _mapController.move(
+      const ll.LatLng(_hospitalLat, _hospitalLng),
+      14.0,
+    );
   }
 
   @override
@@ -210,7 +161,7 @@ class _StudentsMapOverviewScreenState extends State<StudentsMapOverviewScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: AppDesignTokens.primary))
           : _errorMessage != null
               ? Center(
                   child: Padding(
@@ -233,7 +184,6 @@ class _StudentsMapOverviewScreenState extends State<StudentsMapOverviewScreen> {
                 )
               : Column(
                   children: [
-                    // Summary Metric Chips
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       color: AppDesignTokens.surface(context),
@@ -272,23 +222,156 @@ class _StudentsMapOverviewScreenState extends State<StudentsMapOverviewScreen> {
                       ),
                     ),
 
-                    // Map Section (Interactive)
                     Expanded(
                       flex: 4,
                       child: Stack(
                         children: [
-                          GoogleMap(
-                            initialCameraPosition: const CameraPosition(
-                              target: LatLng(_hospitalLat, _hospitalLng),
-                              zoom: 13.0,
+                          FlutterMap(
+                            mapController: _mapController,
+                            options: const MapOptions(
+                              initialCenter: ll.LatLng(_hospitalLat, _hospitalLng),
+                              initialZoom: 13.5,
+                              minZoom: 6.0,
+                              maxZoom: 18.0,
                             ),
-                            markers: _markers,
-                            circles: _circles,
-                            onMapCreated: (ctrl) => _mapController = ctrl,
-                            myLocationButtonEnabled: false,
-                            zoomControlsEnabled: true,
+                            children: [
+                              TileLayer(
+                                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                userAgentPackageName: 'com.matrouh.nurse_matrouh',
+                              ),
+                              CircleLayer(
+                                circles: [
+                                  CircleMarker(
+                                    point: const ll.LatLng(_hospitalLat, _hospitalLng),
+                                    radius: _geofenceRadiusMeters,
+                                    useRadiusInMeter: true,
+                                    color: AppDesignTokens.primary.withOpacity(0.2),
+                                    borderColor: AppDesignTokens.primary,
+                                    borderStrokeWidth: 2,
+                                  ),
+                                ],
+                              ),
+                              MarkerLayer(
+                                markers: [
+                                  Marker(
+                                    point: const ll.LatLng(_hospitalLat, _hospitalLng),
+                                    width: 48,
+                                    height: 48,
+                                    child: Tooltip(
+                                      message: 'مستشفى مطروح العام 🏥 (نطاق الحضور)',
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: Colors.red.shade600,
+                                          shape: BoxShape.circle,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.red.withOpacity(0.4),
+                                              blurRadius: 8,
+                                              spreadRadius: 2,
+                                            ),
+                                          ],
+                                          border: Border.all(color: Colors.white, width: 2.5),
+                                        ),
+                                        child: const Icon(
+                                          Icons.local_hospital_rounded,
+                                          color: Colors.white,
+                                          size: 24,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  ..._filteredLocations
+                                      .where((l) => l.profile.latitude != null && l.profile.longitude != null)
+                                      .map((item) {
+                                    final isA = item.profile.studentGroup == StudentGroup.groupA;
+                                    final color = isA ? AppDesignTokens.primary : Colors.orange;
+                                    final isSelected = _selectedStudent?.id == item.profile.id;
+
+                                    return Marker(
+                                      point: ll.LatLng(item.profile.latitude!, item.profile.longitude!),
+                                      width: isSelected ? 48 : 38,
+                                      height: isSelected ? 48 : 38,
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          setState(() => _selectedStudent = item.profile);
+                                          _mapController.move(
+                                            ll.LatLng(item.profile.latitude!, item.profile.longitude!),
+                                            15.5,
+                                          );
+                                        },
+                                        child: AnimatedContainer(
+                                          duration: const Duration(milliseconds: 200),
+                                          decoration: BoxDecoration(
+                                            color: color,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: isSelected ? Colors.amberAccent : Colors.white,
+                                              width: isSelected ? 3 : 2,
+                                            ),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: (isSelected ? Colors.amberAccent : color).withOpacity(0.5),
+                                                blurRadius: isSelected ? 8 : 4,
+                                              ),
+                                            ],
+                                          ),
+                                          child: Center(
+                                            child: Text(
+                                              item.profile.fullName.isNotEmpty
+                                                  ? item.profile.fullName.trim().split(' ').first[0]
+                                                  : 'ط',
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                ],
+                              ),
+                            ],
                           ),
-                          // Overlay details banner if student selected
+
+                          Positioned(
+                            top: 12,
+                            left: 12,
+                            child: Column(
+                              children: [
+                                FloatingActionButton.small(
+                                  heroTag: 'map_zoom_in',
+                                  backgroundColor: AppDesignTokens.surface(context),
+                                  onPressed: () {
+                                    final zoom = _mapController.camera.zoom + 1.0;
+                                    _mapController.move(_mapController.camera.center, zoom);
+                                  },
+                                  child: const Icon(Icons.add, color: AppDesignTokens.primary),
+                                ),
+                                const SizedBox(height: 6),
+                                FloatingActionButton.small(
+                                  heroTag: 'map_zoom_out',
+                                  backgroundColor: AppDesignTokens.surface(context),
+                                  onPressed: () {
+                                    final zoom = _mapController.camera.zoom - 1.0;
+                                    _mapController.move(_mapController.camera.center, zoom);
+                                  },
+                                  child: const Icon(Icons.remove, color: AppDesignTokens.primary),
+                                ),
+                                const SizedBox(height: 6),
+                                FloatingActionButton.small(
+                                  heroTag: 'map_recenter',
+                                  backgroundColor: AppDesignTokens.surface(context),
+                                  tooltip: 'العودة لمستشفى مطروح العام',
+                                  onPressed: _recenterHospital,
+                                  child: const Icon(Icons.local_hospital_rounded, color: Colors.redAccent),
+                                ),
+                              ],
+                            ),
+                          ),
+
                           if (_selectedStudent != null)
                             Positioned(
                               left: 16,
@@ -313,12 +396,18 @@ class _StudentsMapOverviewScreenState extends State<StudentsMapOverviewScreen> {
                                             _selectedStudent!.fullName,
                                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                                           ),
+                                          const SizedBox(height: 2),
                                           Text(
-                                            'العنوان: ${_selectedStudent!.residenceAddress.isEmpty ? "غير محدد" : _selectedStudent!.residenceAddress}',
+                                            'العنوان: ${_selectedStudent!.residenceAddress.isEmpty ? "غير مسجل" : _selectedStudent!.residenceAddress}',
                                             style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
+                                          if (_selectedStudent!.phoneNumber.isNotEmpty)
+                                            Text(
+                                              'الهاتف: ${_selectedStudent!.phoneNumber}',
+                                              style: TextStyle(fontSize: 10.5, color: AppDesignTokens.textMuted(context)),
+                                            ),
                                         ],
                                       ),
                                     ),
@@ -334,7 +423,6 @@ class _StudentsMapOverviewScreenState extends State<StudentsMapOverviewScreen> {
                       ),
                     ),
 
-                    // Search & Filters Header
                     Container(
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
                       child: Column(
@@ -366,7 +454,6 @@ class _StudentsMapOverviewScreenState extends State<StudentsMapOverviewScreen> {
                       ),
                     ),
 
-                    // Students List
                     Expanded(
                       flex: 3,
                       child: _filteredLocations.isEmpty
@@ -428,7 +515,7 @@ class _StudentsMapOverviewScreenState extends State<StudentsMapOverviewScreen> {
                                           icon: Icon(
                                             hasCoords ? Icons.my_location_rounded : Icons.location_off_rounded,
                                             size: 18,
-                                            color: hasCoords ? AppColors.primaryTeal : Colors.grey,
+                                            color: hasCoords ? AppDesignTokens.primary : Colors.grey,
                                           ),
                                           onPressed: hasCoords ? () => _focusOnStudent(item) : null,
                                         ),
@@ -449,7 +536,7 @@ class _StudentsMapOverviewScreenState extends State<StudentsMapOverviewScreen> {
     return ChoiceChip(
       label: Text(label, style: TextStyle(fontSize: 11.5, color: isSelected ? Colors.white : null)),
       selected: isSelected,
-      selectedColor: AppColors.primaryTeal,
+      selectedColor: AppDesignTokens.primary,
       onSelected: (val) {
         if (val) {
           setState(() => _selectedFilter = key);
@@ -495,4 +582,3 @@ class _StudentsMapOverviewScreenState extends State<StudentsMapOverviewScreen> {
     );
   }
 }
-

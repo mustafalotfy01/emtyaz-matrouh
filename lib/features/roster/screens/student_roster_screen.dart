@@ -120,7 +120,7 @@ class StudentRosterScreen extends ConsumerWidget {
                   Text(
                     prefState.isSubmitted
                         ? (l10n.isArabic
-                            ? 'تفضيلاتك مقفلة ومرسلة للمنسق للاعتماد. سيظهر جدولك النهائي المعتمد بعد اكتمال المراجعة.'
+                            ? 'تفضيلاتك مقفلة ومرسلة لليدر للاعتماد. سيظهر جدولك النهائي المعتمد بعد اكتمال المراجعة.'
                             : 'Your preferences are locked for review.')
                         : 'اختر 12 يوماً تدريبياً مع الالتزام بحد أقصى 36 ساعة لكل أسبوع (من السبت إلى الجمعة).',
                     style: TextStyle(color: AppDesignTokens.textSecondary(context), fontSize: 12, height: 1.4),
@@ -260,7 +260,7 @@ class StudentRosterScreen extends ConsumerWidget {
                       const Icon(Icons.lock_rounded, color: AppDesignTokens.success, size: 18),
                       const SizedBox(width: 8),
                       Text(
-                        l10n.isArabic ? 'تم قفل وإرسال تفضيلاتك الرسمية للمنسق بنجاح ✓' : 'Preferences submitted & locked ✓',
+                        l10n.isArabic ? 'تم قفل وإرسال تفضيلاتك الرسمية لليدر بنجاح ✓' : 'Preferences submitted & locked ✓',
                         style: const TextStyle(
                           color: AppDesignTokens.success,
                           fontWeight: FontWeight.bold,
