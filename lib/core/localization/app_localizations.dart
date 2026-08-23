@@ -210,7 +210,7 @@ class AppLocalizations {
   String get enableBiometricsSub => isArabic ? 'استخدام البصمة لتسجيل الحضور السريع' : 'Use biometric sensor for quick check-in';
   String get aboutSection => isArabic ? 'حول التطبيق' : 'About App';
   String get appVersionLabel => isArabic ? 'إصدار التطبيق' : 'App Version';
-  String get appVersionValue => '1.0.0 (Build 2026.08)';
+  String get appVersionValue => 'v1.2.1 (Build #3)';
   String get privacyPolicy => isArabic ? 'سياسة الخصوصية وحماية البيانات' : 'Privacy Policy';
   String get termsOfService => isArabic ? 'الشروط والأحكام التنظيمية' : 'Terms of Service';
   String get logoutBtn => isArabic ? 'تسجيل الخروج' : 'Log Out';

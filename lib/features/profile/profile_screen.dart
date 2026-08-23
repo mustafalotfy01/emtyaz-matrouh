@@ -17,6 +17,8 @@ import '../../core/widgets/app_dialog.dart';
 import '../../core/widgets/app_input.dart';
 import '../../core/widgets/app_section_header.dart';
 import '../../core/widgets/ios/language_segmented_control.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import '../../core/services/app_update_service.dart';
 import 'widgets/app_update_dialog.dart';
 import '../auth/models/user_profile.dart';
 import '../auth/providers/auth_provider.dart';
@@ -29,6 +31,37 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  String _installedVersion = '1.2.1';
+  String _installedBuildNumber = '3';
+  AppVersionInfo? _availableUpdate;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersionAndCheckUpdates();
+  }
+
+  Future<void> _loadVersionAndCheckUpdates() async {
+    try {
+      final pkg = await PackageInfo.fromPlatform();
+      if (mounted) {
+        setState(() {
+          if (pkg.version.isNotEmpty) _installedVersion = pkg.version;
+          if (pkg.buildNumber.isNotEmpty) _installedBuildNumber = pkg.buildNumber;
+        });
+      }
+    } catch (_) {}
+
+    try {
+      final info = await AppUpdateService.checkForUpdates();
+      if (mounted) {
+        setState(() {
+          _availableUpdate = info;
+        });
+      }
+    } catch (_) {}
+  }
+
   void _openEditProfileDialog(BuildContext context, UserProfile user) {
     final nameController = TextEditingController(text: user.fullName);
     final phoneController = TextEditingController(text: user.phoneNumber);
@@ -811,16 +844,91 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               // ── 7. About App ───────────────────────────────────────────────
               AppSectionHeader(title: l10n.aboutSection),
               const SizedBox(height: 6),
+              if (_availableUpdate != null && _availableUpdate!.hasUpdate) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppDesignTokens.primary.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(AppDesignTokens.radiusMd),
+                    border: Border.all(color: AppDesignTokens.primary.withOpacity(0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppDesignTokens.primary.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.rocket_launch_rounded, color: AppDesignTokens.primary, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'تحديث جديد متاح (v${_availableUpdate!.latestVersion}) 🚀',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: AppDesignTokens.textPrimary(context),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'اضغط للتحميل والتثبيت المباشر',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppDesignTokens.textSecondary(context),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppDesignTokens.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          elevation: 0,
+                        ),
+                        onPressed: () => AppUpdateModal.showUpdateDialog(context, _availableUpdate!),
+                        icon: const Icon(Icons.download_rounded, size: 16),
+                        label: const Text('تحديث الآن', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               AppCard(
                 padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
                 child: Column(
                   children: [
                     _buildNavRow(
                       context,
+                      Icons.system_update_rounded,
+                      'التحقق من وجود تحديثات',
+                      _availableUpdate != null && _availableUpdate!.hasUpdate
+                          ? 'تحديث متاح 🚀'
+                          : 'أحدث إصدار ✅',
+                      onTap: () async {
+                        await AppUpdateModal.showUpdateCheck(context);
+                        _loadVersionAndCheckUpdates();
+                      },
+                    ),
+                    Divider(height: 8, color: AppDesignTokens.borderSubtle(context)),
+                    _buildNavRow(
+                      context,
                       Icons.info_outline_rounded,
                       l10n.appVersionLabel,
-                      l10n.appVersionValue,
-                      onTap: () => AppUpdateModal.showUpdateCheck(context),
+                      'v$_installedVersion (#$_installedBuildNumber)',
+                      onTap: () async {
+                        await AppUpdateModal.showUpdateCheck(context);
+                        _loadVersionAndCheckUpdates();
+                      },
                     ),
                     Divider(height: 8, color: AppDesignTokens.borderSubtle(context)),
                     _buildNavRow(context, Icons.privacy_tip_outlined, l10n.privacyPolicy, null),
