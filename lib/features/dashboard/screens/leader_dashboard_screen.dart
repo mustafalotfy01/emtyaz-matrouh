@@ -15,6 +15,7 @@ import '../../auth/screens/student_approvals_screen.dart';
 import '../../departments/providers/department_provider.dart';
 import '../../notifications/screens/send_notification_screen.dart';
 import '../../app_versions/screens/app_versions_screen.dart';
+import '../../leaderboard/screens/clinical_leaderboard_screen.dart';
 import '../../roster/models/roster_preference.dart';
 import '../../roster/providers/roster_provider.dart';
 
@@ -404,6 +405,43 @@ class LeaderDashboardScreen extends ConsumerWidget {
                     ),
                     const AppBadge(label: 'للعرض', variant: AppBadgeVariant.neutral, size: AppBadgeSize.small),
                     const SizedBox(width: 6),
+                    const Icon(Icons.arrow_forward_ios_rounded, size: 12),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              // ── 4.2. Leaderboard Screen ────────────────────────────────────
+              AppCard(
+                padding: const EdgeInsets.all(14),
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ClinicalLeaderboardScreen()),
+                  );
+                },
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF59E0B).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
+                      ),
+                      child: const Icon(Icons.emoji_events_rounded, color: Color(0xFFD97706), size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('لوحة المتصدرين', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: AppDesignTokens.textPrimary(context))),
+                          Text('استعراض ترتيب الطلاب حسب المعدل التراكمي والنقاط السريرية', style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context))),
+                        ],
+                      ),
+                    ),
                     const Icon(Icons.arrow_forward_ios_rounded, size: 12),
                   ],
                 ),

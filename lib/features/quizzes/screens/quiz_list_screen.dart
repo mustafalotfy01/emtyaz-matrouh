@@ -20,14 +20,48 @@ class QuizListScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final quizzesAsync = ref.watch(publishedQuizzesProvider);
     final user = ref.watch(authProvider).user;
-    final canCreate = user?.role == UserRole.superAdmin ||
+    final canManage = user?.role == UserRole.superAdmin ||
         user?.role == UserRole.evaluatingDoctor ||
         user?.role == UserRole.leader;
     final l10n = context.l10n;
 
     return Scaffold(
       backgroundColor: AppDesignTokens.bg(context),
-      floatingActionButton: canCreate
+      appBar: AppBar(
+        title: Text(
+          l10n.quizzesScreenTitle,
+          style: TextStyle(
+            color: AppDesignTokens.textPrimary(context),
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: Navigator.canPop(context)
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                color: AppDesignTokens.textPrimary(context),
+                onPressed: () => Navigator.pop(context),
+              )
+            : null,
+        actions: [
+          if (canManage)
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline_rounded, color: AppDesignTokens.primary),
+              tooltip: 'إضافة اختبار جديد',
+              onPressed: () async {
+                HapticFeedback.lightImpact();
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const QuizCreateScreen()),
+                );
+                ref.invalidate(publishedQuizzesProvider);
+              },
+            ),
+        ],
+      ),
+      floatingActionButton: canManage
           ? FloatingActionButton.extended(
               onPressed: () async {
                 HapticFeedback.lightImpact();
@@ -57,47 +91,6 @@ class QuizListScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Header ─────────────────────────────────────────────────────
-                Row(
-                  children: [
-                    const Icon(Icons.quiz_rounded, color: AppDesignTokens.primary, size: 24),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        l10n.quizzesScreenTitle,
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: AppDesignTokens.textPrimary(context),
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                    ),
-                    if (canCreate)
-                      FilledButton.icon(
-                        onPressed: () async {
-                          HapticFeedback.lightImpact();
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const QuizCreateScreen()),
-                          );
-                          ref.invalidate(publishedQuizzesProvider);
-                        },
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppDesignTokens.primary,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        icon: const Icon(Icons.add_rounded, size: 18, color: Colors.white),
-                        label: const Text(
-                          'إضافة اختبار',
-                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.white),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
                 // ── Quizzes Content ──────────────────────────────────────────
                 quizzesAsync.when(
                   data: (quizzes) {
@@ -119,7 +112,7 @@ class QuizListScreen extends ConsumerWidget {
                       separatorBuilder: (_, __) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {
                         final quiz = quizzes[index];
-                        return _buildQuizCard(context, quiz, l10n);
+                        return _buildQuizCard(context, ref, quiz, canManage, l10n);
                       },
                     );
                   },
@@ -146,7 +139,13 @@ class QuizListScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildQuizCard(BuildContext context, Quiz quiz, AppLocalizations l10n) {
+  Widget _buildQuizCard(
+    BuildContext context,
+    WidgetRef ref,
+    Quiz quiz,
+    bool canManage,
+    AppLocalizations l10n,
+  ) {
     return AppCard(
       padding: const EdgeInsets.all(16),
       onTap: () {
@@ -182,16 +181,18 @@ class QuizListScreen extends ConsumerWidget {
                     color: AppDesignTokens.textPrimary(context),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  quiz.description,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: AppDesignTokens.textSecondary(context),
+                if (quiz.description.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    quiz.description,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: AppDesignTokens.textSecondary(context),
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                ],
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -223,7 +224,63 @@ class QuizListScreen extends ConsumerWidget {
               ],
             ),
           ),
-          const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppColors.textMuted),
+
+          // Delete button for Admin / Supervisors
+          if (canManage) ...[
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded, color: AppDesignTokens.danger, size: 22),
+              tooltip: 'حذف الاختبار',
+              onPressed: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('تأكيد حذف الاختبار'),
+                    content: Text('هل أنت متأكد من حذف اختبار "${quiz.title}" نهائياً؟'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('إلغاء'),
+                      ),
+                      FilledButton(
+                        style: FilledButton.styleFrom(backgroundColor: AppDesignTokens.danger),
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('حذف'),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirm == true) {
+                  HapticFeedback.mediumImpact();
+                  try {
+                    await ref.read(quizRepositoryProvider).deleteQuiz(quiz.id);
+                    ref.invalidate(publishedQuizzesProvider);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('تم حذف الاختبار بنجاح'),
+                          backgroundColor: AppDesignTokens.success,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('تعذر حذف الاختبار: $e'),
+                          backgroundColor: AppDesignTokens.danger,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  }
+                }
+              },
+            ),
+          ] else ...[
+            const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppColors.textMuted),
+          ],
         ],
       ),
     );

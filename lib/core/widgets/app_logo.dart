@@ -12,6 +12,7 @@ class AppLogo extends StatelessWidget {
   final bool isHorizontal;
   final bool onDarkBackground;
   final Color? customColor;
+  final bool tinted;
   final Alignment alignment;
 
   const AppLogo({
@@ -22,6 +23,7 @@ class AppLogo extends StatelessWidget {
     this.isHorizontal = false,
     this.onDarkBackground = false,
     this.customColor,
+    this.tinted = false,
     this.alignment = Alignment.center,
   });
 
@@ -32,6 +34,7 @@ class AppLogo extends StatelessWidget {
     this.fit = BoxFit.contain,
     this.onDarkBackground = false,
     this.customColor,
+    this.tinted = true,
     this.alignment = Alignment.center,
   }) : isHorizontal = true;
 
@@ -39,13 +42,8 @@ class AppLogo extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     
-    // Resolve tint color based on theme and context:
-    // 1. If custom color provided, use it.
-    // 2. In Dark Mode, tint to brand identity teal.
-    // 3. In Light Mode on dark/teal background, render native white.
-    // 4. In Light Mode on light background, tint with primary teal for maximum clarity.
     Color? resolvedColor = customColor;
-    if (resolvedColor == null) {
+    if (resolvedColor == null && tinted) {
       if (isDarkMode) {
         resolvedColor = AppDesignTokens.primary;
       } else if (!onDarkBackground) {

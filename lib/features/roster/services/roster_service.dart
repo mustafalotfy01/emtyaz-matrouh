@@ -9,6 +9,7 @@ import '../models/roster_entry.dart';
 import '../models/roster_month.dart';
 import '../models/roster_preference.dart';
 import '../models/student_roster_summary.dart';
+import 'roster_preferences_service.dart';
 
 class RosterService {
   RosterService._();
@@ -274,32 +275,7 @@ class RosterService {
             'roster_id': dbRosterUuid,
           }).toList();
 
-          try {
-            await SupabaseService.client
-                .from('roster_preferences')
-                .upsert(
-                  payload,
-                  onConflict: 'student_id,roster_id,preference_date',
-                );
-          } catch (upsertErr) {
-            // Fallback for legacy DB schema where shift_type column is not yet present
-            if (upsertErr.toString().contains('shift_type') || upsertErr.toString().contains('PGRST204')) {
-              final fallbackPayload = payload.map((row) {
-                final copy = Map<String, dynamic>.from(row);
-                copy.remove('shift_type');
-                return copy;
-              }).toList();
-
-              await SupabaseService.client
-                  .from('roster_preferences')
-                  .upsert(
-                    fallbackPayload,
-                    onConflict: 'student_id,roster_id,preference_date',
-                  );
-            } else {
-              rethrow;
-            }
-          }
+          await RosterPreferencesService.safeUpsertPreferences(payload);
         }
       } catch (e) {
         if (kDebugMode) print('Supabase savePreferences error: $e');
@@ -379,31 +355,7 @@ class RosterService {
             'roster_id': dbRosterUuid,
           }).toList();
 
-          try {
-            await SupabaseService.client
-                .from('roster_preferences')
-                .upsert(
-                  payload,
-                  onConflict: 'student_id,roster_id,preference_date',
-                );
-          } catch (upsertErr) {
-            if (upsertErr.toString().contains('shift_type') || upsertErr.toString().contains('PGRST204')) {
-              final fallbackPayload = payload.map((row) {
-                final copy = Map<String, dynamic>.from(row);
-                copy.remove('shift_type');
-                return copy;
-              }).toList();
-
-              await SupabaseService.client
-                  .from('roster_preferences')
-                  .upsert(
-                    fallbackPayload,
-                    onConflict: 'student_id,roster_id,preference_date',
-                  );
-            } else {
-              rethrow;
-            }
-          }
+          await RosterPreferencesService.safeUpsertPreferences(payload);
 
           // Clean up any removed dates
           final currentDates = normalized.map((p) =>

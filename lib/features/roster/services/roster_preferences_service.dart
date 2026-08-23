@@ -162,16 +162,73 @@ class RosterPreferencesService {
           'roster_id': dbRosterUuid,
         }).toList();
 
-        await SupabaseService.client
-            .from('roster_preferences')
-            .upsert(
-              payload,
-              onConflict: 'student_id,roster_id,preference_date',
-            );
+        await safeUpsertPreferences(payload);
       } catch (e) {
         if (kDebugMode) print('[RosterPreferencesService] save error: $e');
       }
     }
+  }
+
+  /// Safe Upsert with automatic schema fallback (handles missing submitted_at / shift_type)
+  static Future<void> safeUpsertPreferences(List<Map<String, dynamic>> payload) async {
+    if (payload.isEmpty) return;
+
+    // Attempt 1: Full payload
+    try {
+      await SupabaseService.client
+          .from('roster_preferences')
+          .upsert(
+            payload,
+            onConflict: 'student_id,roster_id,preference_date',
+          );
+      return;
+    } catch (e1) {
+      if (kDebugMode) print('[RosterPreferencesService] Full upsert attempt failed: $e1. Trying sanitized payload...');
+    }
+
+    // Attempt 2: Strip submitted_at & shift_type for legacy schema compatibility
+    try {
+      final sanitizedPayload = payload.map((row) {
+        final copy = Map<String, dynamic>.from(row);
+        copy.remove('submitted_at');
+        copy.remove('shift_type');
+
+        final prefType = copy['preference_type']?.toString().toUpperCase();
+        if (prefType != 'A' && prefType != 'B') {
+          copy['preference_type'] = (prefType == 'N' || prefType == 'NIGHT') ? 'B' : 'A';
+        }
+        return copy;
+      }).toList();
+
+      await SupabaseService.client
+          .from('roster_preferences')
+          .upsert(
+            sanitizedPayload,
+            onConflict: 'student_id,roster_id,preference_date',
+          );
+      return;
+    } catch (e2) {
+      if (kDebugMode) print('[RosterPreferencesService] Sanitized upsert failed: $e2. Trying minimal payload...');
+    }
+
+    // Attempt 3: Strict minimal payload
+    final minimalPayload = payload.map((row) {
+      final prefType = (row['shift_type'] == 'N' || row['preference_type'] == 'B' || row['preference_type'] == 'N') ? 'B' : 'A';
+      return {
+        'student_id': row['student_id'],
+        'roster_id': row['roster_id'],
+        'preference_date': row['preference_date'],
+        'preference_type': prefType,
+        'status': row['status'] ?? 'submitted',
+      };
+    }).toList();
+
+    await SupabaseService.client
+        .from('roster_preferences')
+        .upsert(
+          minimalPayload,
+          onConflict: 'student_id,roster_id,preference_date',
+        );
   }
 
   /// Submits student preferences (Locks them and marks status as submitted)
@@ -235,12 +292,7 @@ class RosterPreferencesService {
             'roster_id': dbRosterUuid,
           }).toList();
 
-          await SupabaseService.client
-              .from('roster_preferences')
-              .upsert(
-                payload,
-                onConflict: 'student_id,roster_id,preference_date',
-              );
+          await safeUpsertPreferences(payload);
 
           // Clean up removed dates
           final currentDates = normalized.map((p) =>

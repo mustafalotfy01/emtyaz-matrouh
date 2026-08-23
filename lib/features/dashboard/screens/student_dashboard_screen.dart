@@ -17,6 +17,7 @@ import '../../attendance/providers/attendance_provider.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../fingerprint/models/fingerprint_request.dart';
 import '../../fingerprint/providers/fingerprint_provider.dart';
+import '../../disciplinary/screens/student_discipline_history_screen.dart';
 import '../../groups/screens/group_selection_screen.dart';
 import '../../handover/screens/shift_handover_screen.dart';
 import '../../leaderboard/screens/clinical_leaderboard_screen.dart';
@@ -135,27 +136,7 @@ class StudentDashboardScreen extends ConsumerWidget {
                 },
               ),
 
-              const SizedBox(height: 20),
-
-              // ── 6. Nursing Procedures Library Carousel ────────────────────
-              AppSectionHeader(
-                title: l10n.whatToLearnTitle,
-                subtitle: l10n.whatToLearnSubtitle,
-                actionText: l10n.libraryViewAll,
-                onActionTap: () => onNavigateTab(4), // Knowledge tab (index 4)
-              ),
-              const SizedBox(height: 10),
-              _buildLearningCarousel(context),
-
-              const SizedBox(height: 20),
-
-              // ── 7. Shift Activity Log ─────────────────────────────────────
-              AppSectionHeader(
-                title: l10n.recentActivityTitle,
-                subtitle: l10n.recentActivitySubtitle,
-              ),
-              const SizedBox(height: 8),
-              _buildRecentActivityList(context, l10n: l10n, attendanceState: attendanceState),
+              const SizedBox(height: 30),
             ],
           ),
         ),
@@ -626,6 +607,18 @@ class StudentDashboardScreen extends ConsumerWidget {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const GroupSelectionScreen()),
+          );
+        },
+      ),
+      _QuickActionItem(
+        title: 'الانضباط والمكافآت',
+        subtitle: 'الجزاءات والتميز',
+        icon: Icons.military_tech_rounded,
+        color: AppDesignTokens.accentGold,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const StudentDisciplineHistoryScreen()),
           );
         },
       ),

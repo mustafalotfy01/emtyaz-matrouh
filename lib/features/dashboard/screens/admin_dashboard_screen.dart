@@ -22,6 +22,7 @@ import '../../knowledge/screens/knowledge_article_form_screen.dart';
 import '../../knowledge/screens/knowledge_library_screen.dart';
 import '../../notifications/screens/send_notification_screen.dart';
 import '../../app_versions/screens/app_versions_screen.dart';
+import '../../leaderboard/screens/clinical_leaderboard_screen.dart';
 import '../../quizzes/screens/quiz_create_screen.dart';
 import '../../quizzes/screens/quiz_list_screen.dart';
 
@@ -204,6 +205,14 @@ class AdminDashboardScreen extends ConsumerWidget {
                     const SizedBox(width: 8),
                     _buildQuickActionChip(
                       context,
+                      icon: Icons.emoji_events_rounded,
+                      label: 'لوحة المتصدرين والترتيب',
+                      color: const Color(0xFFD97706),
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClinicalLeaderboardScreen())),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildQuickActionChip(
+                      context,
                       icon: Icons.edit_note_rounded,
                       label: 'نشر في المجتمع',
                       color: AppDesignTokens.navyDark,
@@ -319,6 +328,15 @@ class AdminDashboardScreen extends ConsumerWidget {
                     'مستشفى مطروح العام (150م)',
                     AppDesignTokens.slateMedium,
                     () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StudentsMapOverviewScreen())),
+                  ),
+                  // 11. لوحة المتصدرين والترتيب
+                  _buildAdminTile(
+                    context,
+                    Icons.emoji_events_rounded,
+                    'لوحة المتصدرين والترتيب',
+                    'التحكم في الترتيب (GPA / Points)',
+                    const Color(0xFFD97706),
+                    () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClinicalLeaderboardScreen())),
                   ),
                 ],
               ),

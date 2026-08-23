@@ -62,12 +62,14 @@ class FingerprintRequestsNotifier
     String? targetStudentId,
     String? title,
     String? notes,
+    String? senderId,
   }) async {
     await _repository.sendImmediateRequest(
       audienceType: audienceType,
       targetStudentId: targetStudentId,
       title: title,
       notes: notes,
+      senderId: senderId,
     );
     await loadRequests();
   }

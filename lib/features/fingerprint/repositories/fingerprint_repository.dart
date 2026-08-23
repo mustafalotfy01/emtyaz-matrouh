@@ -38,16 +38,22 @@ class FingerprintRepository {
     String? targetStudentId,
     String? title,
     String? notes,
+    String? senderId,
   }) async {
     try {
-      final senderId = _client.auth.currentUser?.id;
+      final effectiveSenderId = senderId ?? _client.auth.currentUser?.id;
+      if (effectiveSenderId == null) {
+        throw Exception('تعذر تحديد حساب المرسل. يرجى تسجيل الدخول مجدداً.');
+      }
       final now = DateTime.now().toIso8601String();
-      final requestTitle = title ?? 'طلب بصمة تأكيد التواجد الفوري';
+      final requestTitle = (title != null && title.trim().isNotEmpty)
+          ? title.trim()
+          : 'طلب بصمة تأكيد التواجد الفوري';
 
       final res = await _client
           .from('confirmation_requests')
           .insert({
-            'sender_id': senderId,
+            'sender_id': effectiveSenderId,
             'audience_type': audienceType,
             'target_student_id': targetStudentId,
             'title': requestTitle,

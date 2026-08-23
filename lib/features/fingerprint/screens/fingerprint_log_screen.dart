@@ -12,6 +12,7 @@ import '../../../core/widgets/app_error_state.dart';
 import '../../../core/widgets/app_input.dart';
 import '../../../core/widgets/app_loading_skeleton.dart';
 import '../../auth/models/user_profile.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../../auth/providers/student_approvals_provider.dart';
 import '../../departments/models/department.dart';
 import '../../departments/providers/department_provider.dart';
@@ -590,11 +591,13 @@ class _ImmediateRequestBottomSheetState
                 }
 
                 try {
+                  final currentUser = ref.read(authProvider).user;
                   await ref.read(fingerprintRequestsProvider.notifier).sendImmediateRequest(
                         audienceType: effectiveAudience,
                         targetStudentId: _selectedStudentId,
                         title: _titleController.text.trim(),
                         notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+                        senderId: currentUser?.id,
                       );
 
                   if (mounted) {

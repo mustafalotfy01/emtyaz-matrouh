@@ -91,6 +91,10 @@ class DisciplinaryRepository {
 
       // 2. Direct table insert fallback
       final adminId = _client.auth.currentUser?.id;
+      final profileRes = adminId != null
+          ? await _client.from('profiles').select('role').eq('id', adminId).maybeSingle()
+          : null;
+      final callerRole = profileRes?['role']?.toString() ?? 'super_admin';
       final now = DateTime.now().toIso8601String();
 
       final res = await _client
@@ -99,7 +103,7 @@ class DisciplinaryRepository {
             'student_id': studentId,
             'department_id': departmentId,
             'created_by': adminId,
-            'created_by_role': 'super_admin',
+            'created_by_role': callerRole,
             'approved_by': adminId,
             'action_type': actionType.toDbString(),
             'severity': severity,

@@ -242,8 +242,8 @@ class _MainNavigationScreenState
           ),
         ),
 
-      // Disciplinary Action System (Doctor / Admin ONLY)
-      if (isDoctor || isAdmin)
+      // Disciplinary Action System (Admin / Leader / Doctor)
+      if (isAdmin || isLeader || isDoctor)
         IconButton(
           icon: const Icon(Icons.gavel_outlined, color: AppColors.primaryTeal, size: 22),
           tooltip: 'مراجعة الجزاءات والمكافآت',

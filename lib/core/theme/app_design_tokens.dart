@@ -9,6 +9,7 @@ class AppDesignTokens {
   static const Color primaryDark = Color(0xFF075960);
   static const Color primaryLight = Color(0xFFE6F4F5);
   static const Color primaryAccent = Color(0xFF149B9B);
+  static const Color accentGold = Color(0xFFF59E0B);
 
   static const Color navyDark = Color(0xFF0E3B43);
   static const Color slateDark = Color(0xFF0F172A);
