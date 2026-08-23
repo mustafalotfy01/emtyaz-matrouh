@@ -650,30 +650,25 @@ class _PublishReleaseBottomSheetState extends ConsumerState<_PublishReleaseBotto
       return;
     }
 
-    final directUrl = _normalizeDownloadUrl(_urlCtrl.text.trim());
+    String directUrl = _normalizeDownloadUrl(_urlCtrl.text.trim());
+    final versionName = _nameCtrl.text.trim();
 
-    // 2. Check APK provided or Direct Link
+    // If no direct URL and no picked APK, auto-generate standard GitHub Release download URL
     if (_apkBytes == null && directUrl.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('⚠️ يرجى اختيار ملف APK أو إدخال رابط التحميل المباشر'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
-      return;
+      directUrl = 'https://github.com/mustafalotfy01/emtyaz-matrouh/releases/download/v$versionName/app-release.apk';
     }
 
     final minVersion = int.tryParse(_minVersionCtrl.text.trim()) ?? 1;
 
     final success = await ref.read(appVersionsProvider.notifier).publishNewRelease(
-      versionName: _nameCtrl.text.trim(),
+      versionName: versionName,
       versionCode: versionCode,
       apkUrl: directUrl,
       releaseNotes: _notesCtrl.text.trim(),
       forceUpdate: _forceUpdate,
       minimumSupportedVersion: minVersion,
       isActive: _isActive,
-      fileName: _pickedApk?.name,
+      fileName: _pickedApk?.name ?? 'app-release.apk',
       fileSize: _pickedApk?.size,
       apkBytes: _apkBytes,
     );

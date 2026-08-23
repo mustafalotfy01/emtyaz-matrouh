@@ -104,57 +104,76 @@ class AppVersionsNotifier extends StateNotifier<AppVersionsState> {
       errorMessage: null,
     );
     try {
-      final directUrl = apkUrl.trim();
+      final cleanName = versionName.trim();
+      String directUrl = apkUrl.trim();
+
+      // If directUrl is empty, generate standard GitHub Release download URL
+      if (directUrl.isEmpty) {
+        final safeFile = (fileName != null && fileName.trim().isNotEmpty)
+            ? fileName.trim().replaceAll(' ', '_')
+            : 'app-release.apk';
+        directUrl = 'https://github.com/mustafalotfy01/emtyaz-matrouh/releases/download/v$cleanName/$safeFile';
+      }
 
       // Check if duplicate version code exists in local state
       if (state.versions.any((v) => v.versionCode == versionCode)) {
         throw Exception('رقم البناء (#$versionCode) موجود بالفعل. يرجى استخدام رقم بناء أكبر.');
       }
 
+      // 1. Try publishing via Edge Function if binary is present
+      bool publishedViaEdge = false;
       if (apkBytes != null && apkBytes.isNotEmpty) {
-        // Publish via secure GitHub Releases Edge Function
-        await _repo.publishViaGitHubRelease(
-          versionName: versionName,
-          versionCode: versionCode,
-          releaseNotes: releaseNotes,
-          forceUpdate: forceUpdate,
-          minimumSupportedVersion: minimumSupportedVersion,
-          isActive: isActive,
-          fileName: fileName,
-          fileSize: fileSize ?? apkBytes.length,
-          apkBytes: apkBytes,
-          directDownloadUrl: directUrl.isNotEmpty ? directUrl : null,
-          onProgress: (progress, sent, total) {
-            final percent = (progress * 100).toStringAsFixed(0);
-            final sentMb = (sent / (1024 * 1024)).toStringAsFixed(1);
-            final totalMb = (total / (1024 * 1024)).toStringAsFixed(1);
+        try {
+          await _repo.publishViaGitHubRelease(
+            versionName: cleanName,
+            versionCode: versionCode,
+            releaseNotes: releaseNotes,
+            forceUpdate: forceUpdate,
+            minimumSupportedVersion: minimumSupportedVersion,
+            isActive: isActive,
+            fileName: fileName,
+            fileSize: fileSize ?? apkBytes.length,
+            apkBytes: apkBytes,
+            directDownloadUrl: directUrl,
+            onProgress: (progress, sent, total) {
+              final percent = (progress * 100).toStringAsFixed(0);
+              final sentMb = (sent / (1024 * 1024)).toStringAsFixed(1);
+              final totalMb = (total / (1024 * 1024)).toStringAsFixed(1);
 
-            state = state.copyWith(
-              uploadProgress: progress,
-              uploadedBytes: sent,
-              totalBytes: total,
-              uploadStatusText: progress >= 1.0
-                  ? 'تم اكتمال الرفع بنجاح! جاري التوثيق...'
-                  : 'جاري رفع الحزمة إلى GitHub Releases: $percent% ($sentMb / $totalMb MB)',
-            );
-          },
-        );
-      } else if (directUrl.isNotEmpty) {
-        // Direct publish with URL
-        state = state.copyWith(uploadStatusText: 'جاري توثيق بيانات الإصدار...');
+              state = state.copyWith(
+                uploadProgress: progress,
+                uploadedBytes: sent,
+                totalBytes: total,
+                uploadStatusText: progress >= 1.0
+                    ? 'تم اكتمال الرفع بنجاح! جاري التوثيق...'
+                    : 'جاري رفع الحزمة إلى GitHub Releases: $percent% ($sentMb / $totalMb MB)',
+              );
+            },
+          );
+          publishedViaEdge = true;
+        } catch (edgeError) {
+          if (kDebugMode) {
+            print('⚠️ Edge function unavailable ($edgeError), falling back to direct database publish.');
+          }
+        }
+      }
+
+      // 2. If not published via Edge Function, publish directly into Supabase app_versions
+      if (!publishedViaEdge) {
+        state = state.copyWith(uploadStatusText: 'جاري توثيق بيانات الإصدار في قاعدة البيانات...');
         await _repo.publishRelease(
-          versionName: versionName,
+          versionName: cleanName,
           versionCode: versionCode,
           apkDownloadUrl: directUrl,
           releaseNotes: releaseNotes,
           forceUpdate: forceUpdate,
           minimumSupportedVersion: minimumSupportedVersion,
           isActive: isActive,
-          fileName: fileName,
-          fileSize: fileSize,
+          fileName: fileName ?? 'app-release.apk',
+          fileSize: fileSize ?? apkBytes?.length,
+          githubTagName: 'v$cleanName',
+          releaseUrl: 'https://github.com/mustafalotfy01/emtyaz-matrouh/releases/tag/v$cleanName',
         );
-      } else {
-        throw Exception('يرجى اختيار ملف APK أو إدخال رابط التحميل المباشر للـ Release.');
       }
 
       await loadVersions();
