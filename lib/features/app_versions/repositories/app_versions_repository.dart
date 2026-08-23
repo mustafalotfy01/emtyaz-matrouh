@@ -48,7 +48,9 @@ class AppVersionsRepository {
   }
 
   /// Uploads APK file binary to Supabase Storage app-releases bucket with progress tracking
+  /// Supports large APK files (50MB, 100MB, 200MB+)
   Future<String> uploadApkBinary({
+    required int versionCode,
     required String versionName,
     required String fileName,
     required Uint8List fileBytes,
@@ -57,23 +59,16 @@ class AppVersionsRepository {
     final totalBytes = fileBytes.length;
     final totalMb = (totalBytes / (1024 * 1024)).toStringAsFixed(1);
 
-    // Supabase standard upload limit is 50MB
-    if (totalBytes > 49 * 1024 * 1024) {
-      throw Exception(
-        'حجم ملف الـ APK ($totalMb MB) يتجاوز الحد الأقصى للرفع المباشر عبر السيرفر (50 MB).\n'
-        'يرجى استخدام خانة "رابط التحميل المباشر" لوضع رابط تحميل من (Google Drive أو GitHub Releases أو MediaFire).',
-      );
-    }
-
-    final sanitizedVersion = versionName.trim().replaceAll(' ', '_');
-    final sanitizedFileName = fileName.trim().replaceAll(' ', '_');
-    final storagePath = 'android/$sanitizedVersion/$sanitizedFileName';
+    final sanitizedFileName = fileName.trim().replaceAll(' ', '_').isNotEmpty
+        ? fileName.trim().replaceAll(' ', '_')
+        : 'app-release.apk';
+    final storagePath = 'android/$versionCode/$sanitizedFileName';
 
     // Initial progress report
-    onProgress?.call(0.05, (totalBytes * 0.05).toInt(), totalBytes);
+    onProgress?.call(0.02, (totalBytes * 0.02).toInt(), totalBytes);
 
     int attempts = 0;
-    const maxAttempts = 2;
+    const maxAttempts = 3;
     dynamic lastError;
 
     while (attempts < maxAttempts) {
@@ -92,7 +87,7 @@ class AppVersionsRepository {
         });
         request.contentLength = totalBytes;
 
-        const chunkSize = 128 * 1024; // 128KB chunks
+        const chunkSize = 256 * 1024; // 256KB chunks
         int sentBytes = 0;
 
         Stream<List<int>> byteStream() async* {
@@ -103,8 +98,8 @@ class AppVersionsRepository {
             final ratio = (sentBytes / totalBytes).clamp(0.0, 0.98);
             onProgress?.call(ratio, sentBytes, totalBytes);
             yield chunk;
-            // Slight yield to allow network transmission buffer
-            await Future.delayed(const Duration(milliseconds: 10));
+            // Yield briefly to prevent UI blocking during large buffer slices
+            await Future.delayed(const Duration(milliseconds: 5));
           }
         }
 
@@ -112,7 +107,8 @@ class AppVersionsRepository {
           request.sink.close();
         });
 
-        final streamedResponse = await client.send(request).timeout(const Duration(minutes: 5));
+        // 15-minute timeout for large files on slower network connections
+        final streamedResponse = await client.send(request).timeout(const Duration(minutes: 15));
         final response = await http.Response.fromStream(streamedResponse);
         client.close();
 
@@ -120,20 +116,12 @@ class AppVersionsRepository {
           onProgress?.call(1.0, totalBytes, totalBytes);
           final publicUrl = _client.storage.from('app-releases').getPublicUrl(storagePath);
           return publicUrl;
-        } else if (response.statusCode == 413 || response.body.contains('Payload too large') || response.body.contains('EntityTooLarge')) {
-          throw Exception(
-            'حجم الملف ($totalMb MB) يتجاوز الحد المسموح به في السيرفر (413 Payload Too Large).\n'
-            'يرجى وضع رابط التحميل المباشر للـ APK في خانة الرابط.',
-          );
         } else {
           throw Exception('فشل الخادم في استقبال الملف (${response.statusCode}): ${response.body}');
         }
       } catch (e) {
         lastError = e;
         if (kDebugMode) print('⚠️ Upload attempt $attempts failed: $e');
-        if (e.toString().contains('413') || e.toString().contains('Payload too large')) {
-          rethrow;
-        }
         if (attempts < maxAttempts) {
           await Future.delayed(const Duration(seconds: 2));
         }
@@ -158,13 +146,7 @@ class AppVersionsRepository {
       return publicUrl;
     } catch (e) {
       if (kDebugMode) print('❌ Storage upload fallback error: $e');
-      if (e.toString().contains('Payload too large') || e.toString().contains('413')) {
-        throw Exception(
-          'حجم الملف ($totalMb MB) أكبر من 50 MB (الحد الأقصى للرفع المباشر).\n'
-          'يرجى إدخال رابط التحميل المباشر للـ APK في الخانة المخصصة.',
-        );
-      }
-      throw lastError ?? Exception('فشل في رفع ملف APK: $e');
+      throw lastError ?? Exception('فشل في رفع ملف APK ($totalMb MB): $e');
     }
   }
 
@@ -182,12 +164,13 @@ class AppVersionsRepository {
     int? fileSize,
     String? checksum,
   }) async {
-    // 1. If this release is active, deactivate existing active releases
+    // 1. If this release is active, deactivate existing active releases for the platform
     if (isActive) {
       try {
         await _client
             .from('app_versions')
             .update({'is_active': false, 'updated_at': DateTime.now().toIso8601String()})
+            .eq('platform', platform)
             .eq('is_active', true);
       } catch (e) {
         if (kDebugMode) print('⚠️ Note on deactivating older releases: $e');
@@ -223,10 +206,11 @@ class AppVersionsRepository {
   /// Toggles active status of an existing release (Admin ONLY)
   Future<void> toggleActiveStatus(String id, bool newStatus, {String platform = 'android'}) async {
     if (newStatus) {
-      // Deactivate other active releases
+      // Deactivate other active releases on this platform
       await _client
           .from('app_versions')
           .update({'is_active': false, 'updated_at': DateTime.now().toIso8601String()})
+          .eq('platform', platform)
           .eq('is_active', true);
     }
 
@@ -244,7 +228,7 @@ class AppVersionsRepository {
       try {
         await _client.storage.from('app-releases').remove([storagePath]);
       } catch (e) {
-        if (kDebugMode) print('⚠️ Storage cleanup warning: ');
+        if (kDebugMode) print('⚠️ Storage cleanup warning: $e');
       }
     }
   }

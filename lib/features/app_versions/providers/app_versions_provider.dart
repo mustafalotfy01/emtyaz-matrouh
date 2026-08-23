@@ -111,6 +111,7 @@ class AppVersionsNotifier extends StateNotifier<AppVersionsState> {
             : 'app-release.apk';
 
         finalUrl = await _repo.uploadApkBinary(
+          versionCode: versionCode,
           versionName: versionName,
           fileName: actualFileName,
           fileBytes: apkBytes,

@@ -1,9 +1,51 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nurse_matrouh/core/services/apk_download_service.dart';
 import 'package:nurse_matrouh/core/services/app_update_service.dart';
 import 'package:nurse_matrouh/features/profile/widgets/app_update_dialog.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const MethodChannel channel = MethodChannel('com.matrouh.nurse/app_installer');
+
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+      switch (methodCall.method) {
+        case 'canRequestPackageInstalls':
+          return true;
+        case 'openInstallPermissionSettings':
+          return true;
+        case 'getDownloadDirectory':
+          return '/tmp/download';
+        case 'verifyApk':
+          return {
+            'isValid': true,
+            'packageName': 'com.matrouh.nurse.nurse_matrouh',
+            'expectedPackageName': 'com.matrouh.nurse.nurse_matrouh',
+            'versionCode': 2,
+            'versionName': '1.1.0',
+            'fileSizeBytes': 125000000,
+            'error': null,
+          };
+        case 'installApk':
+          return {
+            'success': true,
+            'permissionRequired': false,
+          };
+        default:
+          return null;
+      }
+    });
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null);
+    ApkDownloadService.instance.reset();
+  });
+
   testWidgets('TEST 9: Optional update dialog renders version and both action buttons', (tester) async {
     const info = AppVersionInfo(
       currentVersion: '1.0.0',
@@ -14,6 +56,7 @@ void main() {
       downloadUrl: 'https://example.com/app.apk',
       isMandatory: false,
       hasUpdate: true,
+      fileSize: 125 * 1024 * 1024,
     );
 
     await tester.pumpWidget(
@@ -41,6 +84,9 @@ void main() {
 
     // Verify Release notes
     expect(find.text('• تحسين استقرار الحضور\n• إصلاح مشكلة الإشعارات'), findsOneWidget);
+
+    // Verify file size displayed
+    expect(find.text('حجم التحديث: 125.0 MB'), findsOneWidget);
 
     // Verify both action buttons exist
     expect(find.text('تحديث الآن'), findsOneWidget);

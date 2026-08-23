@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/app_version_model.dart';
+import 'apk_download_service.dart';
 import 'supabase_service.dart';
 
 @immutable
@@ -17,6 +18,7 @@ class AppVersionInfo {
   final bool hasUpdate;
   final DateTime? releaseDate;
   final int? fileSize;
+  final String? fileName;
 
   const AppVersionInfo({
     required this.currentVersion,
@@ -29,6 +31,7 @@ class AppVersionInfo {
     required this.hasUpdate,
     this.releaseDate,
     this.fileSize,
+    this.fileName,
   });
 
   String get formattedFileSize {
@@ -81,7 +84,7 @@ class AppUpdateService {
       installedCode = int.tryParse(pkg.buildNumber) ?? 1;
     } catch (e) {
       if (kDebugMode) {
-        print('⚠️ AppUpdateService: PackageInfo lookup fallback: ');
+        print('⚠️ AppUpdateService: PackageInfo lookup fallback: $e');
       }
     }
 
@@ -90,6 +93,7 @@ class AppUpdateService {
       final response = await SupabaseService.client
           .from('app_versions')
           .select('*')
+          .eq('platform', 'android')
           .eq('is_active', true)
           .order('version_code', ascending: false)
           .limit(1);
@@ -122,10 +126,11 @@ class AppUpdateService {
         hasUpdate: hasUpdate,
         releaseDate: latest.releaseDate,
         fileSize: latest.fileSize,
+        fileName: latest.fileName,
       );
     } catch (e) {
       if (kDebugMode) {
-        print('⚠️ AppUpdateService: Version check network error (graceful ignore): ');
+        print('⚠️ AppUpdateService: Version check network error (graceful ignore): $e');
       }
       // Never block app startup on network / server failure
       return AppVersionInfo(
@@ -140,61 +145,38 @@ class AppUpdateService {
     }
   }
 
-  /// Launches APK download URL via Android OS external downloader/browser
+  /// Starts downloading the APK directly inside the app with real progress
+  static Future<void> startInAppDownload(AppVersionInfo info) async {
+    if (info.downloadUrl == null || info.downloadUrl!.isEmpty) return;
+
+    await ApkDownloadService.instance.startDownload(
+      downloadUrl: info.downloadUrl!,
+      versionCode: info.latestVersionCode,
+      expectedTotalBytes: info.fileSize,
+      fileName: info.fileName,
+    );
+  }
+
+  /// Fallback URL launcher if ever needed
   static Future<bool> launchApkDownload(BuildContext context, String? url) async {
     if (url == null || url.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('⚠️ رابط تحميل الإصدار غير متوفر حالياً'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ رابط تحميل الإصدار غير متوفر حالياً'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
       return false;
     }
 
     final uri = Uri.tryParse(url.trim());
-    if (uri == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('⚠️ رابط تحميل ملف APK غير صالح'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
-      return false;
-    }
+    if (uri == null) return false;
 
     try {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('🚀 جارٍ فتح رابط تحميل التحديث الرسمي...'),
-          backgroundColor: Color(0xFF0A7B83),
-          duration: Duration(seconds: 3),
-        ),
-      );
-
-      final launched = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
-
-      if (!launched && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('⚠️ تعذر فتح رابط التحميل، يرجى المحاولة مرة أخرى'),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-      }
-      return launched;
+      return await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ حدث خطأ أثناء فتح رابط التحديث: '),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-      }
       return false;
     }
   }
