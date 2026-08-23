@@ -1,11 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_config.dart';
 import '../../../core/models/app_version_model.dart';
-import '../../../core/services/apk_uploader.dart';
 import '../../../core/services/supabase_service.dart';
 
 class AppVersionsRepository {
@@ -48,63 +48,98 @@ class AppVersionsRepository {
     }
   }
 
-  /// Uploads APK file binary to Supabase Storage app-releases bucket with real progress tracking
-  /// Supports large APK files (50MB, 100MB, 200MB+) with accurate byte-level progress
-  Future<String> uploadApkBinary({
-    required int versionCode,
+  /// Publishes an APK release to GitHub Releases via Supabase Edge Function
+  /// No GitHub secrets or PAT are handled on client-side.
+  Future<AppVersionModel> publishViaGitHubRelease({
     required String versionName,
-    required String fileName,
-    required Uint8List fileBytes,
+    required int versionCode,
+    String? releaseNotes,
+    bool forceUpdate = false,
+    int minimumSupportedVersion = 1,
+    bool isActive = true,
+    String? fileName,
+    int? fileSize,
+    Uint8List? apkBytes,
+    String? directDownloadUrl,
     void Function(double progress, int sentBytes, int totalBytes)? onProgress,
   }) async {
-    final totalBytes = fileBytes.length;
-    final totalMb = (totalBytes / (1024 * 1024)).toStringAsFixed(1);
+    final token = _client.auth.currentSession?.accessToken ?? '';
+    if (token.isEmpty) {
+      throw Exception('جلسة المشرف غير صالحة. يرجى تسجيل الدخول مجدداً.');
+    }
 
-    final sanitizedFileName = fileName.trim().replaceAll(' ', '_').isNotEmpty
-        ? fileName.trim().replaceAll(' ', '_')
-        : 'app-release.apk';
-    final storagePath = 'android/$versionCode/$sanitizedFileName';
+    final totalBytes = apkBytes?.length ?? fileSize ?? 0;
+    onProgress?.call(0.05, (totalBytes * 0.05).toInt(), totalBytes);
 
-    // Initial progress report
-    onProgress?.call(0.01, (totalBytes * 0.01).toInt(), totalBytes);
+    final edgeFunctionUrl = Uri.parse('${AppConfig.supabaseUrl}/functions/v1/create-github-release');
 
-    final token = _client.auth.currentSession?.accessToken ?? AppConfig.supabaseAnonKey;
-    final uploadUrl = '${AppConfig.supabaseUrl}/storage/v1/object/app-releases/$storagePath';
-    final publicUrl = _client.storage.from('app-releases').getPublicUrl(storagePath);
+    final request = http.MultipartRequest('POST', edgeFunctionUrl);
+    request.headers.addAll({
+      'Authorization': 'Bearer $token',
+      'apikey': AppConfig.supabaseAnonKey,
+    });
 
-    try {
-      final resultUrl = await uploadApkPlatform(
-        uploadUrl: uploadUrl,
-        token: token,
-        apiKey: AppConfig.supabaseAnonKey,
-        contentType: 'application/vnd.android.package-archive',
-        fileBytes: fileBytes,
-        publicUrl: publicUrl,
-        onProgress: onProgress,
+    request.fields['version_name'] = versionName.trim();
+    request.fields['version_code'] = versionCode.toString();
+    request.fields['release_notes'] = releaseNotes?.trim() ?? '';
+    request.fields['force_update'] = forceUpdate.toString();
+    request.fields['minimum_supported_version'] = minimumSupportedVersion.toString();
+    request.fields['is_active'] = isActive.toString();
+    if (directDownloadUrl != null && directDownloadUrl.trim().isNotEmpty) {
+      request.fields['direct_download_url'] = directDownloadUrl.trim();
+    }
+
+    if (apkBytes != null && apkBytes.isNotEmpty) {
+      final safeName = (fileName != null && fileName.trim().isNotEmpty)
+          ? fileName.trim().replaceAll(' ', '_')
+          : 'app-release.apk';
+
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          apkBytes,
+          filename: safeName,
+        ),
       );
-      return resultUrl;
-    } catch (e) {
-      if (kDebugMode) print('⚠️ Direct platform upload failed: $e, trying uploadBinary fallback...');
-      try {
-        onProgress?.call(0.5, (totalBytes * 0.5).toInt(), totalBytes);
-        await _client.storage.from('app-releases').uploadBinary(
-          storagePath,
-          fileBytes,
-          fileOptions: const FileOptions(
-            contentType: 'application/vnd.android.package-archive',
-            upsert: true,
-          ),
-        );
-        onProgress?.call(1.0, totalBytes, totalBytes);
-        return publicUrl;
-      } catch (fallbackErr) {
-        if (kDebugMode) print('❌ Storage upload fallback error: $fallbackErr');
-        throw Exception('فشل في رفع ملف الـ APK ($totalMb MB): $e');
+    }
+
+    onProgress?.call(0.2, (totalBytes * 0.2).toInt(), totalBytes);
+
+    final client = http.Client();
+    final streamedResponse = await client.send(request).timeout(const Duration(minutes: 20));
+    final response = await http.Response.fromStream(streamedResponse);
+    client.close();
+
+    onProgress?.call(1.0, totalBytes, totalBytes);
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final json = jsonDecode(response.body);
+      if (json['data'] != null) {
+        return AppVersionModel.fromJson(Map<String, dynamic>.from(json['data']));
       }
+      return AppVersionModel(
+        id: '',
+        versionName: versionName,
+        versionCode: versionCode,
+        apkDownloadUrl: json['download_url'] ?? '',
+        releaseNotes: releaseNotes,
+        forceUpdate: forceUpdate,
+        minimumSupportedVersion: minimumSupportedVersion,
+        isActive: isActive,
+        releaseDate: DateTime.now(),
+        createdAt: DateTime.now(),
+      );
+    } else {
+      dynamic errorData;
+      try {
+        errorData = jsonDecode(response.body);
+      } catch (_) {}
+      final errorMsg = errorData?['error'] ?? 'خطأ في معالجة الطلب (${response.statusCode}): ${response.body}';
+      throw Exception(errorMsg);
     }
   }
 
-  /// Publishes a new version (Admin ONLY)
+  /// Publishes a release record directly using Supabase Database RLS (Super Admin Only)
   Future<AppVersionModel> publishRelease({
     required String versionName,
     required int versionCode,
@@ -117,6 +152,11 @@ class AppVersionsRepository {
     String? fileName,
     int? fileSize,
     String? checksum,
+    String? sha256,
+    int? githubReleaseId,
+    String? githubTagName,
+    int? githubAssetId,
+    String? releaseUrl,
   }) async {
     // 1. If this release is active, deactivate existing active releases for the platform
     if (isActive) {
@@ -136,6 +176,7 @@ class AppVersionsRepository {
       'version_name': versionName.trim(),
       'version_code': versionCode,
       'apk_download_url': apkDownloadUrl.trim(),
+      'download_url': apkDownloadUrl.trim(),
       'release_notes': releaseNotes?.trim(),
       'force_update': forceUpdate,
       'minimum_supported_version': minimumSupportedVersion,
@@ -144,8 +185,14 @@ class AppVersionsRepository {
       if (fileName != null) 'file_name': fileName,
       if (fileSize != null) 'file_size': fileSize,
       if (checksum != null) 'checksum': checksum,
+      if (sha256 != null) 'sha256': sha256,
+      if (githubReleaseId != null) 'github_release_id': githubReleaseId,
+      if (githubTagName != null) 'github_tag_name': githubTagName,
+      if (githubAssetId != null) 'github_asset_id': githubAssetId,
+      if (releaseUrl != null) 'release_url': releaseUrl,
       if (_client.auth.currentUser != null) 'created_by': _client.auth.currentUser!.id,
       'release_date': DateTime.now().toIso8601String(),
+      'published_at': DateTime.now().toIso8601String(),
     };
 
     final res = await _client
@@ -160,7 +207,6 @@ class AppVersionsRepository {
   /// Toggles active status of an existing release (Admin ONLY)
   Future<void> toggleActiveStatus(String id, bool newStatus, {String platform = 'android'}) async {
     if (newStatus) {
-      // Deactivate other active releases on this platform
       await _client
           .from('app_versions')
           .update({'is_active': false, 'updated_at': DateTime.now().toIso8601String()})
@@ -175,15 +221,7 @@ class AppVersionsRepository {
   }
 
   /// Deletes a release (Admin ONLY)
-  Future<void> deleteRelease(String id, {String? storagePath}) async {
+  Future<void> deleteRelease(String id) async {
     await _client.from('app_versions').delete().eq('id', id);
-
-    if (storagePath != null && storagePath.isNotEmpty) {
-      try {
-        await _client.storage.from('app-releases').remove([storagePath]);
-      } catch (e) {
-        if (kDebugMode) print('⚠️ Storage cleanup warning: $e');
-      }
-    }
   }
 }

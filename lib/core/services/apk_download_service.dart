@@ -86,6 +86,8 @@ class ApkDownloadService {
   StreamSubscription<List<int>>? _streamSubscription;
   IOSink? _fileSink;
   bool _isCanceled = false;
+  String? _expectedSha256;
+  int? _expectedVersionCode;
 
   void _emit(ApkDownloadState state) {
     _currentState = state;
@@ -117,7 +119,10 @@ class ApkDownloadService {
     required int versionCode,
     int? expectedTotalBytes,
     String? fileName,
+    String? expectedSha256,
   }) async {
+    _expectedSha256 = expectedSha256;
+    _expectedVersionCode = versionCode;
     if (kIsWeb) {
       _emit(_currentState.copyWith(
         status: ApkDownloadStatus.error,
@@ -363,6 +368,16 @@ class ApkDownloadService {
         errorMessage: validation.error ?? 'ملف التحديث غير صالح أو لا يتطابق مع هذا التطبيق.',
       ));
       return false;
+    }
+
+    if (_expectedVersionCode != null && validation.versionCode != null) {
+      if (validation.versionCode! < _expectedVersionCode!) {
+        _emit(_currentState.copyWith(
+          status: ApkDownloadStatus.error,
+          errorMessage: 'إصدار حزمة التحديث (#${validation.versionCode}) أقل من الإصدار المطلوب (#$_expectedVersionCode).',
+        ));
+        return false;
+      }
     }
 
     // 2. Launch native installer

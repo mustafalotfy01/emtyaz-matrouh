@@ -19,6 +19,10 @@ class AppVersionInfo {
   final DateTime? releaseDate;
   final int? fileSize;
   final String? fileName;
+  final String? sha256;
+  final int? githubReleaseId;
+  final String? githubTagName;
+  final String? releaseUrl;
 
   const AppVersionInfo({
     required this.currentVersion,
@@ -32,6 +36,10 @@ class AppVersionInfo {
     this.releaseDate,
     this.fileSize,
     this.fileName,
+    this.sha256,
+    this.githubReleaseId,
+    this.githubTagName,
+    this.releaseUrl,
   });
 
   String get formattedFileSize {
@@ -127,6 +135,10 @@ class AppUpdateService {
         releaseDate: latest.releaseDate,
         fileSize: latest.fileSize,
         fileName: latest.fileName,
+        sha256: latest.sha256,
+        githubReleaseId: latest.githubReleaseId,
+        githubTagName: latest.githubTagName,
+        releaseUrl: latest.releaseUrl,
       );
     } catch (e) {
       if (kDebugMode) {
@@ -154,6 +166,7 @@ class AppUpdateService {
       versionCode: info.latestVersionCode,
       expectedTotalBytes: info.fileSize,
       fileName: info.fileName,
+      expectedSha256: info.sha256,
     );
   }
 

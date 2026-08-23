@@ -424,24 +424,46 @@ class _AppVersionsScreenState extends ConsumerState<AppVersionsScreen> {
             const SizedBox(height: 10),
           ],
 
-          // Metadata row (Min supported, File size)
-          Row(
+          // Metadata row (Min supported, File size, GitHub Tag)
+          Wrap(
+            spacing: 12,
+            runSpacing: 4,
             children: [
-              Icon(Icons.security_rounded, size: 14, color: AppDesignTokens.textMuted(context)),
-              const SizedBox(width: 4),
-              Text(
-                'الحد الأدنى المدعوم: Build #${version.minimumSupportedVersion}',
-                style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.security_rounded, size: 14, color: AppDesignTokens.textMuted(context)),
+                  const SizedBox(width: 4),
+                  Text(
+                    'الحد الأدنى المدعوم: Build #${version.minimumSupportedVersion}',
+                    style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
+                  ),
+                ],
               ),
-              if (version.fileSize != null && version.fileSize! > 0) ...[
-                const SizedBox(width: 12),
-                Icon(Icons.attachment_rounded, size: 14, color: AppDesignTokens.textMuted(context)),
-                const SizedBox(width: 4),
-                Text(
-                  version.formattedFileSize,
-                  style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
+              if (version.fileSize != null && version.fileSize! > 0)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.attachment_rounded, size: 14, color: AppDesignTokens.textMuted(context)),
+                    const SizedBox(width: 4),
+                    Text(
+                      version.formattedFileSize,
+                      style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
+                    ),
+                  ],
                 ),
-              ],
+              if (version.githubTagName != null && version.githubTagName!.isNotEmpty)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.code_rounded, size: 14, color: AppDesignTokens.primary),
+                    const SizedBox(width: 4),
+                    Text(
+                      'GitHub: ${version.githubTagName}',
+                      style: const TextStyle(fontSize: 11, color: AppDesignTokens.primary, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
             ],
           ),
 
@@ -817,7 +839,7 @@ class _PublishReleaseBottomSheetState extends ConsumerState<_PublishReleaseBotto
                             ),
                             if (_pickedApk != null)
                               Text(
-                                '${(_pickedApk!.size / (1024 * 1024)).toStringAsFixed(1)} MB • جاهز للرفع إلى Storage',
+                                '${(_pickedApk!.size / (1024 * 1024)).toStringAsFixed(1)} MB • جاهز للرفع والنشر كـ GitHub Release Asset',
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
@@ -844,8 +866,8 @@ class _PublishReleaseBottomSheetState extends ConsumerState<_PublishReleaseBotto
 
               // Alternative Direct APK URL
               AppInput(
-                label: 'رابط التحميل المباشر للـ APK (Google Drive / GitHub / MediaFire)',
-                hint: 'https://...',
+                label: 'رابط التحميل المباشر للـ APK (GitHub Release Asset / Direct Link)',
+                hint: 'https://github.com/.../releases/download/.../app-release.apk',
                 controller: _urlCtrl,
                 keyboardType: TextInputType.url,
                 prefixIcon: const Icon(Icons.link_rounded, size: 18),

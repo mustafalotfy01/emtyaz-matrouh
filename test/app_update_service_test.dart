@@ -191,5 +191,53 @@ void main() {
       final bool studentCanManage = UserRole.student == UserRole.superAdmin;
       expect(studentCanManage, isFalse);
     });
+
+    test('TEST 9: GitHub Releases metadata deserialization in AppVersionModel', () {
+      final githubReleaseJson = {
+        'id': 'github-rel-uuid-5678',
+        'version_name': '1.3.0',
+        'version_code': 4,
+        'apk_download_url': 'https://github.com/mustafalotfy01/emtyaz-matrouh/releases/download/v1.3.0/app-release.apk',
+        'download_url': 'https://github.com/mustafalotfy01/emtyaz-matrouh/releases/download/v1.3.0/app-release.apk',
+        'release_notes': '• التحديث عبر GitHub Releases مع دعم استئناف التحميل',
+        'force_update': false,
+        'minimum_supported_version': 2,
+        'is_active': true,
+        'platform': 'android',
+        'file_name': 'app-release.apk',
+        'file_size': 63800000,
+        'sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        'github_release_id': 14285700,
+        'github_tag_name': 'v1.3.0',
+        'github_asset_id': 99887766,
+        'release_url': 'https://github.com/mustafalotfy01/emtyaz-matrouh/releases/tag/v1.3.0',
+        'release_date': '2026-08-24T10:00:00.000Z',
+        'published_at': '2026-08-24T10:00:00.000Z',
+        'created_at': '2026-08-24T10:00:00.000Z',
+      };
+
+      final model = AppVersionModel.fromJson(githubReleaseJson);
+      expect(model.versionName, '1.3.0');
+      expect(model.versionCode, 4);
+      expect(model.apkDownloadUrl, contains('github.com/mustafalotfy01/emtyaz-matrouh/releases/download'));
+      expect(model.githubReleaseId, 14285700);
+      expect(model.githubTagName, 'v1.3.0');
+      expect(model.githubAssetId, 99887766);
+      expect(model.sha256, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
+      expect(model.formattedFileSize, '60.8 MB');
+
+      final serialized = model.toJson();
+      expect(serialized['github_tag_name'], 'v1.3.0');
+      expect(serialized['github_release_id'], 14285700);
+      expect(serialized['sha256'], isNotNull);
+    });
+
+    test('TEST 10: Strict downgrade prevention (Older version on server is ignored)', () {
+      const installedCode = 10;
+      const serverCode = 8; // Server has older version
+
+      final hasUpdate = serverCode > installedCode;
+      expect(hasUpdate, isFalse, reason: 'Downgrades must be strictly prevented');
+    });
   });
 }

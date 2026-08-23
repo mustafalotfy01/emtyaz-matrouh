@@ -98,23 +98,32 @@ class AppVersionsNotifier extends StateNotifier<AppVersionsState> {
       uploadProgress: 0.0,
       uploadedBytes: 0,
       totalBytes: apkBytes?.length ?? fileSize ?? 0,
-      uploadStatusText: (apkBytes != null && apkBytes.isNotEmpty) ? 'جاري تجهيز حزمة APK...' : 'جاري حفظ بيانات الإصدار...',
+      uploadStatusText: (apkBytes != null && apkBytes.isNotEmpty)
+          ? 'جاري إنشاء GitHub Release ورفع الحزمة...'
+          : 'جاري تسجيل بيانات الإصدار...',
       errorMessage: null,
     );
     try {
-      String finalUrl = apkUrl.trim();
+      final directUrl = apkUrl.trim();
 
-      // If APK binary is provided, upload it to storage first
+      // Check if duplicate version code exists in local state
+      if (state.versions.any((v) => v.versionCode == versionCode)) {
+        throw Exception('رقم البناء (#$versionCode) موجود بالفعل. يرجى استخدام رقم بناء أكبر.');
+      }
+
       if (apkBytes != null && apkBytes.isNotEmpty) {
-        final actualFileName = (fileName != null && fileName.isNotEmpty)
-            ? fileName
-            : 'app-release.apk';
-
-        finalUrl = await _repo.uploadApkBinary(
-          versionCode: versionCode,
+        // Publish via secure GitHub Releases Edge Function
+        await _repo.publishViaGitHubRelease(
           versionName: versionName,
-          fileName: actualFileName,
-          fileBytes: apkBytes,
+          versionCode: versionCode,
+          releaseNotes: releaseNotes,
+          forceUpdate: forceUpdate,
+          minimumSupportedVersion: minimumSupportedVersion,
+          isActive: isActive,
+          fileName: fileName,
+          fileSize: fileSize ?? apkBytes.length,
+          apkBytes: apkBytes,
+          directDownloadUrl: directUrl.isNotEmpty ? directUrl : null,
           onProgress: (progress, sent, total) {
             final percent = (progress * 100).toStringAsFixed(0);
             final sentMb = (sent / (1024 * 1024)).toStringAsFixed(1);
@@ -125,32 +134,28 @@ class AppVersionsNotifier extends StateNotifier<AppVersionsState> {
               uploadedBytes: sent,
               totalBytes: total,
               uploadStatusText: progress >= 1.0
-                  ? 'تم اكتمال الرفع! جاري النشر...'
-                  : 'جاري رفع الملف: $percent% ($sentMb / $totalMb MB)',
+                  ? 'تم اكتمال الرفع بنجاح! جاري التوثيق...'
+                  : 'جاري رفع الحزمة إلى GitHub Releases: $percent% ($sentMb / $totalMb MB)',
             );
           },
         );
+      } else if (directUrl.isNotEmpty) {
+        // Direct publish with URL
+        state = state.copyWith(uploadStatusText: 'جاري توثيق بيانات الإصدار...');
+        await _repo.publishRelease(
+          versionName: versionName,
+          versionCode: versionCode,
+          apkDownloadUrl: directUrl,
+          releaseNotes: releaseNotes,
+          forceUpdate: forceUpdate,
+          minimumSupportedVersion: minimumSupportedVersion,
+          isActive: isActive,
+          fileName: fileName,
+          fileSize: fileSize,
+        );
+      } else {
+        throw Exception('يرجى اختيار ملف APK أو إدخال رابط التحميل المباشر للـ Release.');
       }
-
-      if (finalUrl.isEmpty) {
-        throw Exception('رابط تحميل APK أو الملف مطلوب لنشر الإصدار');
-      }
-
-      state = state.copyWith(
-        uploadStatusText: 'جاري تسجيل الإصدار في النظام...',
-      );
-
-      await _repo.publishRelease(
-        versionName: versionName,
-        versionCode: versionCode,
-        apkDownloadUrl: finalUrl,
-        releaseNotes: releaseNotes,
-        forceUpdate: forceUpdate,
-        minimumSupportedVersion: minimumSupportedVersion,
-        isActive: isActive,
-        fileName: fileName,
-        fileSize: fileSize ?? apkBytes?.length,
-      );
 
       await loadVersions();
       state = state.copyWith(
@@ -186,10 +191,10 @@ class AppVersionsNotifier extends StateNotifier<AppVersionsState> {
     }
   }
 
-  Future<bool> deleteRelease(String id, {String? storagePath}) async {
+  Future<bool> deleteRelease(String id) async {
     state = state.copyWith(isSaving: true, errorMessage: null);
     try {
-      await _repo.deleteRelease(id, storagePath: storagePath);
+      await _repo.deleteRelease(id);
       await loadVersions();
       state = state.copyWith(isSaving: false);
       return true;

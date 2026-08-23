@@ -24,7 +24,7 @@ Future<String> uploadApkPlatform({
 
   xhr.upload.onprogress = (web.ProgressEvent event) {
     if (event.lengthComputable && event.total > 0) {
-      final ratio = (event.loaded / event.total).clamp(0.0, 1.0);
+      final ratio = (event.loaded / event.total).clamp(0.0, 0.99);
       onProgress?.call(ratio, event.loaded, event.total);
     }
   }.toJS;
@@ -39,7 +39,7 @@ Future<String> uploadApkPlatform({
           : 'HTTP ${xhr.status}';
       if (!completer.isCompleted) {
         completer.completeError(
-          Exception('فشل الخادم في استقبال الملف ($errorMsg)'),
+          Exception('فشل الخادم في استقبال الملف (${xhr.status}): $errorMsg'),
         );
       }
     }
@@ -48,21 +48,21 @@ Future<String> uploadApkPlatform({
   xhr.onerror = (web.Event event) {
     if (!completer.isCompleted) {
       completer.completeError(
-        Exception('خطأ في الاتصال بالشبكة أثناء رفع الملف (Status: ${xhr.status})'),
+        Exception('خطأ في الاتصال بالخادم أثناء رفع الملف. تحقق من سرعة الإنترنت أو إعدادات Storage'),
       );
     }
   }.toJS;
 
   xhr.ontimeout = (web.Event event) {
     if (!completer.isCompleted) {
-      completer.completeError(Exception('انتهت مهلة رفع الملف'));
+      completer.completeError(Exception('انتهت مهلة رفع الملف (تجاوزت 30 دقيقة)'));
     }
   }.toJS;
 
-  // Set timeout to 20 minutes (1,200,000 ms)
-  xhr.timeout = 1200000;
+  // Set timeout to 30 minutes (1,800,000 ms)
+  xhr.timeout = 1800000;
 
-  // Convert Uint8List to JS typed array for sending via XHR
+  // Send Uint8Array directly
   xhr.send(fileBytes.toJS);
 
   return completer.future;
