@@ -1,7 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../core/models/student_shift_status_model.dart';
+import '../../../core/models/user_presence_model.dart';
+import '../../../core/services/presence_service.dart';
 import '../../../core/theme/app_design_tokens.dart';
+import '../../../core/utils/timezone_helper.dart';
 import '../../../core/widgets/app_badge.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../auth/models/user_profile.dart';
@@ -53,11 +57,32 @@ class UserProfileDetailsScreen extends StatefulWidget {
 class _UserProfileDetailsScreenState extends State<UserProfileDetailsScreen> {
   UserProfileDetailsData? _data;
   bool _isLoading = true;
+  StreamSubscription<Map<String, UserPresenceModel>>? _presenceSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadProfile();
+    _subscribeToLivePresence();
+  }
+
+  @override
+  void dispose() {
+    _presenceSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _subscribeToLivePresence() {
+    _presenceSubscription = PresenceService.instance.presenceStream.listen((presenceMap) {
+      if (mounted && presenceMap.containsKey(widget.userId)) {
+        final updatedPresence = presenceMap[widget.userId];
+        if (updatedPresence != null && _data != null) {
+          setState(() {
+            _data = _data!.copyWithPresence(updatedPresence);
+          });
+        }
+      }
+    });
   }
 
   Future<void> _loadProfile() async {
@@ -72,7 +97,6 @@ class _UserProfileDetailsScreenState extends State<UserProfileDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final name = _data?.fullName ?? widget.initialName ?? 'مستخدم المنظومة';
     final avatarUrl = _data?.avatarUrl ?? widget.initialAvatarUrl;
     final role = _data?.role ?? widget.initialRole ?? UserRole.student;
@@ -135,8 +159,8 @@ class _UserProfileDetailsScreenState extends State<UserProfileDetailsScreen> {
                       ),
                       if (isOnline && canViewPresence)
                         Container(
-                          width: 22,
-                          height: 22,
+                          width: 20,
+                          height: 20,
                           decoration: BoxDecoration(
                             color: const Color(0xFF10B981),
                             shape: BoxShape.circle,
@@ -193,25 +217,45 @@ class _UserProfileDetailsScreenState extends State<UserProfileDetailsScreen> {
                   ),
                   const SizedBox(height: 10),
 
-                  // 3. Online Status / Last Seen
-                  if (presence != null && canViewPresence) ...[
+                  // 3. Online Status / Last Seen (Subtle dot + Arabic text)
+                  if (canViewPresence) ...[
                     Row(
+                      mainAxisSize: MainAxisSize.min,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          isOnline ? Icons.circle : Icons.access_time_rounded,
-                          size: isOnline ? 9 : 13,
-                          color: isOnline ? const Color(0xFF10B981) : AppDesignTokens.textMuted(context),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          presence.formattedStatusArabic,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: isOnline ? FontWeight.bold : FontWeight.normal,
-                            color: isOnline ? const Color(0xFF10B981) : AppDesignTokens.textSecondary(context),
+                        if (isOnline) ...[
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF10B981),
+                              shape: BoxShape.circle,
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'متصل الآن',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF10B981),
+                            ),
+                          ),
+                        ] else ...[
+                          Icon(
+                            Icons.access_time_rounded,
+                            size: 13,
+                            color: AppDesignTokens.textMuted(context),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            presence?.formattedStatusArabic ?? 'آخر ظهور غير متاح',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: AppDesignTokens.textSecondary(context),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -298,7 +342,8 @@ class _UserProfileDetailsScreenState extends State<UserProfileDetailsScreen> {
 
   Widget _buildStudentShiftCard(BuildContext context, StudentShiftStatus? shift) {
     final s = shift ?? const StudentShiftStatus(category: ShiftStatusCategory.noAssignment);
-    final todayArabic = DateFormat('EEEE، d MMMM', 'ar').format(DateTime.now());
+    final cairoNow = AppTimezoneHelper.serverNowCairo;
+    final todayArabic = DateFormat('EEEE، d MMMM', 'ar').format(cairoNow);
 
     return AppCard(
       padding: const EdgeInsets.all(14),

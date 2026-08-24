@@ -512,10 +512,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
-    final user = authState.user ?? UserProfile.mockStudent();
+    final user = authState.user;
     final currentThemeMode = ref.watch(themeModeProvider);
     final currentLocale = ref.watch(localeProvider);
     final l10n = context.l10n;
+
+    if (user == null) {
+      return Scaffold(
+        backgroundColor: AppDesignTokens.bg(context),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
       backgroundColor: AppDesignTokens.bg(context),

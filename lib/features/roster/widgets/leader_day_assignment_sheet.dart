@@ -5,6 +5,7 @@ import '../../../core/localization/app_localizations.dart';
 import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/widgets/app_badge.dart';
 import '../../../core/widgets/app_card.dart';
+import '../../profile/screens/user_profile_details_screen.dart';
 import '../models/roster_entry.dart';
 import '../models/roster_preference.dart';
 import '../models/student_roster_summary.dart';
@@ -517,9 +518,23 @@ class _LeaderDayAssignmentSheetState extends ConsumerState<LeaderDayAssignmentSh
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    summary.studentName,
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppDesignTokens.textPrimary(context)),
+                  InkWell(
+                    onTap: () => UserProfileDetailsScreen.show(
+                      context,
+                      userId: summary.studentId,
+                      initialName: summary.studentName,
+                    ),
+                    borderRadius: BorderRadius.circular(4),
+                    child: Text(
+                      summary.studentName,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: AppDesignTokens.textPrimary(context),
+                        decoration: TextDecoration.underline,
+                        decorationColor: AppDesignTokens.primary.withOpacity(0.4),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 2),
                   Row(

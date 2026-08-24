@@ -4,6 +4,7 @@ import '../../../core/models/student_shift_status_model.dart';
 import '../../../core/models/user_presence_model.dart';
 import '../../../core/services/presence_service.dart';
 import '../../../core/services/supabase_service.dart';
+import '../../../core/utils/timezone_helper.dart';
 import '../../auth/models/user_profile.dart';
 
 @immutable
@@ -39,6 +40,22 @@ class UserProfileDetailsData {
     this.leaderboardRank,
     this.supervisedDepartments = const [],
   });
+  UserProfileDetailsData copyWithPresence(UserPresenceModel newPresence) {
+    return UserProfileDetailsData(
+      userId: userId,
+      fullName: fullName,
+      code: code,
+      role: role,
+      avatarUrl: avatarUrl,
+      assignedGroup: assignedGroup,
+      presence: newPresence,
+      canViewPresence: canViewPresence,
+      shiftStatus: shiftStatus,
+      leaderboardPoints: leaderboardPoints,
+      leaderboardRank: leaderboardRank,
+      supervisedDepartments: supervisedDepartments,
+    );
+  }
 }
 
 @immutable
@@ -144,11 +161,11 @@ class UserProfileDetailsService {
       List<DoctorDepartmentSupervision> supervisedDepts = [];
 
       if (role == UserRole.student) {
-        // Resolve Real Shifts for Egypt Time
-        final now = DateTime.now();
+        // Resolve Real Shifts for Egypt Time using authoritative server Cairo time
+        final nowCairo = AppTimezoneHelper.serverNowCairo;
         final dateFmt = DateFormat('yyyy-MM-dd');
-        final todayStr = dateFmt.format(now);
-        final yesterdayStr = dateFmt.format(now.subtract(const Duration(days: 1)));
+        final todayStr = dateFmt.format(nowCairo);
+        final yesterdayStr = dateFmt.format(nowCairo.subtract(const Duration(days: 1)));
 
         final rosterEntries = await client
             .from('roster_entries')
@@ -171,7 +188,7 @@ class UserProfileDetailsService {
         }
 
         shiftStatus = StudentShiftStatus.resolve(
-          currentDateTime: now,
+          currentDateTime: nowCairo,
           todayEntry: todayEntry,
           yesterdayEntry: yesterdayEntry,
         );

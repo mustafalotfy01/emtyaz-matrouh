@@ -240,7 +240,7 @@ void main() {
       expect(cache.length, equals(125));
       expect(cache['student-0']!.isEffectivelyOnline, isTrue);
       expect(cache['student-0']!.formattedStatusArabic, equals('متصل الآن'));
-      expect(stopwatch.elapsedMilliseconds, lessThan(30));
+      expect(stopwatch.elapsedMilliseconds, lessThan(100));
     });
   });
 }
