@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user_profile.dart';
 import '../../../core/services/firebase_messaging_service.dart';
+import '../../../core/services/presence_service.dart';
 import '../../../core/services/supabase_service.dart';
 
 class AuthState {
@@ -859,6 +860,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
+    // Explicitly mark user OFFLINE before destroying session
+    await PresenceService.instance.setOffline();
     await _clearUserCache();
     if (SupabaseService.isInitialized) {
       try {

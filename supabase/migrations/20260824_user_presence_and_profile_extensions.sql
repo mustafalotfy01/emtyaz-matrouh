@@ -20,7 +20,10 @@ CREATE TABLE IF NOT EXISTS public.user_presence (
 CREATE INDEX IF NOT EXISTS idx_user_presence_status ON public.user_presence(is_online, last_seen_at);
 CREATE INDEX IF NOT EXISTS idx_user_presence_last_seen ON public.user_presence(last_seen_at DESC);
 
--- 3. Enable RLS
+-- 3. Set Replica Identity Full for complete Realtime payload broadcast
+ALTER TABLE public.user_presence REPLICA IDENTITY FULL;
+
+-- 4. Enable RLS
 ALTER TABLE public.user_presence ENABLE ROW LEVEL SECURITY;
 
 -- Drop existing policies safely

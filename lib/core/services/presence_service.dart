@@ -30,11 +30,16 @@ class PresenceService with WidgetsBindingObserver {
     AppTimezoneHelper.initialize();
     WidgetsBinding.instance.addObserver(this);
 
-    // Listen to Supabase auth state changes
+    // Listen to all relevant Supabase auth state changes including initialSession restore
     SupabaseService.client.auth.onAuthStateChange.listen((data) {
       final event = data.event;
-      if (event == AuthChangeEvent.signedIn || event == AuthChangeEvent.tokenRefreshed) {
-        startPresence();
+      if (event == AuthChangeEvent.signedIn ||
+          event == AuthChangeEvent.tokenRefreshed ||
+          event == AuthChangeEvent.initialSession ||
+          event == AuthChangeEvent.userUpdated) {
+        if (data.session?.user != null || SupabaseService.client.auth.currentUser != null) {
+          startPresence();
+        }
       } else if (event == AuthChangeEvent.signedOut) {
         stopPresence();
       }
@@ -70,11 +75,29 @@ class PresenceService with WidgetsBindingObserver {
     _subscribeToRealtime();
   }
 
+  /// Explicitly marks user offline before session destruction
+  Future<void> setOffline() async {
+    _stopHeartbeat();
+    final user = SupabaseService.client.auth.currentUser;
+    if (user != null) {
+      try {
+        await SupabaseService.client.rpc(
+          'update_user_presence',
+          params: {'p_is_online': false},
+        );
+      } catch (e) {
+        if (kDebugMode) {
+          print('⚠️ PresenceService.setOffline RPC error: $e');
+        }
+      }
+    }
+    stopPresence();
+  }
+
   /// Stops heartbeat, marks user offline, and clears channels
   void stopPresence() {
     _stopHeartbeat();
     _unsubscribeFromRealtime();
-    setOnline(false);
     _presenceCache.clear();
     if (!_presenceStreamController.isClosed) {
       _presenceStreamController.add({});
@@ -138,16 +161,13 @@ class PresenceService with WidgetsBindingObserver {
     );
 
     if (!_presenceStreamController.isClosed) {
-      _presenceStreamController.add(_presenceCache);
+      _presenceStreamController.add(Map.from(_presenceCache));
     }
   }
 
   /// Batch loads presence for a list of user IDs in ONE query to avoid N+1 queries
   Future<Map<String, UserPresenceModel>> fetchPresenceBatch(List<String> userIds) async {
     if (userIds.isEmpty) return {};
-
-    final currentUser = SupabaseService.client.auth.currentUser;
-    if (currentUser == null) return {};
 
     try {
       final res = await SupabaseService.client.rpc(
@@ -168,7 +188,7 @@ class PresenceService with WidgetsBindingObserver {
     }
 
     if (!_presenceStreamController.isClosed) {
-      _presenceStreamController.add(_presenceCache);
+      _presenceStreamController.add(Map.from(_presenceCache));
     }
 
     return _presenceCache;
@@ -195,8 +215,13 @@ class PresenceService with WidgetsBindingObserver {
               if (newRecord.isNotEmpty) {
                 final model = UserPresenceModel.fromJson(newRecord);
                 _presenceCache[model.userId] = model;
+
+                if (kDebugMode) {
+                  print('[PRESENCE REALTIME] event=${payload.eventType.name} userId=${model.userId} isOnline=${model.isOnline} lastSeen=${model.lastSeenAt}');
+                }
+
                 if (!_presenceStreamController.isClosed) {
-                  _presenceStreamController.add(_presenceCache);
+                  _presenceStreamController.add(Map.from(_presenceCache));
                 }
               }
             },

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../core/models/student_shift_status_model.dart';
@@ -56,29 +57,48 @@ class UserProfileDetailsScreen extends StatefulWidget {
 
 class _UserProfileDetailsScreenState extends State<UserProfileDetailsScreen> {
   UserProfileDetailsData? _data;
+  UserPresenceModel? _livePresence;
   bool _isLoading = true;
   StreamSubscription<Map<String, UserPresenceModel>>? _presenceSubscription;
+  Timer? _uiTicker;
 
   @override
   void initState() {
     super.initState();
+    _livePresence = PresenceService.instance.getCachedPresenceForUser(widget.userId);
     _loadProfile();
     _subscribeToLivePresence();
+    _startUiTicker();
   }
 
   @override
   void dispose() {
+    _uiTicker?.cancel();
     _presenceSubscription?.cancel();
     super.dispose();
+  }
+
+  void _startUiTicker() {
+    _uiTicker = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) {
+        setState(() {}); // Re-renders relative time without network requests
+      }
+    });
   }
 
   void _subscribeToLivePresence() {
     _presenceSubscription = PresenceService.instance.presenceStream.listen((presenceMap) {
       if (mounted && presenceMap.containsKey(widget.userId)) {
-        final updatedPresence = presenceMap[widget.userId];
-        if (updatedPresence != null && _data != null) {
+        final updated = presenceMap[widget.userId];
+        if (updated != null) {
+          if (kDebugMode) {
+            print('[PRESENCE UI] profileUser=${widget.userId} isOnline=${updated.isOnline} effectiveOnline=${updated.isEffectivelyOnline} lastSeen=${updated.lastSeenAt}');
+          }
           setState(() {
-            _data = _data!.copyWithPresence(updatedPresence);
+            _livePresence = updated;
+            if (_data != null) {
+              _data = _data!.copyWithPresence(updated);
+            }
           });
         }
       }
@@ -90,6 +110,9 @@ class _UserProfileDetailsScreenState extends State<UserProfileDetailsScreen> {
     if (mounted) {
       setState(() {
         _data = result;
+        if (result?.presence != null) {
+          _livePresence = result!.presence;
+        }
         _isLoading = false;
       });
     }
@@ -101,7 +124,7 @@ class _UserProfileDetailsScreenState extends State<UserProfileDetailsScreen> {
     final avatarUrl = _data?.avatarUrl ?? widget.initialAvatarUrl;
     final role = _data?.role ?? widget.initialRole ?? UserRole.student;
     final code = _data?.code ?? widget.initialCode;
-    final presence = _data?.presence ?? PresenceService.instance.getCachedPresenceForUser(widget.userId);
+    final presence = _livePresence ?? _data?.presence ?? PresenceService.instance.getCachedPresenceForUser(widget.userId);
     final canViewPresence = _data?.canViewPresence ?? true;
     final isOnline = presence?.isEffectivelyOnline ?? false;
 
