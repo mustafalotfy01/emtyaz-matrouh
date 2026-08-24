@@ -29,20 +29,12 @@ DROP POLICY IF EXISTS "user_presence_insert_self" ON public.user_presence;
 DROP POLICY IF EXISTS "user_presence_update_self" ON public.user_presence;
 DROP POLICY IF EXISTS "user_presence_delete_admin" ON public.user_presence;
 
--- A) SELECT Policy:
--- Staff (super_admin, admin, leader, evaluating_doctor, doctor) can view all presence.
--- Student can ONLY view their own presence record.
+-- -- A) SELECT Policy:
+-- All authenticated users can view presence for profile details and leaderboards.
 CREATE POLICY "user_presence_select_policy" ON public.user_presence
     FOR SELECT
     TO authenticated
-    USING (
-        user_id = auth.uid()
-        OR EXISTS (
-            SELECT 1 FROM public.profiles 
-            WHERE id = auth.uid() 
-              AND role IN ('super_admin', 'admin', 'leader', 'evaluating_doctor', 'doctor')
-        )
-    );
+    USING (true);
 
 -- B) INSERT Policy: Users can only insert their own presence
 CREATE POLICY "user_presence_insert_self" ON public.user_presence
@@ -64,7 +56,7 @@ CREATE POLICY "user_presence_delete_admin" ON public.user_presence
     USING (
         EXISTS (
             SELECT 1 FROM public.profiles 
-            WHERE id = auth.uid() AND role IN ('super_admin', 'admin')
+            WHERE id = auth.uid() AND role::text = 'super_admin'
         )
     );
 
@@ -118,37 +110,17 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE
-    v_caller_role TEXT;
 BEGIN
-    -- Determine caller role
-    SELECT role INTO v_caller_role FROM public.profiles WHERE id = auth.uid();
-
-    -- If caller is student, they can only query their own presence
-    IF v_caller_role = 'student' THEN
-        RETURN QUERY
-        SELECT 
-            ids.id AS user_id,
-            COALESCE(up.is_online, false) AS is_online,
-            COALESCE(up.last_seen_at, p.updated_at, p.created_at, NOW() - INTERVAL '1 day') AS last_seen_at,
-            COALESCE((up.is_online AND up.last_seen_at >= (NOW() - INTERVAL '2 minutes')), false) AS effective_is_online,
-            NOW() AS server_now
-        FROM unnest(p_user_ids) AS ids(id)
-        LEFT JOIN public.user_presence up ON up.user_id = ids.id
-        LEFT JOIN public.profiles p ON p.id = ids.id
-        WHERE ids.id = auth.uid();
-    ELSE
-        RETURN QUERY
-        SELECT 
-            ids.id AS user_id,
-            COALESCE(up.is_online, false) AS is_online,
-            COALESCE(up.last_seen_at, p.updated_at, p.created_at, NOW() - INTERVAL '1 day') AS last_seen_at,
-            COALESCE((up.is_online AND up.last_seen_at >= (NOW() - INTERVAL '2 minutes')), false) AS effective_is_online,
-            NOW() AS server_now
-        FROM unnest(p_user_ids) AS ids(id)
-        LEFT JOIN public.user_presence up ON up.user_id = ids.id
-        LEFT JOIN public.profiles p ON p.id = ids.id;
-    END IF;
+    RETURN QUERY
+    SELECT 
+        ids.id AS user_id,
+        COALESCE(up.is_online, false) AS is_online,
+        COALESCE(up.last_seen_at, p.updated_at, p.created_at, NOW() - INTERVAL '1 day') AS last_seen_at,
+        COALESCE((up.is_online AND up.last_seen_at >= (NOW() - INTERVAL '2 minutes')), false) AS effective_is_online,
+        NOW() AS server_now
+    FROM unnest(p_user_ids) AS ids(id)
+    LEFT JOIN public.user_presence up ON up.user_id = ids.id
+    LEFT JOIN public.profiles p ON p.id = ids.id;
 END;
 $$;
 

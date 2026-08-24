@@ -116,48 +116,33 @@ class UserProfileDetailsService {
         cleanCode = rawCode;
       }
 
-      // 2. Determine Caller Permissions & Fetch User Presence
-      bool canViewPresence = false;
+      // 2. Fetch User Presence
+      bool canViewPresence = true;
       UserPresenceModel? presence;
 
-      final currentProfileRes = await client
-          .from('profiles')
-          .select('role')
-          .eq('id', currentUserId ?? '')
-          .maybeSingle();
+      final presenceMap = await PresenceService.instance.fetchPresenceBatch([targetUserId]);
+      presence = presenceMap[targetUserId];
 
-      final callerRoleStr = currentProfileRes?['role'] as String? ?? 'student';
-      final callerRole = UserRole.fromString(callerRoleStr);
-      final isStaff = callerRole != UserRole.student;
-      final isSelf = currentUserId == targetUserId;
+      // Fallback if user has not yet established an active session in user_presence
+      if (presence == null) {
+        final rawUpdated = profileRes['updated_at'] ?? profileRes['created_at'];
+        final fallbackTime = rawUpdated != null
+            ? DateTime.tryParse(rawUpdated.toString()) ?? AppTimezoneHelper.serverNowUtc.subtract(const Duration(hours: 4))
+            : AppTimezoneHelper.serverNowUtc.subtract(const Duration(hours: 4));
 
-      if (isStaff || isSelf) {
-        canViewPresence = true;
-        final presenceMap = await PresenceService.instance.fetchPresenceBatch([targetUserId]);
-        presence = presenceMap[targetUserId];
-
-        // Fallback if user has not yet established an active session in user_presence
-        if (presence == null) {
-          final rawUpdated = profileRes['updated_at'] ?? profileRes['created_at'];
-          final fallbackTime = rawUpdated != null
-              ? DateTime.tryParse(rawUpdated.toString()) ?? AppTimezoneHelper.serverNowUtc.subtract(const Duration(hours: 4))
-              : AppTimezoneHelper.serverNowUtc.subtract(const Duration(hours: 4));
-
-          presence = UserPresenceModel(
-            userId: targetUserId,
-            isOnline: false,
-            lastSeenAt: fallbackTime,
-            updatedAt: fallbackTime,
-            effectiveIsOnline: false,
-            serverNow: AppTimezoneHelper.serverNowUtc,
-          );
-        }
+        presence = UserPresenceModel(
+          userId: targetUserId,
+          isOnline: false,
+          lastSeenAt: fallbackTime,
+          updatedAt: fallbackTime,
+          effectiveIsOnline: false,
+          serverNow: AppTimezoneHelper.serverNowUtc,
+        );
       }
 
       if (kDebugMode) {
         print('''
 [PresenceDebug]
-viewerRole=$callerRoleStr
 targetUserId=$targetUserId
 canViewPresence=$canViewPresence
 recordFound=${presence != null}
