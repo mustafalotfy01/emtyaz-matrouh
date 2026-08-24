@@ -68,6 +68,11 @@ CREATE POLICY "user_presence_delete_admin" ON public.user_presence
         )
     );
 
+-- Drop existing functions to allow altering return signatures cleanly
+DROP FUNCTION IF EXISTS public.get_effective_user_presence(UUID[]);
+DROP FUNCTION IF EXISTS public.update_user_presence(BOOLEAN);
+DROP FUNCTION IF EXISTS public.get_server_time();
+
 -- 4. Atomic Presence Heartbeat RPC
 CREATE OR REPLACE FUNCTION public.update_user_presence(p_is_online BOOLEAN)
 RETURNS void
@@ -75,30 +80,39 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE
-    v_user_id UUID := auth.uid();
 BEGIN
-    IF v_user_id IS NULL THEN
+    IF auth.uid() IS NULL THEN
         RETURN;
     END IF;
 
-    INSERT INTO public.user_presence (user_id, is_online, last_seen_at, updated_at)
-    VALUES (v_user_id, p_is_online, NOW(), NOW())
+    INSERT INTO public.user_presence (
+        user_id,
+        is_online,
+        last_seen_at,
+        updated_at
+    )
+    VALUES (
+        auth.uid(),
+        p_is_online,
+        NOW(),
+        NOW()
+    )
     ON CONFLICT (user_id)
     DO UPDATE SET
         is_online = EXCLUDED.is_online,
-        last_seen_at = EXCLUDED.last_seen_at,
+        last_seen_at = NOW(),
         updated_at = NOW();
 END;
 $$;
 
--- 5. Batch Presence Query with 2-minute Stale Detection
+-- 5. Batch Presence Query with 2-minute Stale Detection & Server Time
 CREATE OR REPLACE FUNCTION public.get_effective_user_presence(p_user_ids UUID[])
 RETURNS TABLE (
     user_id UUID,
     is_online BOOLEAN,
     last_seen_at TIMESTAMPTZ,
-    effective_is_online BOOLEAN
+    effective_is_online BOOLEAN,
+    server_now TIMESTAMPTZ
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -117,7 +131,8 @@ BEGIN
             up.user_id,
             up.is_online,
             up.last_seen_at,
-            (up.is_online AND up.last_seen_at >= (NOW() - INTERVAL '2 minutes')) AS effective_is_online
+            (up.is_online AND up.last_seen_at >= (NOW() - INTERVAL '2 minutes')) AS effective_is_online,
+            NOW() AS server_now
         FROM public.user_presence up
         WHERE up.user_id = auth.uid()
           AND up.user_id = ANY(p_user_ids);
@@ -127,14 +142,25 @@ BEGIN
             up.user_id,
             up.is_online,
             up.last_seen_at,
-            (up.is_online AND up.last_seen_at >= (NOW() - INTERVAL '2 minutes')) AS effective_is_online
+            (up.is_online AND up.last_seen_at >= (NOW() - INTERVAL '2 minutes')) AS effective_is_online,
+            NOW() AS server_now
         FROM public.user_presence up
         WHERE up.user_id = ANY(p_user_ids);
     END IF;
 END;
 $$;
 
--- 6. Add user_presence to Supabase Realtime Publication
+-- 6. Helper RPC to get authoritative server time
+CREATE OR REPLACE FUNCTION public.get_server_time()
+RETURNS TIMESTAMPTZ
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+AS $$
+    SELECT NOW();
+$$;
+
+-- 7. Add user_presence to Supabase Realtime Publication
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -148,8 +174,9 @@ EXCEPTION
         NULL; -- Graceful fallback if publication does not exist
 END $$;
 
--- 7. Grant Permissions
+-- 8. Grant Permissions
 GRANT ALL ON public.user_presence TO postgres, service_role;
 GRANT SELECT, INSERT, UPDATE ON public.user_presence TO authenticated;
 GRANT EXECUTE ON FUNCTION public.update_user_presence(BOOLEAN) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_effective_user_presence(UUID[]) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_server_time() TO authenticated;

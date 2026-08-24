@@ -99,41 +99,40 @@ class UserProfileDetailsService {
         cleanCode = rawCode;
       }
 
-      // 2. Check Caller Role & Presence Privacy
+      // 2. Determine Caller Permissions & Fetch User Presence
       bool canViewPresence = false;
-      if (currentUserId != null) {
-        if (currentUserId == targetUserId) {
-          canViewPresence = true;
-        } else {
-          final callerProfile = await client
-              .from('profiles')
-              .select('role')
-              .eq('id', currentUserId)
-              .maybeSingle();
-
-          final callerRoleStr = callerProfile?['role'] as String? ?? 'student';
-          final callerRole = UserRole.fromString(callerRoleStr);
-          canViewPresence = callerRole != UserRole.student;
-        }
-      }
-
       UserPresenceModel? presence;
-      if (canViewPresence) {
+
+      final currentProfileRes = await client
+          .from('profiles')
+          .select('role')
+          .eq('id', currentUserId ?? '')
+          .maybeSingle();
+
+      final callerRoleStr = currentProfileRes?['role'] as String? ?? 'student';
+      final isStaff = callerRoleStr == 'super_admin' ||
+          callerRoleStr == 'leader' ||
+          callerRoleStr == 'evaluating_doctor';
+      final isSelf = currentUserId == targetUserId;
+
+      if (isStaff || isSelf) {
+        canViewPresence = true;
         final presenceMap = await PresenceService.instance.fetchPresenceBatch([targetUserId]);
         presence = presenceMap[targetUserId];
 
-        // Fallback for users not yet registered in presence table
+        // Fallback if user has not yet established an active session in user_presence
         if (presence == null) {
           final rawUpdated = profileRes['updated_at'] ?? profileRes['created_at'];
           final fallbackTime = rawUpdated != null
-              ? DateTime.tryParse(rawUpdated.toString()) ?? DateTime.now().subtract(const Duration(hours: 4))
-              : DateTime.now().subtract(const Duration(hours: 4));
+              ? DateTime.tryParse(rawUpdated.toString()) ?? DateTime.now().toUtc().subtract(const Duration(hours: 4))
+              : DateTime.now().toUtc().subtract(const Duration(hours: 4));
 
           presence = UserPresenceModel(
             userId: targetUserId,
             isOnline: false,
             lastSeenAt: fallbackTime,
             updatedAt: fallbackTime,
+            effectiveIsOnline: false,
           );
         }
       }

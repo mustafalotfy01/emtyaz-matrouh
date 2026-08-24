@@ -133,7 +133,7 @@ class _UserProfileDetailsScreenState extends State<UserProfileDetailsScreen> {
                               )
                             : null,
                       ),
-                      if (canViewPresence && isOnline)
+                      if (isOnline && canViewPresence)
                         Container(
                           width: 22,
                           height: 22,
@@ -193,8 +193,8 @@ class _UserProfileDetailsScreenState extends State<UserProfileDetailsScreen> {
                   ),
                   const SizedBox(height: 10),
 
-                  // 3. Online Status / Last Seen (Only for Staff / Authorized Roles)
-                  if (canViewPresence && presence != null) ...[
+                  // 3. Online Status / Last Seen
+                  if (presence != null && canViewPresence) ...[
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [

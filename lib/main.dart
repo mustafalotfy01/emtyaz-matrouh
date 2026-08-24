@@ -11,10 +11,12 @@ import 'core/services/presence_service.dart';
 import 'core/services/supabase_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_provider.dart';
+import 'core/utils/timezone_helper.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   GoogleFonts.config.allowRuntimeFetching = true;
+  AppTimezoneHelper.initialize();
   try {
     await SupabaseService.initialize();
     PresenceService.instance.initialize();

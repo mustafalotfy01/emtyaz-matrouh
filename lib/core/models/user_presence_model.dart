@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:intl/intl.dart';
+import '../utils/timezone_helper.dart';
 
 @immutable
 class UserPresenceModel {
@@ -7,33 +7,55 @@ class UserPresenceModel {
   final bool isOnline;
   final DateTime lastSeenAt;
   final DateTime updatedAt;
+  final bool? effectiveIsOnline;
+  final DateTime? serverNow;
 
   const UserPresenceModel({
     required this.userId,
     required this.isOnline,
     required this.lastSeenAt,
     required this.updatedAt,
+    this.effectiveIsOnline,
+    this.serverNow,
   });
 
-  /// Calculates effective online status: true only if isOnline is true AND lastSeenAt is within 2 minutes
+  /// Authoritative effective online status: uses server calculated value if available,
+  /// otherwise calculates against calibrated server time (within 2-minute stale timeout).
   bool get isEffectivelyOnline {
+    if (effectiveIsOnline != null) {
+      return effectiveIsOnline!;
+    }
     if (!isOnline) return false;
-    final nowUtc = DateTime.now().toUtc();
+    final serverUtc = serverNow?.toUtc() ?? AppTimezoneHelper.serverNowUtc;
     final lastSeenUtc = lastSeenAt.toUtc();
-    final difference = nowUtc.difference(lastSeenUtc);
+    final difference = serverUtc.difference(lastSeenUtc);
     return difference.inSeconds <= 120 && difference.inSeconds >= -30;
   }
 
   factory UserPresenceModel.fromJson(Map<String, dynamic> json) {
+    DateTime? serverTime;
+    if (json['server_now'] != null) {
+      serverTime = DateTime.tryParse(json['server_now'].toString());
+      if (serverTime != null) {
+        AppTimezoneHelper.setServerTime(serverTime);
+      }
+    }
+
+    final parsedLastSeen = json['last_seen_at'] != null
+        ? DateTime.tryParse(json['last_seen_at'].toString()) ?? DateTime.now().toUtc()
+        : DateTime.now().toUtc();
+
+    final parsedUpdated = json['updated_at'] != null
+        ? DateTime.tryParse(json['updated_at'].toString()) ?? DateTime.now().toUtc()
+        : DateTime.now().toUtc();
+
     return UserPresenceModel(
       userId: json['user_id'] as String? ?? json['id'] as String? ?? '',
       isOnline: json['is_online'] as bool? ?? false,
-      lastSeenAt: json['last_seen_at'] != null
-          ? DateTime.tryParse(json['last_seen_at'].toString()) ?? DateTime.now()
-          : DateTime.now(),
-      updatedAt: json['updated_at'] != null
-          ? DateTime.tryParse(json['updated_at'].toString()) ?? DateTime.now()
-          : DateTime.now(),
+      lastSeenAt: parsedLastSeen,
+      updatedAt: parsedUpdated,
+      effectiveIsOnline: json['effective_is_online'] as bool? ?? json['effectiveIsOnline'] as bool?,
+      serverNow: serverTime,
     );
   }
 
@@ -43,48 +65,17 @@ class UserPresenceModel {
       'is_online': isOnline,
       'last_seen_at': lastSeenAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
+      if (effectiveIsOnline != null) 'effective_is_online': effectiveIsOnline,
+      if (serverNow != null) 'server_now': serverNow?.toIso8601String(),
     };
   }
 
-  /// Human-friendly Arabic last seen representation
+  /// Human-friendly Arabic last seen representation using Africa/Cairo timezone
   String get formattedStatusArabic {
-    if (isEffectivelyOnline) {
-      return 'متصل الآن';
-    }
-
-    final localLastSeen = lastSeenAt.toLocal();
-    final nowLocal = DateTime.now();
-    final difference = nowLocal.difference(localLastSeen);
-
-    if (difference.inSeconds < 60) {
-      return 'آخر ظهور منذ لحظات';
-    }
-
-    if (difference.inMinutes < 60) {
-      return 'آخر ظهور منذ ${difference.inMinutes} دقيقة';
-    }
-
-    final timeFormatter = DateFormat('hh:mm a', 'ar');
-    final timeStr = timeFormatter.format(localLastSeen);
-
-    final isToday = localLastSeen.year == nowLocal.year &&
-        localLastSeen.month == nowLocal.month &&
-        localLastSeen.day == nowLocal.day;
-
-    if (isToday) {
-      return 'آخر ظهور اليوم $timeStr';
-    }
-
-    final yesterday = nowLocal.subtract(const Duration(days: 1));
-    final isYesterday = localLastSeen.year == yesterday.year &&
-        localLastSeen.month == yesterday.month &&
-        localLastSeen.day == yesterday.day;
-
-    if (isYesterday) {
-      return 'آخر ظهور أمس $timeStr';
-    }
-
-    final fullDateFormatter = DateFormat('d MMMM hh:mm a', 'ar');
-    return 'آخر ظهور ${fullDateFormatter.format(localLastSeen)}';
+    return AppTimezoneHelper.formatLastSeenArabic(
+      lastSeenAt: lastSeenAt,
+      isEffectivelyOnline: isEffectivelyOnline,
+      referenceServerNow: serverNow,
+    );
   }
 }

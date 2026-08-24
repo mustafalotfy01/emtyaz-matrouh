@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user_presence_model.dart';
+import '../utils/timezone_helper.dart';
 import 'supabase_service.dart';
 
 class PresenceService with WidgetsBindingObserver {
@@ -21,11 +22,12 @@ class PresenceService with WidgetsBindingObserver {
   bool _isInitialized = false;
   bool _isAppInForeground = true;
 
-  /// Initializes the presence service and registers lifecycle observer
+  /// Initializes the presence service, registers lifecycle observer, and syncs auth state
   void initialize() {
     if (_isInitialized) return;
     _isInitialized = true;
 
+    AppTimezoneHelper.initialize();
     WidgetsBinding.instance.addObserver(this);
 
     // Listen to Supabase auth state changes
@@ -59,9 +61,10 @@ class PresenceService with WidgetsBindingObserver {
     }
   }
 
-  /// Starts heartbeat and realtime presence updates
+  /// Starts heartbeat (every 45s) and realtime presence updates
   void startPresence() {
     _isAppInForeground = true;
+    syncServerTime();
     setOnline(true);
     _restartHeartbeat();
     _subscribeToRealtime();
@@ -78,6 +81,7 @@ class PresenceService with WidgetsBindingObserver {
     }
   }
 
+  /// Periodically sends 45-second heartbeat while application is active
   void _restartHeartbeat() {
     _stopHeartbeat();
     _heartbeatTimer = Timer.periodic(const Duration(seconds: 45), (_) {
@@ -92,37 +96,45 @@ class PresenceService with WidgetsBindingObserver {
     _heartbeatTimer = null;
   }
 
-  /// Sends presence state update to Supabase via secure RPC with direct upsert fallback
+  /// Synchronizes device clock offset with PostgreSQL server time
+  Future<void> syncServerTime() async {
+    try {
+      final res = await SupabaseService.client.rpc('get_server_time');
+      if (res != null) {
+        final serverTime = DateTime.tryParse(res.toString());
+        if (serverTime != null) {
+          AppTimezoneHelper.setServerTime(serverTime);
+        }
+      }
+    } catch (_) {
+      // Ignored if offline or fallback
+    }
+  }
+
+  /// Sends presence state update to Supabase via secure RPC ONLY (never sends client timestamps)
   Future<void> setOnline(bool isOnline) async {
     final user = SupabaseService.client.auth.currentUser;
     if (user == null) return;
 
-    final now = DateTime.now();
     try {
       await SupabaseService.client.rpc(
         'update_user_presence',
         params: {'p_is_online': isOnline},
       );
-    } catch (_) {
-      try {
-        await SupabaseService.client.from('user_presence').upsert({
-          'user_id': user.id,
-          'is_online': isOnline,
-          'last_seen_at': now.toIso8601String(),
-          'updated_at': now.toIso8601String(),
-        });
-      } catch (e) {
-        if (kDebugMode) {
-          print('⚠️ PresenceService.setOnline error: $e');
-        }
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ PresenceService.setOnline RPC error: $e');
       }
     }
 
+    final serverTime = AppTimezoneHelper.serverNowUtc;
     _presenceCache[user.id] = UserPresenceModel(
       userId: user.id,
       isOnline: isOnline,
-      lastSeenAt: now,
-      updatedAt: now,
+      lastSeenAt: serverTime,
+      updatedAt: serverTime,
+      effectiveIsOnline: isOnline,
+      serverNow: serverTime,
     );
 
     if (!_presenceStreamController.isClosed) {
@@ -130,7 +142,7 @@ class PresenceService with WidgetsBindingObserver {
     }
   }
 
-  /// Batch loads presence for a list of user IDs to avoid N+1 queries
+  /// Batch loads presence for a list of user IDs in ONE query to avoid N+1 queries
   Future<Map<String, UserPresenceModel>> fetchPresenceBatch(List<String> userIds) async {
     if (userIds.isEmpty) return {};
 
@@ -148,26 +160,10 @@ class PresenceService with WidgetsBindingObserver {
           final model = UserPresenceModel.fromJson(Map<String, dynamic>.from(item));
           _presenceCache[model.userId] = model;
         }
-      } else {
-        throw Exception('Empty or fallback needed');
       }
-    } catch (_) {
-      try {
-        final rows = await SupabaseService.client
-            .from('user_presence')
-            .select()
-            .inFilter('user_id', userIds);
-
-        if (rows is List) {
-          for (final row in rows) {
-            final model = UserPresenceModel.fromJson(Map<String, dynamic>.from(row));
-            _presenceCache[model.userId] = model;
-          }
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          print('⚠️ PresenceService.fetchPresenceBatch error: $e');
-        }
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ PresenceService.fetchPresenceBatch error: $e');
       }
     }
 
@@ -178,12 +174,12 @@ class PresenceService with WidgetsBindingObserver {
     return _presenceCache;
   }
 
-  /// Gets presence for a single user (from cache or fetches)
+  /// Gets presence for a single user (from cache or returns null)
   UserPresenceModel? getCachedPresenceForUser(String userId) {
     return _presenceCache[userId];
   }
 
-  /// Subscribes to Supabase Realtime for live presence changes
+  /// Subscribes to Supabase Realtime for live presence changes (single subscription)
   void _subscribeToRealtime() {
     if (_realtimeChannel != null) return;
 
