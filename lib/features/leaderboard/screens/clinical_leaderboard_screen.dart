@@ -281,6 +281,7 @@ class ClinicalLeaderboardScreen extends ConsumerWidget {
         userId: item.studentId,
         initialName: item.fullName,
         initialAvatarUrl: item.avatarUrl,
+        initialRole: UserRole.student,
       ),
       borderRadius: BorderRadius.circular(AppDesignTokens.radiusMd),
       child: Container(

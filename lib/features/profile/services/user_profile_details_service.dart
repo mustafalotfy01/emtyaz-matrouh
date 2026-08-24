@@ -127,9 +127,8 @@ class UserProfileDetailsService {
           .maybeSingle();
 
       final callerRoleStr = currentProfileRes?['role'] as String? ?? 'student';
-      final isStaff = callerRoleStr == 'super_admin' ||
-          callerRoleStr == 'leader' ||
-          callerRoleStr == 'evaluating_doctor';
+      final callerRole = UserRole.fromString(callerRoleStr);
+      final isStaff = callerRole != UserRole.student;
       final isSelf = currentUserId == targetUserId;
 
       if (isStaff || isSelf) {
@@ -141,8 +140,8 @@ class UserProfileDetailsService {
         if (presence == null) {
           final rawUpdated = profileRes['updated_at'] ?? profileRes['created_at'];
           final fallbackTime = rawUpdated != null
-              ? DateTime.tryParse(rawUpdated.toString()) ?? DateTime.now().toUtc().subtract(const Duration(hours: 4))
-              : DateTime.now().toUtc().subtract(const Duration(hours: 4));
+              ? DateTime.tryParse(rawUpdated.toString()) ?? AppTimezoneHelper.serverNowUtc.subtract(const Duration(hours: 4))
+              : AppTimezoneHelper.serverNowUtc.subtract(const Duration(hours: 4));
 
           presence = UserPresenceModel(
             userId: targetUserId,
@@ -150,8 +149,23 @@ class UserProfileDetailsService {
             lastSeenAt: fallbackTime,
             updatedAt: fallbackTime,
             effectiveIsOnline: false,
+            serverNow: AppTimezoneHelper.serverNowUtc,
           );
         }
+      }
+
+      if (kDebugMode) {
+        print('''
+[PresenceDebug]
+viewerRole=$callerRoleStr
+targetUserId=$targetUserId
+canViewPresence=$canViewPresence
+recordFound=${presence != null}
+isOnline=${presence?.isOnline}
+effectiveIsOnline=${presence?.effectiveIsOnline}
+lastSeenAt=${presence?.lastSeenAt}
+serverNow=${presence?.serverNow}
+''');
       }
 
       // 3. Role-specific Data Resolution

@@ -101,8 +101,8 @@ class _UserProfileDetailsScreenState extends State<UserProfileDetailsScreen> {
     final avatarUrl = _data?.avatarUrl ?? widget.initialAvatarUrl;
     final role = _data?.role ?? widget.initialRole ?? UserRole.student;
     final code = _data?.code ?? widget.initialCode;
-    final presence = _data?.presence;
-    final canViewPresence = _data?.canViewPresence ?? false;
+    final presence = _data?.presence ?? PresenceService.instance.getCachedPresenceForUser(widget.userId);
+    final canViewPresence = _data?.canViewPresence ?? (_isLoading ? false : false);
     final isOnline = presence?.isEffectivelyOnline ?? false;
 
     return Container(

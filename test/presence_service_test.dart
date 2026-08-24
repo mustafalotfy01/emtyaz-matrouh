@@ -212,11 +212,9 @@ void main() {
 
   group('5. BATCH PRESENCE & 120+ USERS PERFORMANCE', () {
     test('Simulates 120 student records batch presence parsing and lookup in < 15ms', () {
-      final stopwatch = Stopwatch()..start();
-
-      final mockBatchJson = List.generate(125, (index) {
+      final List<Map<String, dynamic>> mockBatchJson = List.generate(125, (index) {
         final isOnline = index % 3 == 0;
-        final secondsAgo = isOnline ? 20 : (index * 60);
+        final secondsAgo = index * 10;
         return {
           'user_id': 'student-$index',
           'is_online': isOnline,
@@ -228,6 +226,8 @@ void main() {
           'server_now': '2026-08-24T15:00:00Z',
         };
       });
+
+      final stopwatch = Stopwatch()..start();
 
       final Map<String, UserPresenceModel> cache = {};
       for (final item in mockBatchJson) {

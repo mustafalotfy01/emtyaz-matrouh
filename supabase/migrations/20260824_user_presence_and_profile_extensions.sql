@@ -30,7 +30,7 @@ DROP POLICY IF EXISTS "user_presence_update_self" ON public.user_presence;
 DROP POLICY IF EXISTS "user_presence_delete_admin" ON public.user_presence;
 
 -- A) SELECT Policy:
--- Staff (super_admin, leader, evaluating_doctor) can view all presence.
+-- Staff (super_admin, admin, leader, evaluating_doctor, doctor) can view all presence.
 -- Student can ONLY view their own presence record.
 CREATE POLICY "user_presence_select_policy" ON public.user_presence
     FOR SELECT
@@ -40,7 +40,7 @@ CREATE POLICY "user_presence_select_policy" ON public.user_presence
         OR EXISTS (
             SELECT 1 FROM public.profiles 
             WHERE id = auth.uid() 
-              AND role IN ('super_admin', 'leader', 'evaluating_doctor')
+              AND role IN ('super_admin', 'admin', 'leader', 'evaluating_doctor', 'doctor')
         )
     );
 
@@ -64,7 +64,7 @@ CREATE POLICY "user_presence_delete_admin" ON public.user_presence
     USING (
         EXISTS (
             SELECT 1 FROM public.profiles 
-            WHERE id = auth.uid() AND role = 'super_admin'
+            WHERE id = auth.uid() AND role IN ('super_admin', 'admin')
         )
     );
 
@@ -128,24 +128,26 @@ BEGIN
     IF v_caller_role = 'student' THEN
         RETURN QUERY
         SELECT 
-            up.user_id,
-            up.is_online,
-            up.last_seen_at,
-            (up.is_online AND up.last_seen_at >= (NOW() - INTERVAL '2 minutes')) AS effective_is_online,
+            ids.id AS user_id,
+            COALESCE(up.is_online, false) AS is_online,
+            COALESCE(up.last_seen_at, p.updated_at, p.created_at, NOW() - INTERVAL '1 day') AS last_seen_at,
+            COALESCE((up.is_online AND up.last_seen_at >= (NOW() - INTERVAL '2 minutes')), false) AS effective_is_online,
             NOW() AS server_now
-        FROM public.user_presence up
-        WHERE up.user_id = auth.uid()
-          AND up.user_id = ANY(p_user_ids);
+        FROM unnest(p_user_ids) AS ids(id)
+        LEFT JOIN public.user_presence up ON up.user_id = ids.id
+        LEFT JOIN public.profiles p ON p.id = ids.id
+        WHERE ids.id = auth.uid();
     ELSE
         RETURN QUERY
         SELECT 
-            up.user_id,
-            up.is_online,
-            up.last_seen_at,
-            (up.is_online AND up.last_seen_at >= (NOW() - INTERVAL '2 minutes')) AS effective_is_online,
+            ids.id AS user_id,
+            COALESCE(up.is_online, false) AS is_online,
+            COALESCE(up.last_seen_at, p.updated_at, p.created_at, NOW() - INTERVAL '1 day') AS last_seen_at,
+            COALESCE((up.is_online AND up.last_seen_at >= (NOW() - INTERVAL '2 minutes')), false) AS effective_is_online,
             NOW() AS server_now
-        FROM public.user_presence up
-        WHERE up.user_id = ANY(p_user_ids);
+        FROM unnest(p_user_ids) AS ids(id)
+        LEFT JOIN public.user_presence up ON up.user_id = ids.id
+        LEFT JOIN public.profiles p ON p.id = ids.id;
     END IF;
 END;
 $$;
