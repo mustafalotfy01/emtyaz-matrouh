@@ -79,7 +79,7 @@ class UserProfileDetailsService {
       // 1. Fetch Profile Data
       final profileRes = await client
           .from('profiles')
-          .select('id, full_name, university_code, role, avatar_url, assigned_group, gender')
+          .select('id, full_name, university_code, role, avatar_url, assigned_group, gender, updated_at, created_at')
           .eq('id', targetUserId)
           .maybeSingle();
 
@@ -121,6 +121,21 @@ class UserProfileDetailsService {
       if (canViewPresence) {
         final presenceMap = await PresenceService.instance.fetchPresenceBatch([targetUserId]);
         presence = presenceMap[targetUserId];
+
+        // Fallback for users not yet registered in presence table
+        if (presence == null) {
+          final rawUpdated = profileRes['updated_at'] ?? profileRes['created_at'];
+          final fallbackTime = rawUpdated != null
+              ? DateTime.tryParse(rawUpdated.toString()) ?? DateTime.now().subtract(const Duration(hours: 4))
+              : DateTime.now().subtract(const Duration(hours: 4));
+
+          presence = UserPresenceModel(
+            userId: targetUserId,
+            isOnline: false,
+            lastSeenAt: fallbackTime,
+            updatedAt: fallbackTime,
+          );
+        }
       }
 
       // 3. Role-specific Data Resolution

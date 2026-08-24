@@ -92,32 +92,41 @@ class PresenceService with WidgetsBindingObserver {
     _heartbeatTimer = null;
   }
 
-  /// Sends presence state update to Supabase via secure RPC
+  /// Sends presence state update to Supabase via secure RPC with direct upsert fallback
   Future<void> setOnline(bool isOnline) async {
     final user = SupabaseService.client.auth.currentUser;
     if (user == null) return;
 
+    final now = DateTime.now();
     try {
       await SupabaseService.client.rpc(
         'update_user_presence',
         params: {'p_is_online': isOnline},
       );
-
-      final now = DateTime.now();
-      _presenceCache[user.id] = UserPresenceModel(
-        userId: user.id,
-        isOnline: isOnline,
-        lastSeenAt: now,
-        updatedAt: now,
-      );
-
-      if (!_presenceStreamController.isClosed) {
-        _presenceStreamController.add(_presenceCache);
+    } catch (_) {
+      try {
+        await SupabaseService.client.from('user_presence').upsert({
+          'user_id': user.id,
+          'is_online': isOnline,
+          'last_seen_at': now.toIso8601String(),
+          'updated_at': now.toIso8601String(),
+        });
+      } catch (e) {
+        if (kDebugMode) {
+          print('⚠️ PresenceService.setOnline error: $e');
+        }
       }
-    } catch (e) {
-      if (kDebugMode) {
-        print('⚠️ PresenceService.setOnline error: $e');
-      }
+    }
+
+    _presenceCache[user.id] = UserPresenceModel(
+      userId: user.id,
+      isOnline: isOnline,
+      lastSeenAt: now,
+      updatedAt: now,
+    );
+
+    if (!_presenceStreamController.isClosed) {
+      _presenceStreamController.add(_presenceCache);
     }
   }
 
@@ -134,20 +143,36 @@ class PresenceService with WidgetsBindingObserver {
         params: {'p_user_ids': userIds},
       );
 
-      if (res is List) {
+      if (res is List && res.isNotEmpty) {
         for (final item in res) {
           final model = UserPresenceModel.fromJson(Map<String, dynamic>.from(item));
           _presenceCache[model.userId] = model;
         }
+      } else {
+        throw Exception('Empty or fallback needed');
+      }
+    } catch (_) {
+      try {
+        final rows = await SupabaseService.client
+            .from('user_presence')
+            .select()
+            .inFilter('user_id', userIds);
 
-        if (!_presenceStreamController.isClosed) {
-          _presenceStreamController.add(_presenceCache);
+        if (rows is List) {
+          for (final row in rows) {
+            final model = UserPresenceModel.fromJson(Map<String, dynamic>.from(row));
+            _presenceCache[model.userId] = model;
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('⚠️ PresenceService.fetchPresenceBatch error: $e');
         }
       }
-    } catch (e) {
-      if (kDebugMode) {
-        print('⚠️ PresenceService.fetchPresenceBatch error: $e');
-      }
+    }
+
+    if (!_presenceStreamController.isClosed) {
+      _presenceStreamController.add(_presenceCache);
     }
 
     return _presenceCache;
