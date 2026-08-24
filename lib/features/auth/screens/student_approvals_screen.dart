@@ -97,15 +97,44 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
     });
   }
 
+  bool _hasError = false;
+  String _errorMessage = '';
+
   Future<void> _loadStudents() async {
-    setState(() => _isLoading = true);
-    final data = await AdminStudentManagementService.instance.fetchStudentsOverview();
-    if (mounted) {
-      setState(() {
-        _allStudents = data;
-        _isLoading = false;
-      });
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+      _errorMessage = '';
+    });
+    try {
+      final data = await AdminStudentManagementService.instance.fetchStudentsOverview();
+      if (mounted) {
+        setState(() {
+          _allStudents = data;
+          _isLoading = false;
+          _hasError = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+          _errorMessage = e.toString();
+        });
+      }
     }
+  }
+
+  void _resetFilters() {
+    setState(() {
+      _searchController.clear();
+      _searchQuery = '';
+      _selectedStatusFilter = 'all';
+      _selectedPresenceFilter = 'all';
+      _selectedUpdateFilter = 'all';
+      _selectedGroupFilter = 'all';
+    });
   }
 
   List<AdminStudentOverviewModel> get _filteredStudents {
@@ -341,13 +370,64 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
                 if (_isLoading)
                   const Padding(
                     padding: EdgeInsets.all(40),
-                    child: Center(child: CircularProgressIndicator()),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 12),
+                          Text('جاري تحميل بيانات الطلاب...', style: TextStyle(fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                  )
+                else if (_hasError)
+                  AppCard(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.error_outline_rounded, color: AppDesignTokens.danger, size: 40),
+                        const SizedBox(height: 12),
+                        const Text('تعذر تحميل بيانات الطلاب من الخادم', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                        const SizedBox(height: 6),
+                        Text(_errorMessage.isNotEmpty ? _errorMessage : 'يرجى التحقق من اتصال الإنترنت أو صلاحيات الحساب.', style: TextStyle(fontSize: 12, color: AppDesignTokens.textSecondary(context))),
+                        const SizedBox(height: 16),
+                        AppButton(
+                          text: 'إعادة المحاولة',
+                          icon: Icons.refresh_rounded,
+                          variant: AppButtonVariant.primary,
+                          onPressed: _loadStudents,
+                        ),
+                      ],
+                    ),
+                  )
+                else if (_allStudents.isEmpty)
+                  const AppEmptyState(
+                    icon: Icons.groups_outlined,
+                    title: 'لا يوجد طلاب مسجلون في النظام',
+                    message: 'لم يتم العثور على أي حسابات طلاب في قاعدة البيانات.',
                   )
                 else if (filtered.isEmpty)
-                  const AppEmptyState(
-                    icon: Icons.person_search_rounded,
-                    title: 'لا يوجد طلاب مطابقون للبحث',
-                    message: 'يرجى تجربة تغيير معايير البحث أو الفلترة الحالية.',
+                  AppCard(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.person_search_rounded, size: 40, color: AppDesignTokens.warning),
+                        const SizedBox(height: 12),
+                        const Text('لا يوجد طلاب مطابقون للفلاتر الحالية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                        const SizedBox(height: 6),
+                        Text('لديك ${_allStudents.length} طالباً مسجلاً، ولكن لا يطابق أي منهم معايير البحث أو الفلاتر المحددة.', style: TextStyle(fontSize: 12, color: AppDesignTokens.textSecondary(context))),
+                        const SizedBox(height: 16),
+                        AppButton(
+                          text: 'إعادة ضبط الفلاتر والبحث',
+                          icon: Icons.filter_alt_off_rounded,
+                          variant: AppButtonVariant.secondary,
+                          onPressed: _resetFilters,
+                        ),
+                      ],
+                    ),
                   )
                 else if (isDesktop)
                   _buildDesktopTable(filtered, serverNow)
