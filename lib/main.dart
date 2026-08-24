@@ -7,6 +7,7 @@ import 'core/localization/app_localizations.dart';
 import 'core/localization/locale_provider.dart';
 import 'core/routing/app_router.dart';
 import 'core/services/firebase_messaging_service.dart';
+import 'core/services/presence_service.dart';
 import 'core/services/supabase_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_provider.dart';
@@ -16,6 +17,7 @@ void main() async {
   GoogleFonts.config.allowRuntimeFetching = true;
   try {
     await SupabaseService.initialize();
+    PresenceService.instance.initialize();
   } catch (e) {
     debugPrint('Supabase Web init warning: $e');
   }

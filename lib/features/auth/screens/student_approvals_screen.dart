@@ -12,6 +12,7 @@ import '../../../core/widgets/app_table.dart';
 import '../models/user_profile.dart';
 import '../providers/auth_provider.dart';
 import '../providers/student_approvals_provider.dart';
+import '../../profile/screens/user_profile_details_screen.dart';
 
 class StudentApprovalsScreen extends ConsumerStatefulWidget {
   const StudentApprovalsScreen({super.key});
@@ -474,18 +475,37 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
           children: [
             Row(
               children: [
-                AppAvatar(name: student.fullName, imageUrl: student.avatarUrl, size: AppAvatarSize.medium),
+                InkWell(
+                  onTap: () => UserProfileDetailsScreen.show(
+                    context,
+                    userId: student.id,
+                    initialName: student.fullName,
+                    initialAvatarUrl: student.avatarUrl,
+                    initialCode: student.universityCode,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  child: AppAvatar(name: student.fullName, imageUrl: student.avatarUrl, size: AppAvatarSize.medium),
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        student.fullName,
-                        style: TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.bold,
-                          color: AppDesignTokens.textPrimary(context),
+                      InkWell(
+                        onTap: () => UserProfileDetailsScreen.show(
+                          context,
+                          userId: student.id,
+                          initialName: student.fullName,
+                          initialAvatarUrl: student.avatarUrl,
+                          initialCode: student.universityCode,
+                        ),
+                        child: Text(
+                          student.fullName,
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.bold,
+                            color: AppDesignTokens.textPrimary(context),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -493,7 +513,7 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
                         children: [
                           AppBadge(label: student.registrationStatus.displayNameAr, variant: statusVariant, size: AppBadgeSize.small),
                           const SizedBox(width: 6),
-                          AppBadge(label: 'مجموعة ${student.studentGroup.code}', variant: AppBadgeVariant.neutral, size: AppBadgeSize.small),
+                          AppBadge(label: 'كود: ${student.universityCode}', variant: AppBadgeVariant.neutral, size: AppBadgeSize.small),
                         ],
                       ),
                     ],

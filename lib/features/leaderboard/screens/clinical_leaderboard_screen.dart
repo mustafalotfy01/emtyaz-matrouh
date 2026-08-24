@@ -9,6 +9,7 @@ import '../../../core/widgets/app_empty_state.dart';
 import '../../../core/widgets/app_section_header.dart';
 import '../../auth/models/user_profile.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../profile/screens/user_profile_details_screen.dart';
 import '../models/leaderboard_entry.dart';
 import '../providers/leaderboard_provider.dart';
 
@@ -274,139 +275,147 @@ class ClinicalLeaderboardScreen extends ConsumerWidget {
     final rank = item.rank;
     final rankStyle = _getRankStyle(rank, context);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isCurrentUser
-            ? AppDesignTokens.primary.withOpacity(0.08)
-            : (rank <= 5 ? rankStyle.cardBgColor : AppDesignTokens.surface(context)),
-        borderRadius: BorderRadius.circular(AppDesignTokens.radiusMd),
-        border: Border.all(
-          color: isCurrentUser
-              ? AppDesignTokens.primary
-              : (rank <= 5 ? rankStyle.borderColor.withOpacity(0.6) : AppDesignTokens.borderSubtle(context)),
-          width: rank <= 3 || isCurrentUser ? 1.5 : 1.0,
-        ),
-        boxShadow: rank <= 3
-            ? [
-                BoxShadow(
-                  color: rankStyle.borderColor.withOpacity(0.18),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ]
-            : null,
+    return InkWell(
+      onTap: () => UserProfileDetailsScreen.show(
+        context,
+        userId: item.studentId,
+        initialName: item.fullName,
+        initialAvatarUrl: item.avatarUrl,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
-        children: [
-          // 1. Rank Circle (#1..#5 distinctive colors)
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                colors: rankStyle.gradientColors,
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: rankStyle.borderColor.withOpacity(0.25),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Center(
-              child: Text(
-                '#$rank',
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 13.5,
-                  color: rankStyle.badgeTextColor,
-                ),
-              ),
-            ),
+      borderRadius: BorderRadius.circular(AppDesignTokens.radiusMd),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isCurrentUser
+              ? AppDesignTokens.primary.withOpacity(0.08)
+              : (rank <= 5 ? rankStyle.cardBgColor : AppDesignTokens.surface(context)),
+          borderRadius: BorderRadius.circular(AppDesignTokens.radiusMd),
+          border: Border.all(
+            color: isCurrentUser
+                ? AppDesignTokens.primary
+                : (rank <= 5 ? rankStyle.borderColor.withOpacity(0.6) : AppDesignTokens.borderSubtle(context)),
+            width: rank <= 3 || isCurrentUser ? 1.5 : 1.0,
           ),
-          const SizedBox(width: 12),
-
-          // 2. Avatar Circle (in a circle with matching border)
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: rankStyle.borderColor,
-                width: rank <= 5 ? 2.0 : 1.0,
+          boxShadow: rank <= 3
+              ? [
+                  BoxShadow(
+                    color: rankStyle.borderColor.withOpacity(0.18),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            // 1. Rank Circle (#1..#5 distinctive colors)
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: rankStyle.gradientColors,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: rankStyle.borderColor.withOpacity(0.25),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Text(
+                  '#$rank',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13.5,
+                    color: rankStyle.badgeTextColor,
+                  ),
+                ),
               ),
             ),
-            child: ClipOval(
-              child: (item.avatarUrl != null && item.avatarUrl!.isNotEmpty)
-                  ? Image.network(
-                      item.avatarUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _buildAvatarFallback(item.fullName),
-                    )
-                  : _buildAvatarFallback(item.fullName),
-            ),
-          ),
-          const SizedBox(width: 12),
+            const SizedBox(width: 12),
 
-          // 3. Name & Group Info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        item.fullName,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: AppDesignTokens.textPrimary(context),
+            // 2. Avatar Circle (in a circle with matching border)
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: rankStyle.borderColor,
+                  width: rank <= 5 ? 2.0 : 1.0,
+                ),
+              ),
+              child: ClipOval(
+                child: (item.avatarUrl != null && item.avatarUrl!.isNotEmpty)
+                    ? Image.network(
+                        item.avatarUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _buildAvatarFallback(item.fullName),
+                      )
+                    : _buildAvatarFallback(item.fullName),
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            // 3. Name & Subtitle
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          item.fullName,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: AppDesignTokens.textPrimary(context),
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                    if (isCurrentUser) ...[
-                      const SizedBox(width: 6),
-                      const AppBadge(
-                        label: 'أنت',
-                        variant: AppBadgeVariant.success,
-                        size: AppBadgeSize.small,
-                      ),
+                      if (isCurrentUser) ...[
+                        const SizedBox(width: 6),
+                        const AppBadge(
+                          label: 'أنت',
+                          variant: AppBadgeVariant.success,
+                          size: AppBadgeSize.small,
+                        ),
+                      ],
                     ],
-                  ],
-                ),
-                const SizedBox(height: 3),
-                Row(
-                  children: [
-                    Text(
-                      'المجموعة ${item.studentGroup}',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: AppDesignTokens.textSecondary(context),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    if (isStaff && item.attendedShifts > 0) ...[
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
                       Text(
-                        ' • الشيفتات: ${item.attendedShifts}',
+                        'طالب امتياز',
                         style: TextStyle(
-                          fontSize: 11,
-                          color: AppDesignTokens.textMuted(context),
+                          fontSize: 11.5,
+                          color: AppDesignTokens.textSecondary(context),
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
+                      if (isStaff && item.attendedShifts > 0) ...[
+                        Text(
+                          ' • الشيفتات: ${item.attendedShifts}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppDesignTokens.textMuted(context),
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
-                ),
-              ],
+                  ),
+                ],
+              ),
             ),
-          ),
 
           // 4. Points Badge (Visible to EVERYONE) & GPA info (For Staff)
           Column(
@@ -437,8 +446,9 @@ class ClinicalLeaderboardScreen extends ConsumerWidget {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildAvatarFallback(String name) {
     final initials = name.trim().isNotEmpty

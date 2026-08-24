@@ -7,6 +7,7 @@ import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/app_badge.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/app_empty_state.dart';
+import '../../profile/screens/user_profile_details_screen.dart';
 import '../models/community_post.dart';
 import '../providers/community_provider.dart';
 import 'create_post_sheet.dart';
@@ -170,23 +171,38 @@ class _CommunityFeedScreenState extends ConsumerState<CommunityFeedScreen> {
                               children: [
                                 Row(
                                   children: [
-                                    AppAvatar(name: post.authorName, imageUrl: post.authorAvatarUrl, size: AppAvatarSize.small),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                    InkWell(
+                                      onTap: () {
+                                        UserProfileDetailsScreen.show(
+                                          context,
+                                          userId: post.authorId,
+                                          initialName: post.authorName,
+                                          initialAvatarUrl: post.authorAvatarUrl,
+                                        );
+                                      },
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          Text(
-                                            post.authorName,
-                                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppDesignTokens.textPrimary(context)),
-                                          ),
-                                          Text(
-                                            dateStr,
-                                            style: TextStyle(fontSize: 10.5, color: AppDesignTokens.textSecondary(context)),
+                                          AppAvatar(name: post.authorName, imageUrl: post.authorAvatarUrl, size: AppAvatarSize.small),
+                                          const SizedBox(width: 10),
+                                          Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                post.authorName,
+                                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppDesignTokens.textPrimary(context)),
+                                              ),
+                                              Text(
+                                                dateStr,
+                                                style: TextStyle(fontSize: 10.5, color: AppDesignTokens.textSecondary(context)),
+                                              ),
+                                            ],
                                           ),
                                         ],
                                       ),
                                     ),
+                                    const Spacer(),
                                     if (post.isGold)
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

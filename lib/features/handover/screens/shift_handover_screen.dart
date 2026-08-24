@@ -12,6 +12,7 @@ import '../../../core/widgets/app_input.dart';
 import '../../../core/widgets/app_section_header.dart';
 import '../../auth/models/user_profile.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../profile/screens/user_profile_details_screen.dart';
 import '../../groups/services/group_preferences_service.dart';
 import '../models/handover_model.dart';
 import '../providers/handover_provider.dart';
@@ -438,9 +439,40 @@ class _ShiftHandoverScreenState extends ConsumerState<ShiftHandoverScreen> {
                                 ],
                               ),
                               const SizedBox(height: 6),
-                              Text(
-                                'المُسَلِّم: ${h.fromStudentName}  ←  المُستَلِم: ${h.toStudentName}',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppDesignTokens.textSecondary(context)),
+                              Wrap(
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  Text(
+                                    'المُسَلِّم: ',
+                                    style: TextStyle(fontSize: 12, color: AppDesignTokens.textSecondary(context)),
+                                  ),
+                                  InkWell(
+                                    onTap: () => UserProfileDetailsScreen.show(
+                                      context,
+                                      userId: h.fromStudentId,
+                                      initialName: h.fromStudentName,
+                                    ),
+                                    child: Text(
+                                      h.fromStudentName,
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppDesignTokens.primary),
+                                    ),
+                                  ),
+                                  Text(
+                                    '  ←  المُستَلِم: ',
+                                    style: TextStyle(fontSize: 12, color: AppDesignTokens.textSecondary(context)),
+                                  ),
+                                  InkWell(
+                                    onTap: () => UserProfileDetailsScreen.show(
+                                      context,
+                                      userId: h.toStudentId,
+                                      initialName: h.toStudentName,
+                                    ),
+                                    child: Text(
+                                      h.toStudentName,
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppDesignTokens.primary),
+                                    ),
+                                  ),
+                                ],
                               ),
                               Text(
                                 dateStr,

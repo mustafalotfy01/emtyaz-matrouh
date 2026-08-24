@@ -10,6 +10,7 @@ import '../../../core/widgets/app_empty_state.dart';
 import '../../../core/widgets/app_input.dart';
 import '../../../core/widgets/app_section_header.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../profile/screens/user_profile_details_screen.dart';
 import '../models/community_post.dart';
 import '../providers/community_provider.dart';
 import '../services/community_service.dart';
@@ -160,23 +161,38 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                           children: [
                             Row(
                               children: [
-                                AppAvatar(name: widget.post.authorName, imageUrl: widget.post.authorAvatarUrl, size: AppAvatarSize.medium),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                InkWell(
+                                  onTap: () {
+                                    UserProfileDetailsScreen.show(
+                                      context,
+                                      userId: widget.post.authorId,
+                                      initialName: widget.post.authorName,
+                                      initialAvatarUrl: widget.post.authorAvatarUrl,
+                                    );
+                                  },
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Text(
-                                        widget.post.authorName,
-                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppDesignTokens.textPrimary(context)),
-                                      ),
-                                      Text(
-                                        dateStr,
-                                        style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
+                                      AppAvatar(name: widget.post.authorName, imageUrl: widget.post.authorAvatarUrl, size: AppAvatarSize.medium),
+                                      const SizedBox(width: 12),
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            widget.post.authorName,
+                                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppDesignTokens.textPrimary(context)),
+                                          ),
+                                          Text(
+                                            dateStr,
+                                            style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
                                 ),
+                                const Spacer(),
                                 if (widget.post.isGold)
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -273,7 +289,18 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    AppAvatar(name: c.authorName, imageUrl: c.authorAvatarUrl, size: AppAvatarSize.small),
+                                    InkWell(
+                                      onTap: () {
+                                        UserProfileDetailsScreen.show(
+                                          context,
+                                          userId: c.authorId,
+                                          initialName: c.authorName,
+                                          initialAvatarUrl: c.authorAvatarUrl,
+                                        );
+                                      },
+                                      borderRadius: BorderRadius.circular(16),
+                                      child: AppAvatar(name: c.authorName, imageUrl: c.authorAvatarUrl, size: AppAvatarSize.small),
+                                    ),
                                     const SizedBox(width: 10),
                                     Expanded(
                                       child: Column(
@@ -282,18 +309,29 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                           Row(
                                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                             children: [
-                                              Row(
-                                                children: [
-                                                  Text(
-                                                    c.authorName,
-                                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: AppDesignTokens.textPrimary(context)),
-                                                  ),
-                                                  const SizedBox(width: 6),
-                                                  Text(
-                                                    c.roleBadgeLabel,
-                                                    style: const TextStyle(fontSize: 10, color: AppDesignTokens.primary),
-                                                  ),
-                                                ],
+                                              InkWell(
+                                                onTap: () {
+                                                  UserProfileDetailsScreen.show(
+                                                    context,
+                                                    userId: c.authorId,
+                                                    initialName: c.authorName,
+                                                    initialAvatarUrl: c.authorAvatarUrl,
+                                                  );
+                                                },
+                                                borderRadius: BorderRadius.circular(4),
+                                                child: Row(
+                                                  children: [
+                                                    Text(
+                                                      c.authorName,
+                                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: AppDesignTokens.textPrimary(context)),
+                                                    ),
+                                                    const SizedBox(width: 6),
+                                                    Text(
+                                                      c.roleBadgeLabel,
+                                                      style: const TextStyle(fontSize: 10, color: AppDesignTokens.primary),
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
                                               Text(
                                                 commentDate,
