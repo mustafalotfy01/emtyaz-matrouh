@@ -1,17 +1,21 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { SUPABASE_URL, SERVICE_ROLE_KEY, adminRest } = require('./qa_test_helpers.js');
 
 async function uploadApk() {
-  const apkPath = path.join(__dirname, '../build/app/outputs/apk/release/app-release.apk');
+  const apkPath = path.join(__dirname, '../build/app/outputs/flutter-apk/app-release.apk');
   console.log('Reading APK from:', apkPath);
   const stats = fs.statSync(apkPath);
   console.log('APK Size:', (stats.size / (1024 * 1024)).toFixed(2), 'MB');
 
-  const uploadUrl = `${SUPABASE_URL}/storage/v1/object/app-releases/android/1.1.0/app-release.apk`;
+  const fileBuffer = fs.readFileSync(apkPath);
+  const sha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+  console.log('APK SHA256:', sha256);
+
+  const uploadUrl = `${SUPABASE_URL}/storage/v1/object/app-releases/android/1.3/app-release.apk`;
 
   console.log('Uploading to Supabase Storage at:', uploadUrl);
-  const fileBuffer = fs.readFileSync(apkPath);
 
   const res = await fetch(uploadUrl, {
     method: 'POST',
@@ -28,7 +32,7 @@ async function uploadApk() {
   console.log('Upload Result:', uploadResult);
 
   // Direct public download URL
-  const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/app-releases/android/1.1.0/app-release.apk`;
+  const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/app-releases/android/1.3/app-release.apk`;
   console.log('Public URL:', publicUrl);
 
   // Verify public download via HEAD request
@@ -37,18 +41,21 @@ async function uploadApk() {
   console.log('Public URL Content-Type:', headRes.headers.get('content-type'));
   console.log('Public URL Content-Length:', headRes.headers.get('content-length'), 'bytes');
 
-  // Update app_versions row for 1.1.0 (version_code 2)
-  await adminRest('app_versions?version_code=eq.2', {
+  // Update app_versions row for 1.3 (version_code 4)
+  await adminRest('app_versions?version_code=eq.4', {
     method: 'PATCH',
     body: {
       apk_download_url: publicUrl,
+      download_url: publicUrl,
       file_size: stats.size,
       file_name: 'app-release.apk',
-      release_notes: '• إصلاح نظام البصمة الفورية وتأكيد التواجد\n• تفعيل سجل الجزاءات والمكافآت للطلاب والليدرز\n• تحسينات عامة في الأداء واستقرار النظام'
+      sha256: sha256,
+      checksum: sha256,
+      release_notes: '• تحديث نظام التواجد اللحظي وأوقات آخر ظهور دقيقة بالثواني\n• مزامنة الوقت الدقيق مع خوادم السيرفر وتوقيت القاهرة\n• تحسينات شاملة في استقرار وسرعة الاتصال اللحظي'
     }
   });
 
-  console.log('Updated app_versions row in database successfully!');
+  console.log('Updated app_versions row for version 1.3 in database successfully!');
 }
 
 uploadApk().catch(err => console.error('Upload Error:', err));

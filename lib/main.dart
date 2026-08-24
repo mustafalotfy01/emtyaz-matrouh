@@ -6,6 +6,7 @@ import 'core/constants/app_strings.dart';
 import 'core/localization/app_localizations.dart';
 import 'core/localization/locale_provider.dart';
 import 'core/routing/app_router.dart';
+import 'core/services/app_version_tracker_service.dart';
 import 'core/services/firebase_messaging_service.dart';
 import 'core/services/presence_service.dart';
 import 'core/services/supabase_service.dart';
@@ -20,6 +21,7 @@ void main() async {
   try {
     await SupabaseService.initialize();
     PresenceService.instance.initialize();
+    AppVersionTrackerService.instance.initialize();
   } catch (e) {
     debugPrint('Supabase Web init warning: $e');
   }

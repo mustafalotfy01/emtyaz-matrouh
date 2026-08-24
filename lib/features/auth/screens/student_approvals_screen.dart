@@ -1,18 +1,23 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/localization/app_localizations.dart';
+import '../../../core/models/user_app_version_model.dart';
+import '../../../core/services/presence_service.dart';
 import '../../../core/theme/app_design_tokens.dart';
+import '../../../core/utils/timezone_helper.dart';
 import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/app_badge.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/app_empty_state.dart';
-import '../../../core/widgets/app_input.dart';
 import '../../../core/widgets/app_table.dart';
+import '../../admin/models/admin_student_overview_model.dart';
+import '../../admin/screens/admin_student_profile_screen.dart';
+import '../../admin/services/admin_student_management_service.dart';
 import '../models/user_profile.dart';
 import '../providers/auth_provider.dart';
 import '../providers/student_approvals_provider.dart';
-import '../../profile/screens/user_profile_details_screen.dart';
 
 class StudentApprovalsScreen extends ConsumerStatefulWidget {
   const StudentApprovalsScreen({super.key});
@@ -22,14 +27,27 @@ class StudentApprovalsScreen extends ConsumerStatefulWidget {
 }
 
 class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen> {
-  RegistrationStatus? _filterStatus;
+  List<AdminStudentOverviewModel> _allStudents = [];
+  bool _isLoading = true;
+  String _searchQuery = '';
+  String _selectedStatusFilter = 'all'; // 'all', 'pending', 'approved', 'rejected'
+  String _selectedPresenceFilter = 'all'; // 'all', 'online', 'offline'
+  String _selectedUpdateFilter = 'all'; // 'all', 'up_to_date', 'outdated'
+  String _selectedGroupFilter = 'all'; // 'all', 'A', 'B'
+
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _rejectionController = TextEditingController();
-  String _searchQuery = '';
+
+  Timer? _localPresenceTicker;
+  StreamSubscription? _presenceSubscription;
 
   @override
   void initState() {
     super.initState();
+    _loadStudents();
+    _startLocalPresenceTicker();
+    _subscribeToLivePresence();
+
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text.trim().toLowerCase();
@@ -39,12 +57,99 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
 
   @override
   void dispose() {
+    _localPresenceTicker?.cancel();
+    _presenceSubscription?.cancel();
     _searchController.dispose();
     _rejectionController.dispose();
     super.dispose();
   }
 
-  void _showRejectDialog(BuildContext context, UserProfile student, AppLocalizations l10n) {
+  /// Recalculates stale presence locally every 15 seconds without network calls
+  void _startLocalPresenceTicker() {
+    _localPresenceTicker = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  /// Listens to real-time presence events
+  void _subscribeToLivePresence() {
+    _presenceSubscription = PresenceService.instance.presenceStream.listen((presenceMap) {
+      if (!mounted) return;
+      bool hasChanges = false;
+      final updatedList = _allStudents.map((student) {
+        if (presenceMap.containsKey(student.studentId)) {
+          final p = presenceMap[student.studentId]!;
+          hasChanges = true;
+          return student.copyWithPresence(
+            isOnline: p.isOnline,
+            effectiveIsOnline: p.isEffectivelyOnline,
+            lastSeenAt: p.lastSeenAt,
+          );
+        }
+        return student;
+      }).toList();
+
+      if (hasChanges) {
+        setState(() {
+          _allStudents = updatedList;
+        });
+      }
+    });
+  }
+
+  Future<void> _loadStudents() async {
+    setState(() => _isLoading = true);
+    final data = await AdminStudentManagementService.instance.fetchStudentsOverview();
+    if (mounted) {
+      setState(() {
+        _allStudents = data;
+        _isLoading = false;
+      });
+    }
+  }
+
+  List<AdminStudentOverviewModel> get _filteredStudents {
+    final serverNow = AppTimezoneHelper.serverNowUtc;
+
+    return _allStudents.where((s) {
+      // 1. Search Query
+      if (_searchQuery.isNotEmpty) {
+        final matchesName = s.fullName.toLowerCase().contains(_searchQuery);
+        final matchesCode = s.universityCode.toLowerCase().contains(_searchQuery);
+        final matchesEmail = s.email.toLowerCase().contains(_searchQuery);
+        final matchesPhone = s.phoneNumber.contains(_searchQuery);
+        if (!matchesName && !matchesCode && !matchesEmail && !matchesPhone) {
+          return false;
+        }
+      }
+
+      // 2. Status Filter
+      if (_selectedStatusFilter == 'pending' && s.registrationStatus != 'pending') return false;
+      if (_selectedStatusFilter == 'approved' && s.registrationStatus != 'approved') return false;
+      if (_selectedStatusFilter == 'rejected' && s.registrationStatus != 'rejected') return false;
+
+      // 3. Presence Filter
+      final isOnline = s.isEffectivelyOnlineAt(serverNow);
+      if (_selectedPresenceFilter == 'online' && !isOnline) return false;
+      if (_selectedPresenceFilter == 'offline' && isOnline) return false;
+
+      // 4. Update Filter
+      if (_selectedUpdateFilter == 'up_to_date' && s.updateStatus != AppUpdateStatus.upToDate) return false;
+      if (_selectedUpdateFilter == 'outdated' &&
+          s.updateStatus != AppUpdateStatus.outdated &&
+          s.updateStatus != AppUpdateStatus.forceUpdateRequired) {
+        return false;
+      }
+
+      // 5. Group Filter
+      if (_selectedGroupFilter == 'A' && s.studentGroup != 'A') return false;
+      if (_selectedGroupFilter == 'B' && s.studentGroup != 'B') return false;
+
+      return true;
+    }).toList();
+  }
+
+  void _showRejectDialog(AdminStudentOverviewModel student) {
     _rejectionController.clear();
     showDialog(
       context: context,
@@ -52,7 +157,7 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
         backgroundColor: AppDesignTokens.surface(context),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDesignTokens.radiusLg)),
         title: Text(
-          l10n.rejectDialogTitle(student.fullName),
+          'رفض طلب تسجيل: ${student.fullName}',
           style: TextStyle(color: AppDesignTokens.textPrimary(context), fontSize: 16, fontWeight: FontWeight.bold),
         ),
         content: Column(
@@ -60,7 +165,7 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              l10n.rejectReasonPrompt,
+              'يرجى كتابة سبب الرفض ليظهر للطالب عند محاولة تسجيل الدخول:',
               style: TextStyle(fontSize: 13, color: AppDesignTokens.textSecondary(context)),
             ),
             const SizedBox(height: 12),
@@ -69,7 +174,7 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
               maxLines: 3,
               style: TextStyle(color: AppDesignTokens.textPrimary(context), fontSize: 13),
               decoration: InputDecoration(
-                hintText: l10n.rejectReasonHint,
+                hintText: 'مثال: خطأ في الكود الجامعي أو الصورة الشخصية...',
                 hintStyle: TextStyle(color: AppDesignTokens.textMuted(context), fontSize: 12),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm)),
               ),
@@ -79,611 +184,646 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text(l10n.cancel),
+            child: const Text('إلغاء'),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppDesignTokens.danger),
             onPressed: () async {
               final reason = _rejectionController.text.trim();
-              if (reason.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(l10n.provideRejectReasonWarning)),
-                );
-                return;
-              }
-              final scaffoldMessenger = ScaffoldMessenger.of(context);
+              if (reason.isEmpty) return;
               Navigator.pop(ctx);
-              final success = await ref
-                  .read(studentApprovalsProvider.notifier)
-                  .rejectStudent(student.id, reason);
-
-              scaffoldMessenger.showSnackBar(
-                SnackBar(
-                  backgroundColor: success ? AppDesignTokens.danger : AppDesignTokens.warning,
-                  content: Text(success ? l10n.rejectSuccessMsg : l10n.actionErrorMsg),
-                ),
-              );
+              final success = await AdminStudentManagementService.instance.rejectStudent(student.studentId, reason);
+              if (success) {
+                _loadStudents();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(backgroundColor: AppDesignTokens.danger, content: Text('تم رفض طلب التسجيل بنجاح')),
+                  );
+                }
+              }
             },
-            child: Text(l10n.confirmReject, style: const TextStyle(color: Colors.white)),
+            child: const Text('تأكيد الرفض', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
   }
 
-  void _showDeleteDialog(BuildContext context, UserProfile student, AppLocalizations l10n) {
+  void _showDeleteDialog(AdminStudentOverviewModel student) {
+    final nameConfirmController = TextEditingController();
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppDesignTokens.surface(context),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDesignTokens.radiusLg)),
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: AppDesignTokens.danger, size: 24),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'حذف حساب الطالب نهائياً 🗑️',
-                style: TextStyle(color: AppDesignTokens.danger, fontSize: 16, fontWeight: FontWeight.bold),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppDesignTokens.surface(context),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDesignTokens.radiusLg)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: AppDesignTokens.danger, size: 26),
+              SizedBox(width: 8),
+              Text('حذف حساب الطالب نهائياً', style: TextStyle(color: AppDesignTokens.danger, fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'تحذير أمني: سيتم مسح حساب الطالب (${student.fullName}) وكافة سجلاته وحضوره وتقييماته من قاعدة البيانات بشكل نهائي.',
+                style: TextStyle(fontSize: 13, color: AppDesignTokens.textSecondary(context), height: 1.4),
               ),
+              const SizedBox(height: 14),
+              Text(
+                'لتأكيد الحذف، اكتب اسم الطالب كاملاً للتأكيد:',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppDesignTokens.textPrimary(context)),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: nameConfirmController,
+                style: TextStyle(color: AppDesignTokens.textPrimary(context), fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: student.fullName,
+                  hintStyle: TextStyle(color: AppDesignTokens.textMuted(context), fontSize: 12),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm)),
+                ),
+                onChanged: (_) => setDialogState(() {}),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppDesignTokens.danger),
+              onPressed: nameConfirmController.text.trim() == student.fullName.trim()
+                  ? () async {
+                      Navigator.pop(ctx);
+                      final success = await AdminStudentManagementService.instance.deleteStudent(student.studentId);
+                      if (success) {
+                        _loadStudents();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(backgroundColor: AppDesignTokens.danger, content: Text('تم حذف حساب الطالب بنجاح')),
+                          );
+                        }
+                      }
+                    }
+                  : null,
+              child: const Text('حذف نهائي', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
-        content: Text(
-          'هل أنت متأكد من رغبتك في حذف حساب الطالب (${student.fullName}) نهائياً؟ سيتم مسح بياناته بالكامل من النظام.',
-          style: TextStyle(fontSize: 13, color: AppDesignTokens.textSecondary(context)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(l10n.cancel),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppDesignTokens.danger),
-            onPressed: () async {
-              final scaffoldMessenger = ScaffoldMessenger.of(context);
-              Navigator.pop(ctx);
-              final success = await ref
-                  .read(studentApprovalsProvider.notifier)
-                  .deleteStudent(
-                    student.id.isNotEmpty ? student.id : student.universityCode,
-                    universityCode: student.universityCode,
-                    email: student.email,
-                  );
-
-              scaffoldMessenger.showSnackBar(
-                SnackBar(
-                  backgroundColor: success ? AppDesignTokens.danger : AppDesignTokens.warning,
-                  content: Text(success ? 'تم حذف حساب الطالب نهائياً من النظام 🗑️' : l10n.actionErrorMsg),
-                ),
-              );
-            },
-            child: const Text('تأكيد الحذف النهائي', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showReturnToPendingDialog(BuildContext context, UserProfile student, AppLocalizations l10n) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppDesignTokens.surface(context),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDesignTokens.radiusLg)),
-        title: Text(
-          l10n.returnToReviewDialogTitle,
-          style: TextStyle(color: AppDesignTokens.textPrimary(context), fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-        content: Text(
-          l10n.returnToReviewDialogMessage,
-          style: TextStyle(fontSize: 13, color: AppDesignTokens.textSecondary(context)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(l10n.cancel),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppDesignTokens.primary),
-            onPressed: () async {
-              final scaffoldMessenger = ScaffoldMessenger.of(context);
-              Navigator.pop(ctx);
-              final success = await ref
-                  .read(studentApprovalsProvider.notifier)
-                  .returnToPending(student.id);
-
-              scaffoldMessenger.showSnackBar(
-                SnackBar(
-                  backgroundColor: success ? AppDesignTokens.success : AppDesignTokens.warning,
-                  content: Text(success ? l10n.returnToReviewSuccessMsg : l10n.actionErrorMsg),
-                ),
-              );
-            },
-            child: Text(l10n.confirmReturnToReview, style: const TextStyle(color: Colors.white)),
-          ),
-        ],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final user = ref.watch(authProvider).user;
-    final isLeaderOrAdmin = user?.role == UserRole.leader || user?.role == UserRole.superAdmin;
-    final asyncStudents = ref.watch(studentApprovalsProvider);
-    final l10n = context.l10n;
-    final isDesktop = MediaQuery.of(context).size.width > 768;
+    final isDesktop = MediaQuery.of(context).size.width >= 900;
+    final serverNow = AppTimezoneHelper.serverNowUtc;
+
+    // Calculate real-time KPIs
+    final totalCount = _allStudents.length;
+    final onlineCount = _allStudents.where((s) => s.isEffectivelyOnlineAt(serverNow)).length;
+    final needsUpdateCount = _allStudents.where((s) =>
+        s.updateStatus == AppUpdateStatus.outdated || s.updateStatus == AppUpdateStatus.forceUpdateRequired).length;
+    final upToDateCount = _allStudents.where((s) => s.updateStatus == AppUpdateStatus.upToDate).length;
+    final pendingCount = _allStudents.where((s) => s.registrationStatus == 'pending').length;
+
+    final filtered = _filteredStudents;
 
     return Scaffold(
       backgroundColor: AppDesignTokens.bg(context),
       appBar: AppBar(
-        title: Text(
-          l10n.studentApprovalsTitle,
-          style: TextStyle(color: AppDesignTokens.textPrimary(context), fontWeight: FontWeight.bold, fontSize: 16),
+        title: const Text(
+          'إدارة ومتابعة شؤون الطلاب',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
-            tooltip: l10n.retry,
-            onPressed: () {
-              ref.read(studentApprovalsProvider.notifier).fetchStudentRequests();
-            },
+            tooltip: 'تحديث البيانات',
+            onPressed: _loadStudents,
           ),
         ],
       ),
-      body: asyncStudents.when(
-        loading: () => const Center(child: CircularProgressIndicator(color: AppDesignTokens.primary)),
-        error: (err, stack) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(l10n.errorLoadingRequests(err.toString()), style: TextStyle(color: AppDesignTokens.textPrimary(context))),
-              const SizedBox(height: 12),
-              AppButton(
-                text: l10n.retry,
-                onPressed: () => ref.read(studentApprovalsProvider.notifier).fetchStudentRequests(),
-                size: AppButtonSize.small,
-              ),
-            ],
+      body: SafeArea(
+        child: RefreshIndicator(
+          color: AppDesignTokens.primary,
+          onRefresh: _loadStudents,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 1. Top KPIs Cards
+                _buildKpiSection(
+                  total: totalCount,
+                  online: onlineCount,
+                  needsUpdate: needsUpdateCount,
+                  upToDate: upToDateCount,
+                  pending: pendingCount,
+                ),
+
+                const SizedBox(height: 16),
+
+                // 2. Search & Compact Multi-Filter Bar
+                _buildSearchAndFilters(),
+
+                const SizedBox(height: 16),
+
+                // 3. Students Data Table (Desktop) / Cards (Mobile)
+                if (_isLoading)
+                  const Padding(
+                    padding: EdgeInsets.all(40),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (filtered.isEmpty)
+                  const AppEmptyState(
+                    icon: Icons.person_search_rounded,
+                    title: 'لا يوجد طلاب مطابقون للبحث',
+                    message: 'يرجى تجربة تغيير معايير البحث أو الفلترة الحالية.',
+                  )
+                else if (isDesktop)
+                  _buildDesktopTable(filtered, serverNow)
+                else
+                  _buildMobileCards(filtered, serverNow),
+              ],
+            ),
           ),
         ),
-        data: (students) {
-          final totalCount = students.length;
-          final pendingCount = students.where((s) => s.registrationStatus == RegistrationStatus.pending).length;
-          final approvedCount = students.where((s) => s.registrationStatus == RegistrationStatus.approved).length;
-          final rejectedCount = students.where((s) => s.registrationStatus == RegistrationStatus.rejected).length;
+      ),
+    );
+  }
 
-          final filteredList = students.where((s) {
-            if (_filterStatus != null && s.registrationStatus != _filterStatus) {
-              return false;
-            }
-            if (_searchQuery.isNotEmpty) {
-              final nameMatch = s.fullName.toLowerCase().contains(_searchQuery);
-              final codeMatch = s.universityCode.toLowerCase().contains(_searchQuery);
-              final emailMatch = s.email.toLowerCase().contains(_searchQuery);
-              if (!nameMatch && !codeMatch && !emailMatch) {
-                return false;
-              }
-            }
-            return true;
-          }).toList();
+  Widget _buildKpiSection({
+    required int total,
+    required int online,
+    required int needsUpdate,
+    required int upToDate,
+    required int pending,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 600;
+        final children = [
+          _buildKpiCard('إجمالي الطلاب', '$total', Icons.groups_rounded, AppDesignTokens.primary),
+          _buildKpiCard('متصل الآن', '$online', Icons.circle_rounded, AppDesignTokens.success),
+          _buildKpiCard('يحتاج تحديث', '$needsUpdate', Icons.system_update_rounded, AppDesignTokens.warning),
+          _buildKpiCard('محدث', '$upToDate', Icons.verified_rounded, AppDesignTokens.primaryAccent),
+          _buildKpiCard('بانتظار الاعتماد', '$pending', Icons.hourglass_top_rounded, pending > 0 ? AppDesignTokens.danger : AppDesignTokens.textSecondary(context)),
+        ];
 
-          return Column(
-            children: [
-              // Sticky Search & Filter Header
-              Container(
-                color: AppDesignTokens.bg(context),
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                child: Column(
-                  children: [
-                    AppInput(
-                      controller: _searchController,
-                      hintText: l10n.searchStudentsPlaceholder,
-                      prefixIcon: const Icon(Icons.search_rounded, size: 20, color: AppDesignTokens.primary),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear_rounded, size: 18),
-                              onPressed: () => _searchController.clear(),
-                            )
-                          : null,
-                    ),
-                    const SizedBox(height: 10),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          _buildFilterChip('الكل ($totalCount)', null),
-                          const SizedBox(width: 8),
-                          _buildFilterChip('قيد الانتظار ($pendingCount)', RegistrationStatus.pending, AppBadgeVariant.warning),
-                          const SizedBox(width: 8),
-                          _buildFilterChip('معتمد ($approvedCount)', RegistrationStatus.approved, AppBadgeVariant.success),
-                          const SizedBox(width: 8),
-                          _buildFilterChip('مرفوض ($rejectedCount)', RegistrationStatus.rejected, AppBadgeVariant.danger),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              Divider(height: 1, color: AppDesignTokens.borderSubtle(context)),
-
-              // Table or Cards depending on viewport width
-              Expanded(
-                child: filteredList.isEmpty
-                    ? const AppEmptyState(
-                        title: 'لا توجد طلبات مطابقة للفلتر',
-                        message: 'يرجى تغيير معايير البحث أو اختيار فلتر مختلف',
-                        icon: Icons.person_search_rounded,
-                      )
-                    : isDesktop
-                        ? _buildDesktopTable(context, filteredList, isLeaderOrAdmin, l10n)
-                        : ListView.builder(
-                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                            itemCount: filteredList.length,
-                            itemBuilder: (ctx, index) {
-                              final student = filteredList[index];
-                              return _buildStudentCard(context, student, isLeaderOrAdmin, l10n);
-                            },
-                          ),
-              ),
-            ],
+        if (isNarrow) {
+          return Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: children.map((c) => SizedBox(width: (constraints.maxWidth - 10) / 2, child: c)).toList(),
           );
-        },
-      ),
-    );
-  }
+        }
 
-  Widget _buildFilterChip(String label, RegistrationStatus? status, [AppBadgeVariant variant = AppBadgeVariant.primary]) {
-    final isSelected = _filterStatus == status;
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _filterStatus = status;
-        });
+        return Row(
+          children: children.map((c) => Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: c))).toList(),
+        );
       },
-      borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? AppDesignTokens.primary : AppDesignTokens.surface(context),
-          borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
-          border: Border.all(
-            color: isSelected ? AppDesignTokens.primary : AppDesignTokens.border(context),
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-            color: isSelected ? Colors.white : AppDesignTokens.textPrimary(context),
-          ),
-        ),
-      ),
     );
   }
 
-  Widget _buildDesktopTable(
-    BuildContext context,
-    List<UserProfile> students,
-    bool isLeaderOrAdmin,
-    AppLocalizations l10n,
-  ) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: AppTable(
-        columns: const [
-          AppTableColumn(label: 'الطالب', flex: 3),
-          AppTableColumn(label: 'الكود الجامعي', flex: 2),
-          AppTableColumn(label: 'المعدل (GPA)', flex: 1),
-          AppTableColumn(label: 'المجموعة', flex: 1),
-          AppTableColumn(label: 'الحالة', flex: 2),
-          AppTableColumn(label: 'الإجراءات', flex: 2),
+  Widget _buildKpiCard(String label, String value, IconData icon, Color color) {
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label, style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context), fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
+                Text(value, style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppDesignTokens.textPrimary(context))),
+              ],
+            ),
+          ),
         ],
-        itemCount: students.length,
-        rowBuilder: (ctx, index) {
-          final s = students[index];
-          final isPending = s.registrationStatus == RegistrationStatus.pending;
-
-          return [
-            Row(
-              children: [
-                AppAvatar(name: s.fullName, imageUrl: s.avatarUrl, size: AppAvatarSize.small),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    s.fullName,
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppDesignTokens.textPrimary(context)),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            Text(s.universityCode, style: TextStyle(fontSize: 12, color: AppDesignTokens.textSecondary(context))),
-            Text(s.gpa != null ? s.gpa!.toStringAsFixed(2) : '—', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-            Text(s.studentGroup.code, style: const TextStyle(fontWeight: FontWeight.bold, color: AppDesignTokens.primary)),
-            AppBadge(
-              label: s.registrationStatus.displayNameAr,
-              variant: s.registrationStatus == RegistrationStatus.approved
-                  ? AppBadgeVariant.success
-                  : (s.registrationStatus == RegistrationStatus.rejected ? AppBadgeVariant.danger : AppBadgeVariant.warning),
-              size: AppBadgeSize.small,
-            ),
-            if (isLeaderOrAdmin)
-              Row(
-                children: [
-                  if (isPending) ...[
-                    AppButton(
-                      text: 'اعتماد',
-                      variant: AppButtonVariant.primary,
-                      size: AppButtonSize.small,
-                      onPressed: () => ref.read(studentApprovalsProvider.notifier).approveStudent(s.id),
-                    ),
-                    const SizedBox(width: 6),
-                    AppButton(
-                      text: 'رفض',
-                      variant: AppButtonVariant.danger,
-                      size: AppButtonSize.small,
-                      onPressed: () => _showRejectDialog(context, s, l10n),
-                    ),
-                    const SizedBox(width: 6),
-                  ] else if (s.registrationStatus == RegistrationStatus.rejected) ...[
-                    AppButton(
-                      text: 'إعادة للمراجعة',
-                      variant: AppButtonVariant.secondary,
-                      size: AppButtonSize.small,
-                      onPressed: () => _showReturnToPendingDialog(context, s, l10n),
-                    ),
-                    const SizedBox(width: 6),
-                  ],
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline_rounded, color: AppDesignTokens.danger, size: 20),
-                    tooltip: 'حذف نهائي للحساب',
-                    onPressed: () => _showDeleteDialog(context, s, l10n),
-                  ),
-                ],
-              )
-            else
-              Text('—', style: TextStyle(color: AppDesignTokens.textMuted(context))),
-          ];
-        },
       ),
     );
   }
 
-  Widget _buildStudentCard(
-    BuildContext context,
-    UserProfile student,
-    bool isLeaderOrAdmin,
-    AppLocalizations l10n,
-  ) {
-    final isPending = student.registrationStatus == RegistrationStatus.pending;
-    final isApproved = student.registrationStatus == RegistrationStatus.approved;
-    final isRejected = student.registrationStatus == RegistrationStatus.rejected;
-
-    final statusVariant = isPending
-        ? AppBadgeVariant.warning
-        : (isApproved ? AppBadgeVariant.success : AppBadgeVariant.danger);
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10.0),
-      child: AppCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                InkWell(
-                  onTap: () => UserProfileDetailsScreen.show(
-                    context,
-                    userId: student.id,
-                    initialName: student.fullName,
-                    initialAvatarUrl: student.avatarUrl,
-                    initialCode: student.universityCode,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  child: AppAvatar(name: student.fullName, imageUrl: student.avatarUrl, size: AppAvatarSize.medium),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      InkWell(
-                        onTap: () => UserProfileDetailsScreen.show(
-                          context,
-                          userId: student.id,
-                          initialName: student.fullName,
-                          initialAvatarUrl: student.avatarUrl,
-                          initialCode: student.universityCode,
-                        ),
-                        child: Text(
-                          student.fullName,
-                          style: TextStyle(
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.bold,
-                            color: AppDesignTokens.textPrimary(context),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          AppBadge(label: student.registrationStatus.displayNameAr, variant: statusVariant, size: AppBadgeSize.small),
-                          const SizedBox(width: 6),
-                          AppBadge(label: 'كود: ${student.universityCode}', variant: AppBadgeVariant.neutral, size: AppBadgeSize.small),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                if (isLeaderOrAdmin)
-                  PopupMenuButton<String>(
-                    icon: Icon(Icons.more_vert_rounded, size: 20, color: AppDesignTokens.textMuted(context)),
-                    tooltip: 'خيارات الحساب',
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDesignTokens.radiusMd)),
-                    color: AppDesignTokens.surface(context),
-                    onSelected: (val) {
-                      if (val == 'delete') {
-                        _showDeleteDialog(context, student, l10n);
-                      } else if (val == 'return_pending') {
-                        _showReturnToPendingDialog(context, student, l10n);
-                      }
-                    },
-                    itemBuilder: (ctx) => [
-                      if (isRejected)
-                        const PopupMenuItem(
-                          value: 'return_pending',
-                          child: Row(
-                            children: [
-                              Icon(Icons.replay_rounded, color: AppDesignTokens.primary, size: 18),
-                              SizedBox(width: 8),
-                              Text('إعادة للمراجعة والاعتماد', style: TextStyle(fontSize: 13)),
-                            ],
-                          ),
-                        ),
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: Row(
-                          children: [
-                            Icon(Icons.delete_outline_rounded, color: AppDesignTokens.danger, size: 18),
-                            SizedBox(width: 8),
-                            Text('حذف نهائي للحساب 🗑️', style: TextStyle(fontSize: 13, color: AppDesignTokens.danger, fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-              ],
+  Widget _buildSearchAndFilters() {
+    return AppCard(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Search Input
+          TextField(
+            controller: _searchController,
+            style: TextStyle(color: AppDesignTokens.textPrimary(context), fontSize: 13),
+            decoration: InputDecoration(
+              hintText: 'ابحث باسم الطالب، الكود الجامعي، أو البريد الإلكتروني...',
+              hintStyle: TextStyle(color: AppDesignTokens.textMuted(context), fontSize: 12.5),
+              prefixIcon: const Icon(Icons.search_rounded, size: 20),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear_rounded, size: 18),
+                      onPressed: () => _searchController.clear(),
+                    )
+                  : null,
+              contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm)),
             ),
+          ),
+          const SizedBox(height: 12),
 
-            const SizedBox(height: 12),
-
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppDesignTokens.surfaceMuted(context),
-                borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
+          // Filters Row
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // Status Filter
+              _buildFilterDropdown(
+                label: 'الحالة:',
+                value: _selectedStatusFilter,
+                items: const [
+                  DropdownMenuItem(value: 'all', child: Text('جميع الحالات')),
+                  DropdownMenuItem(value: 'approved', child: Text('معتمد رسمي')),
+                  DropdownMenuItem(value: 'pending', child: Text('قيد الانتظار')),
+                  DropdownMenuItem(value: 'rejected', child: Text('مرفوض')),
+                ],
+                onChanged: (val) => setState(() => _selectedStatusFilter = val ?? 'all'),
               ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(child: _buildDetailRow(context, 'الكود:', student.universityCode)),
-                      Expanded(child: _buildDetailRow(context, 'المعدل GPA:', student.gpa != null ? student.gpa!.toStringAsFixed(2) : 'غير محدد')),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Expanded(child: _buildDetailRow(context, 'الهاتف:', student.phoneNumber.isNotEmpty ? student.phoneNumber : '—')),
-                      Expanded(child: _buildDetailRow(context, 'السكن:', student.isMatrouhResident ? 'مقيم مطروح' : 'مغترب')),
-                    ],
-                  ),
-                  if (student.rejectionReason != null && student.rejectionReason!.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Row(
+
+              // Presence Filter
+              _buildFilterDropdown(
+                label: 'التواجد:',
+                value: _selectedPresenceFilter,
+                items: const [
+                  DropdownMenuItem(value: 'all', child: Text('الكل')),
+                  DropdownMenuItem(value: 'online', child: Text('متصل الآن 🟢')),
+                  DropdownMenuItem(value: 'offline', child: Text('غير متصل ⚪')),
+                ],
+                onChanged: (val) => setState(() => _selectedPresenceFilter = val ?? 'all'),
+              ),
+
+              // Version Filter
+              _buildFilterDropdown(
+                label: 'التحديث:',
+                value: _selectedUpdateFilter,
+                items: const [
+                  DropdownMenuItem(value: 'all', child: Text('كل الإصدارات')),
+                  DropdownMenuItem(value: 'up_to_date', child: Text('محدث ✓')),
+                  DropdownMenuItem(value: 'outdated', child: Text('يحتاج تحديث ⚠')),
+                ],
+                onChanged: (val) => setState(() => _selectedUpdateFilter = val ?? 'all'),
+              ),
+
+              // Group Filter
+              _buildFilterDropdown(
+                label: 'المجموعة:',
+                value: _selectedGroupFilter,
+                items: const [
+                  DropdownMenuItem(value: 'all', child: Text('كل المجموعات')),
+                  DropdownMenuItem(value: 'A', child: Text('مجموعة A')),
+                  DropdownMenuItem(value: 'B', child: Text('مجموعة B')),
+                ],
+                onChanged: (val) => setState(() => _selectedGroupFilter = val ?? 'all'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterDropdown({
+    required String label,
+    required String value,
+    required List<DropdownMenuItem<String>> items,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppDesignTokens.bg(context),
+        borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
+        border: Border.all(color: AppDesignTokens.borderSubtle(context)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: TextStyle(fontSize: 11.5, color: AppDesignTokens.textSecondary(context), fontWeight: FontWeight.w600)),
+          const SizedBox(width: 6),
+          DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: value,
+              items: items,
+              onChanged: onChanged,
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppDesignTokens.textPrimary(context)),
+              icon: const Icon(Icons.arrow_drop_down_rounded, size: 18),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopTable(List<AdminStudentOverviewModel> students, DateTime serverNow) {
+    return AppCard(
+      padding: EdgeInsets.zero,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          headingRowColor: MaterialStateProperty.all(AppDesignTokens.surface(context)),
+          dataRowMinHeight: 56,
+          dataRowMaxHeight: 64,
+          horizontalMargin: 16,
+          columnSpacing: 20,
+          columns: const [
+            DataColumn(label: Text('الطالب', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('الكود', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('GPA', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('المجموعة', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('الاعتماد', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('التطبيق', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('التحديث', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('Online / Last Seen', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('الإجراءات', style: TextStyle(fontWeight: FontWeight.bold))),
+          ],
+          rows: students.map((s) {
+            final isOnline = s.isEffectivelyOnlineAt(serverNow);
+            final presenceText = s.formattedPresenceArabic(serverNow);
+
+            return DataRow(
+              cells: [
+                // الطالب
+                DataCell(
+                  InkWell(
+                    onTap: () => AdminStudentProfileScreen.show(
+                      context,
+                      studentId: s.studentId,
+                      initialName: s.fullName,
+                      initialAvatarUrl: s.avatarUrl,
+                      initialCode: s.universityCode,
+                    ),
+                    child: Row(
                       children: [
-                        Expanded(
-                          child: Text(
-                            'سبب الرفض: ${student.rejectionReason}',
-                            style: const TextStyle(fontSize: 11, color: AppDesignTokens.danger, fontWeight: FontWeight.w600),
-                          ),
+                        AppAvatar(imageUrl: s.avatarUrl, name: s.fullName, size: AppAvatarSize.small),
+                        const SizedBox(width: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(s.fullName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            Text(s.email, style: TextStyle(fontSize: 11, color: AppDesignTokens.textMuted(context))),
+                          ],
                         ),
                       ],
                     ),
-                  ],
-                ],
-              ),
-            ),
-
-            if (isLeaderOrAdmin) ...[
-              if (isPending) ...[
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: AppButton(
-                        text: 'اعتماد الحساب',
-                        icon: Icons.check_circle_outline_rounded,
-                        variant: AppButtonVariant.primary,
-                        size: AppButtonSize.small,
-                        onPressed: () async {
-                          final messenger = ScaffoldMessenger.of(context);
-                          final ok = await ref.read(studentApprovalsProvider.notifier).approveStudent(student.id);
-                          messenger.showSnackBar(
-                            SnackBar(
-                              backgroundColor: ok ? AppDesignTokens.success : AppDesignTokens.danger,
-                              content: Text(ok ? 'تم اعتماد الطالب بنجاح ✅' : 'فشل الاعتماد ❌'),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 2,
-                      child: AppButton(
-                        text: 'رفض الطلب',
-                        icon: Icons.cancel_outlined,
-                        variant: AppButtonVariant.danger,
-                        size: AppButtonSize.small,
-                        onPressed: () => _showRejectDialog(context, student, l10n),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ] else if (isRejected) ...[
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: AppButton(
-                        text: 'إعادة للمراجعة 🔄',
-                        icon: Icons.replay_rounded,
-                        variant: AppButtonVariant.secondary,
-                        size: AppButtonSize.small,
-                        onPressed: () => _showReturnToPendingDialog(context, student, l10n),
+
+                // الكود
+                DataCell(Text(s.universityCode, style: const TextStyle(fontFamily: 'monospace', fontSize: 12))),
+
+                // GPA
+                DataCell(Text(s.gpa != null ? s.gpa!.toStringAsFixed(2) : '-', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5))),
+
+                // المجموعة
+                DataCell(
+                  AppBadge(
+                    label: s.studentGroup,
+                    variant: s.studentGroup == 'A' ? AppBadgeVariant.primary : AppBadgeVariant.info,
+                    size: AppBadgeSize.small,
+                  ),
+                ),
+
+                // الاعتماد
+                DataCell(_buildStatusBadge(s.registrationStatus)),
+
+                // التطبيق
+                DataCell(Text(s.formattedPlatformAndVersion, style: const TextStyle(fontSize: 12))),
+
+                // التحديث
+                DataCell(_buildUpdateBadge(s.updateStatus)),
+
+                // Online / Last Seen
+                DataCell(
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isOnline ? AppDesignTokens.success : AppDesignTokens.textMuted(context),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 2,
-                      child: AppButton(
-                        text: 'حذف نهائي',
-                        icon: Icons.delete_outline_rounded,
-                        variant: AppButtonVariant.danger,
-                        size: AppButtonSize.small,
-                        onPressed: () => _showDeleteDialog(context, student, l10n),
+                      const SizedBox(width: 6),
+                      Text(
+                        presenceText,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isOnline ? FontWeight.bold : FontWeight.normal,
+                          color: isOnline ? AppDesignTokens.success : AppDesignTokens.textSecondary(context),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                ),
+
+                // الإجراءات
+                DataCell(
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // View Full Admin Profile
+                      IconButton(
+                        icon: const Icon(Icons.person_outline_rounded, size: 20),
+                        tooltip: 'الملف الإداري الشامل',
+                        color: AppDesignTokens.primary,
+                        onPressed: () => AdminStudentProfileScreen.show(
+                          context,
+                          studentId: s.studentId,
+                          initialName: s.fullName,
+                          initialAvatarUrl: s.avatarUrl,
+                          initialCode: s.universityCode,
+                        ),
+                      ),
+
+                      // Approve / Reject actions
+                      if (s.registrationStatus == 'pending') ...[
+                        IconButton(
+                          icon: const Icon(Icons.check_circle_outline_rounded, size: 20, color: AppDesignTokens.success),
+                          tooltip: 'اعتماد الحساب',
+                          onPressed: () async {
+                            final success = await AdminStudentManagementService.instance.approveStudent(s.studentId);
+                            if (success) _loadStudents();
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.highlight_off_rounded, size: 20, color: AppDesignTokens.warning),
+                          tooltip: 'رفض الطلب',
+                          onPressed: () => _showRejectDialog(s),
+                        ),
+                      ],
+
+                      // Delete
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppDesignTokens.danger),
+                        tooltip: 'حذف الحساب',
+                        onPressed: () => _showDeleteDialog(s),
+                      ),
+                    ],
+                  ),
                 ),
               ],
-            ],
-          ],
+            );
+          }).toList(),
         ),
       ),
     );
   }
 
-  Widget _buildDetailRow(BuildContext context, String label, String value) {
-    return Row(
-      children: [
-        Text(label, style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context))),
-        const SizedBox(width: 4),
-        Expanded(
-          child: Text(
-            value,
-            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppDesignTokens.textPrimary(context)),
-            overflow: TextOverflow.ellipsis,
+  Widget _buildMobileCards(List<AdminStudentOverviewModel> students, DateTime serverNow) {
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: students.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (ctx, i) {
+        final s = students[i];
+        final isOnline = s.isEffectivelyOnlineAt(serverNow);
+        final presenceText = s.formattedPresenceArabic(serverNow);
+
+        return AppCard(
+          onTap: () => AdminStudentProfileScreen.show(
+            context,
+            studentId: s.studentId,
+            initialName: s.fullName,
+            initialAvatarUrl: s.avatarUrl,
+            initialCode: s.universityCode,
           ),
-        ),
-      ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  AppAvatar(imageUrl: s.avatarUrl, name: s.fullName, size: AppAvatarSize.medium),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(s.fullName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        const SizedBox(height: 2),
+                        Text('كود: ${s.universityCode} • GPA: ${s.gpa ?? "-"} • مجموعة ${s.studentGroup}',
+                            style: TextStyle(fontSize: 11.5, color: AppDesignTokens.textSecondary(context))),
+                      ],
+                    ),
+                  ),
+                  _buildStatusBadge(s.registrationStatus),
+                ],
+              ),
+              const Divider(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Presence
+                  Row(
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isOnline ? AppDesignTokens.success : AppDesignTokens.textMuted(context),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        presenceText,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: isOnline ? FontWeight.bold : FontWeight.normal,
+                          color: isOnline ? AppDesignTokens.success : AppDesignTokens.textSecondary(context),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // App Version Badge
+                  _buildUpdateBadge(s.updateStatus),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
+  }
+
+  Widget _buildStatusBadge(String status) {
+    switch (status) {
+      case 'approved':
+        return const AppBadge(label: 'معتمد رسمي', variant: AppBadgeVariant.success, size: AppBadgeSize.small);
+      case 'pending':
+        return const AppBadge(label: 'قيد الانتظار', variant: AppBadgeVariant.warning, size: AppBadgeSize.small);
+      case 'rejected':
+        return const AppBadge(label: 'مرفوض', variant: AppBadgeVariant.danger, size: AppBadgeSize.small);
+      default:
+        return const AppBadge(label: 'معتمد', variant: AppBadgeVariant.neutral, size: AppBadgeSize.small);
+    }
+  }
+
+  Widget _buildUpdateBadge(AppUpdateStatus status) {
+    switch (status) {
+      case AppUpdateStatus.upToDate:
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(color: AppDesignTokens.success.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_circle_rounded, size: 12, color: AppDesignTokens.success),
+              SizedBox(width: 4),
+              Text('محدث', style: TextStyle(color: AppDesignTokens.success, fontSize: 11, fontWeight: FontWeight.bold)),
+            ],
+          ),
+        );
+      case AppUpdateStatus.outdated:
+      case AppUpdateStatus.forceUpdateRequired:
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(color: AppDesignTokens.warning.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.warning_amber_rounded, size: 12, color: AppDesignTokens.warning),
+              SizedBox(width: 4),
+              Text('يحتاج تحديث', style: TextStyle(color: AppDesignTokens.warning, fontSize: 11, fontWeight: FontWeight.bold)),
+            ],
+          ),
+        );
+      case AppUpdateStatus.unknown:
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(color: Colors.grey.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+          child: Text('غير معروف', style: TextStyle(color: AppDesignTokens.textMuted(context), fontSize: 11)),
+        );
+    }
   }
 }
