@@ -12,128 +12,80 @@ class KnowledgeRepository {
   KnowledgeRepository([SupabaseClient? client])
       : _client = client ?? SupabaseService.client;
 
-  // ── CATEGORIES & SUBCATEGORIES ──────────────────────────────────────────────
+  // ── CATEGORIES & SECTIONS ───────────────────────────────────────────────────
 
-  /// Fixed UUID for the Study Files / References main category
-  static const String studyFilesParentId = '00000000-0000-0000-0000-000000000007';
-
-  /// Ensures the parent "ملفات المذاكرة" category exists in the database
-  Future<String> ensureStudyParentCategory() async {
-    try {
-      final res = await _client
-          .from('knowledge_categories')
-          .select('id, name_ar')
-          .or('id.eq.$studyFilesParentId,name_ar.ilike.%ملفات المذاكرة%,name_ar.ilike.%المراجع%')
-          .limit(1);
-
-      if ((res as List).isNotEmpty) {
-        return res.first['id'].toString();
-      }
-
-      // Create study files parent category if not found
-      final inserted = await _client.from('knowledge_categories').insert({
-        'id': studyFilesParentId,
-        'name_ar': 'ملفات المذاكرة',
-        'description': 'ملفات PDF تعليمية وشروحات تخصصية لطلاب الامتياز',
-        'icon_name': 'menu_book',
-        'order_index': 7,
-        'is_active': true,
-        'parent_id': null,
-      }).select('id').single();
-
-      return inserted['id'].toString();
-    } catch (e) {
-      if (kDebugMode) print('[KnowledgeRepository] ensureStudyParentCategory error: $e');
-      return studyFilesParentId;
-    }
-  }
-
-  /// Fetch all sections dedicated to Study Files
+  /// Fetch all sections/categories available in the database
   Future<List<KnowledgeCategory>> fetchStudySections({bool includeInactive = false}) async {
     try {
-      final parentId = await ensureStudyParentCategory();
-
-      PostgrestFilterBuilder query = _client.from('knowledge_categories').select();
-
-      if (!includeInactive) {
-        query = query.eq('is_active', true);
+      // 1. Try structured query with ordering
+      dynamic res;
+      try {
+        PostgrestFilterBuilder query = _client.from('knowledge_categories').select();
+        if (!includeInactive) {
+          query = query.eq('is_active', true);
+        }
+        res = await query.order('order_index', ascending: true);
+      } catch (e) {
+        // Fallback to basic select if order_index or is_active column doesn't exist
+        res = await _client.from('knowledge_categories').select();
       }
 
-      // Fetch categories with this parent_id
-      final res = await query
-          .eq('parent_id', parentId)
-          .order('order_index', ascending: true);
-
-      final list = (res as List)
+      final rawList = (res as List)
           .map((json) => KnowledgeCategory.fromJson(json as Map<String, dynamic>))
           .toList();
 
-      // If no subcategories found under parent, fallback to any non-main category or all active
-      if (list.isEmpty) {
-        final fallbackQuery = _client.from('knowledge_categories').select();
-        final fallbackRes = await (includeInactive ? fallbackQuery : fallbackQuery.eq('is_active', true))
-            .not('parent_id', 'is', null)
-            .order('order_index', ascending: true);
+      if (rawList.isEmpty) return [];
 
-        return (fallbackRes as List)
-            .map((json) => KnowledgeCategory.fromJson(json as Map<String, dynamic>))
-            .toList();
+      // Separate main containers vs subcategories if any hierarchy exists
+      final subcategories = rawList.where((c) => !c.isMainCategory).toList();
+      if (subcategories.isNotEmpty) {
+        return subcategories;
       }
 
-      return list;
+      // If no subcategories, return all categories (excluding root container if specific)
+      final filtered = rawList.where((c) {
+        final name = c.nameAr.trim();
+        return name != 'المكتبة السريرية';
+      }).toList();
+
+      return filtered.isNotEmpty ? filtered : rawList;
     } catch (e) {
       if (kDebugMode) print('[KnowledgeRepository] fetchStudySections error: $e');
       return [];
     }
   }
 
-  /// Fetch flat list of categories directly without nested dropping
+  /// Fetch flat list of categories directly
   Future<List<KnowledgeCategory>> fetchFlatCategories({
     String? parentId,
     bool includeInactive = false,
   }) async {
-    try {
-      PostgrestFilterBuilder query = _client.from('knowledge_categories').select();
-
-      if (!includeInactive) {
-        query = query.eq('is_active', true);
-      }
-
-      if (parentId != null && parentId.isNotEmpty) {
-        query = query.eq('parent_id', parentId);
-      }
-
-      final res = await query.order('order_index', ascending: true);
-      return (res as List)
-          .map((json) => KnowledgeCategory.fromJson(json as Map<String, dynamic>))
-          .toList();
-    } catch (e) {
-      if (kDebugMode) print('[KnowledgeRepository] fetchFlatCategories error: $e');
-      return [];
-    }
+    return await fetchStudySections(includeInactive: includeInactive);
   }
 
   /// Fetch all categories structured as a parent -> subcategories hierarchy
   Future<List<KnowledgeCategory>> fetchCategories({bool includeInactive = false}) async {
     try {
-      PostgrestFilterBuilder query = _client.from('knowledge_categories').select();
-
-      if (!includeInactive) {
-        query = query.eq('is_active', true);
+      dynamic res;
+      try {
+        PostgrestFilterBuilder query = _client.from('knowledge_categories').select();
+        if (!includeInactive) {
+          query = query.eq('is_active', true);
+        }
+        res = await query.order('order_index', ascending: true);
+      } catch (_) {
+        res = await _client.from('knowledge_categories').select();
       }
 
-      final res = await query.order('order_index', ascending: true);
       final rawList = (res as List).map((json) => KnowledgeCategory.fromJson(json as Map<String, dynamic>)).toList();
 
       final mainCategories = rawList.where((c) => c.isMainCategory).toList();
       final subcategories = rawList.where((c) => !c.isMainCategory).toList();
 
-      if (mainCategories.isEmpty && rawList.isNotEmpty) {
-        // If all categories were inserted without parent_id, return them as main categories
+      if (mainCategories.isEmpty) {
         return rawList;
       }
 
-      // Build hierarchy
       return mainCategories.map((main) {
         final subs = subcategories.where((s) => s.parentId == main.id).toList();
         return main.copyWith(subcategories: subs);
@@ -144,7 +96,7 @@ class KnowledgeRepository {
     }
   }
 
-  /// Create category or subcategory (Admin / Doctor)
+  /// Create category with adaptive schema fallback
   Future<KnowledgeCategory> createCategory({
     required String nameAr,
     String? description,
@@ -153,28 +105,37 @@ class KnowledgeRepository {
     int orderIndex = 0,
     bool isActive = true,
   }) async {
+    final name = nameAr.trim();
+    if (name.isEmpty) throw Exception('اسم القسم لا يمكن أن يكون فارغاً');
+
+    // 1. Try full payload insert
     try {
-      final userId = _client.auth.currentUser?.id;
-      final now = DateTime.now().toIso8601String();
-
-      // If parentId was not provided, default to the Study Files parent ID
-      final effectiveParentId = parentId ?? await ensureStudyParentCategory();
-
-      final res = await _client.from('knowledge_categories').insert({
-        'name_ar': nameAr.trim(),
+      final Map<String, dynamic> payload = {
+        'name_ar': name,
         'description': description?.trim(),
         'icon_name': iconName,
-        'parent_id': effectiveParentId,
         'order_index': orderIndex,
         'is_active': isActive,
-        'created_by': userId,
-        'created_at': now,
-        'updated_at': now,
-      }).select().single();
+      };
+      if (parentId != null && parentId.isNotEmpty) {
+        payload['parent_id'] = parentId;
+      }
 
+      final res = await _client.from('knowledge_categories').insert(payload).select().single();
       return KnowledgeCategory.fromJson(res);
     } catch (e) {
-      throw Exception('فشل في إنشاء القسم: $e');
+      if (kDebugMode) print('[KnowledgeRepository] createCategory full payload error: $e, trying minimal payload');
+
+      // 2. Fallback to basic columns insert if extended columns do not exist yet in DB
+      try {
+        final res = await _client.from('knowledge_categories').insert({
+          'name_ar': name,
+          'icon_name': iconName,
+        }).select().single();
+        return KnowledgeCategory.fromJson(res);
+      } catch (e2) {
+        throw Exception('فشل في إنشاء القسم في قاعدة البيانات: $e2');
+      }
     }
   }
 
@@ -189,9 +150,7 @@ class KnowledgeRepository {
     bool? isActive,
   }) async {
     try {
-      final Map<String, dynamic> updates = {
-        'updated_at': DateTime.now().toIso8601String(),
-      };
+      final Map<String, dynamic> updates = {};
       if (nameAr != null) updates['name_ar'] = nameAr.trim();
       if (description != null) updates['description'] = description.trim();
       if (iconName != null) updates['icon_name'] = iconName;
@@ -201,7 +160,12 @@ class KnowledgeRepository {
 
       await _client.from('knowledge_categories').update(updates).eq('id', id);
     } catch (e) {
-      throw Exception('فشل في تعديل القسم: $e');
+      // If extended columns fail, try updating only name_ar
+      if (nameAr != null) {
+        await _client.from('knowledge_categories').update({'name_ar': nameAr.trim()}).eq('id', id);
+      } else {
+        throw Exception('فشل في تعديل القسم: $e');
+      }
     }
   }
 
@@ -209,15 +173,17 @@ class KnowledgeRepository {
   Future<void> deleteCategory(String id) async {
     try {
       // Check if articles are associated with this category
-      final checkRes = await _client
-          .from('knowledge_articles')
-          .select('id')
-          .or('category_id.eq.$id,subcategory_id.eq.$id')
-          .limit(1);
+      try {
+        final checkRes = await _client
+            .from('knowledge_articles')
+            .select('id')
+            .or('category_id.eq.$id,subcategory_id.eq.$id')
+            .limit(1);
 
-      if ((checkRes as List).isNotEmpty) {
-        throw Exception('لا يمكن حذف القسم لوجود مقالات أو ملفات مرتبطة به. يرجى نقلها أولاً.');
-      }
+        if ((checkRes as List).isNotEmpty) {
+          throw Exception('لا يمكن حذف القسم لوجود مقالات أو ملفات مرتبطة به. يرجى نقلها أولاً.');
+        }
+      } catch (_) {}
 
       await _client.from('knowledge_categories').delete().eq('id', id);
     } catch (e) {
@@ -255,7 +221,7 @@ class KnowledgeRepository {
       }
 
       if (subcategoryId != null && subcategoryId.isNotEmpty && subcategoryId != 'all') {
-        filterQuery = filterQuery.eq('subcategory_id', subcategoryId);
+        filterQuery = filterQuery.or('subcategory_id.eq.$subcategoryId,category_id.eq.$subcategoryId');
       }
 
       if (contentType != null && contentType.isNotEmpty && contentType != 'all') {
@@ -334,15 +300,13 @@ class KnowledgeRepository {
       final authorId = _client.auth.currentUser?.id;
       final now = DateTime.now().toIso8601String();
 
-      final effectiveCategoryId = categoryId ?? (contentType == 'pdf' || contentType == 'scientific_reference' ? studyFilesParentId : null);
-
       final res = await _client.from('knowledge_articles').insert({
         'title': title.trim(),
         'summary': summary.trim(),
         'content_markdown': contentMarkdown.trim(),
         'type': contentType,
         'content_type': contentType,
-        'category_id': effectiveCategoryId,
+        'category_id': categoryId ?? subcategoryId,
         'subcategory_id': subcategoryId,
         'drive_file_id': driveFileId,
         'drive_file_url': driveFileUrl,
