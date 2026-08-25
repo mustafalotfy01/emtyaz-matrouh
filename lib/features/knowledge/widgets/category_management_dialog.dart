@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/app_design_tokens.dart';
-import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_input.dart';
 import '../models/knowledge_category.dart';
 import '../providers/knowledge_provider.dart';
@@ -23,13 +22,45 @@ class CategoryManagementDialog extends ConsumerStatefulWidget {
 }
 
 class _CategoryManagementDialogState extends ConsumerState<CategoryManagementDialog> {
+  List<KnowledgeCategory>? _localSections;
   bool _isLoading = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSections();
+  }
+
+  Future<void> _loadSections() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final repo = ref.read(knowledgeRepositoryProvider);
+      final sections = await repo.fetchStudySections(includeInactive: true);
+      if (mounted) {
+        setState(() {
+          _localSections = sections;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   void _showAddEditDialog([KnowledgeCategory? existingCategory]) {
     final isEditing = existingCategory != null;
     final nameController = TextEditingController(text: existingCategory?.nameAr ?? '');
     final descController = TextEditingController(text: existingCategory?.description ?? '');
-    String iconName = existingCategory?.iconName ?? (widget.parentCategoryId != null ? 'menu_book' : 'assignment');
     bool isActive = existingCategory?.isActive ?? true;
 
     showDialog(
@@ -39,11 +70,7 @@ class _CategoryManagementDialogState extends ConsumerState<CategoryManagementDia
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: Text(
-              isEditing
-                  ? 'تعديل القسم: ${existingCategory.nameAr}'
-                  : (widget.parentCategoryName != null
-                      ? 'إضافة قسم فرعي لـ "${widget.parentCategoryName}"'
-                      : 'إضافة قسم رئيسي للمكتبة'),
+              isEditing ? 'تعديل القسم: ${existingCategory.nameAr}' : 'إضافة قسم جديد لملفات المذاكرة',
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
             ),
             content: SingleChildScrollView(
@@ -52,13 +79,13 @@ class _CategoryManagementDialogState extends ConsumerState<CategoryManagementDia
                 children: [
                   AppInput(
                     label: 'اسم القسم *',
-                    hint: 'مثال: العناية المركزة / طب الطوارئ',
+                    hint: 'مثال: أساسيات التمريض / العناية المركزة',
                     controller: nameController,
                   ),
                   const SizedBox(height: 12),
                   AppInput(
                     label: 'وصف موجز (اختياري)',
-                    hint: 'نبذة عن المحتوى الموجود في هذا القسم...',
+                    hint: 'نبذة عن الملفات الموجودة في هذا القسم...',
                     controller: descController,
                     maxLines: 2,
                   ),
@@ -66,7 +93,7 @@ class _CategoryManagementDialogState extends ConsumerState<CategoryManagementDia
                   SwitchListTile.adaptive(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('تفعيل القسم', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                    subtitle: const Text('القسم المفعّل يظهر للطلاب في المكتبة', style: TextStyle(fontSize: 11)),
+                    subtitle: const Text('القسم المفعّل يظهر للطلاب في قائمة المذاكرة', style: TextStyle(fontSize: 11)),
                     value: isActive,
                     activeColor: AppDesignTokens.primary,
                     onChanged: (val) => setModalState(() => isActive = val),
@@ -95,27 +122,30 @@ class _CategoryManagementDialogState extends ConsumerState<CategoryManagementDia
                         id: existingCategory.id,
                         nameAr: name,
                         description: descController.text.trim(),
-                        iconName: iconName,
                         isActive: isActive,
                       );
                     } else {
                       await repo.createCategory(
                         nameAr: name,
                         description: descController.text.trim(),
-                        iconName: iconName,
-                        parentId: widget.parentCategoryId,
                         isActive: isActive,
                       );
                     }
 
+                    // Invalidate providers
+                    ref.invalidate(studySectionsProvider);
+                    ref.invalidate(adminStudySectionsProvider);
                     ref.invalidate(knowledgeCategoriesProvider);
                     ref.invalidate(adminKnowledgeCategoriesProvider);
+
+                    // Refresh local list immediately
+                    await _loadSections();
 
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           backgroundColor: AppDesignTokens.success,
-                          content: Text(isEditing ? 'تم تعديل القسم بنجاح' : 'تمت إضافة القسم بنجاح'),
+                          content: Text(isEditing ? 'تم تعديل القسم بنجاح ✅' : 'تمت إضافة القسم بنجاح ✅'),
                         ),
                       );
                     }
@@ -147,7 +177,7 @@ class _CategoryManagementDialogState extends ConsumerState<CategoryManagementDia
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('تأكيد حذف القسم'),
-        content: Text('هل أنت متأكد من حذف قسم "${category.nameAr}"؟\nلا يمكن حذف القسم إذا كان يحتوي على مقالات أو مراجع.'),
+        content: Text('هل أنت متأكد من حذف قسم "${category.nameAr}"؟\nلا يمكن حذف القسم إذا كان يحتوي على ملفات.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
           FilledButton(
@@ -163,11 +193,17 @@ class _CategoryManagementDialogState extends ConsumerState<CategoryManagementDia
       setState(() => _isLoading = true);
       try {
         await ref.read(knowledgeRepositoryProvider).deleteCategory(category.id);
+
+        ref.invalidate(studySectionsProvider);
+        ref.invalidate(adminStudySectionsProvider);
         ref.invalidate(knowledgeCategoriesProvider);
         ref.invalidate(adminKnowledgeCategoriesProvider);
+
+        await _loadSections();
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(backgroundColor: AppDesignTokens.success, content: Text('تم حذف القسم بنجاح')),
+            const SnackBar(backgroundColor: AppDesignTokens.success, content: Text('تم حذف القسم بنجاح ✅')),
           );
         }
       } catch (e) {
@@ -184,7 +220,7 @@ class _CategoryManagementDialogState extends ConsumerState<CategoryManagementDia
 
   @override
   Widget build(BuildContext context) {
-    final categoriesAsync = ref.watch(adminKnowledgeCategoriesProvider);
+    final sections = _localSections;
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -198,12 +234,10 @@ class _CategoryManagementDialogState extends ConsumerState<CategoryManagementDia
               children: [
                 const Icon(Icons.category_rounded, color: AppDesignTokens.primary, size: 24),
                 const SizedBox(width: 8),
-                Expanded(
+                const Expanded(
                   child: Text(
-                    widget.parentCategoryName != null
-                        ? 'إدارة الأقسام الفرعية: ${widget.parentCategoryName}'
-                        : 'إدارة أقسام المكتبة السريرية',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    'إدارة أقسام ملفات المذاكرة 📚',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
                 IconButton(
@@ -212,9 +246,9 @@ class _CategoryManagementDialogState extends ConsumerState<CategoryManagementDia
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
-              'يمكنك إضافة وتعديل وترتيب الأقسام الفرعية التي تظهر للأطباء والطلاب.',
+              'أضف ونظم الأقسام والتخصصات التي تظهر للطلاب في مكتبة ملفات المذاكرة.',
               style: TextStyle(fontSize: 12, color: AppDesignTokens.textSecondary(context)),
             ),
             const SizedBox(height: 14),
@@ -237,81 +271,91 @@ class _CategoryManagementDialogState extends ConsumerState<CategoryManagementDia
             const SizedBox(height: 10),
             const Divider(height: 1),
             Expanded(
-              child: categoriesAsync.when(
-                data: (allCategories) {
-                  final List<KnowledgeCategory> displayList;
-                  if (widget.parentCategoryId != null) {
-                    final parent = allCategories.firstWhere(
-                      (c) => c.id == widget.parentCategoryId,
-                      orElse: () => KnowledgeCategory(id: '', nameAr: ''),
-                    );
-                    displayList = parent.subcategories;
-                  } else {
-                    displayList = allCategories;
-                  }
-
-                  if (displayList.isEmpty) {
-                    return const Center(
-                      child: Text(
-                        'لا توجد أقسام مسجلة حاليًا.\nاضغط على "إضافة قسم جديد" للبدء.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: AppColors.textMuted, fontSize: 13),
-                      ),
-                    );
-                  }
-
-                  return ListView.separated(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: displayList.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, idx) {
-                      final cat = displayList[idx];
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        leading: CircleAvatar(
-                          radius: 16,
-                          backgroundColor: cat.isActive
-                              ? AppDesignTokens.primary.withOpacity(0.12)
-                              : AppDesignTokens.border(context),
-                          child: Icon(
-                            cat.isActive ? Icons.folder_rounded : Icons.folder_off_rounded,
-                            color: cat.isActive ? AppDesignTokens.primary : AppColors.textMuted,
-                            size: 18,
+              child: _isLoading && (sections == null || sections.isEmpty)
+                  ? const Center(
+                      child: CircularProgressIndicator(color: AppDesignTokens.primary),
+                    )
+                  : _errorMessage != null && (sections == null || sections.isEmpty)
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text('خطأ في جلب الأقسام: $_errorMessage', style: const TextStyle(fontSize: 12)),
+                              const SizedBox(height: 8),
+                              OutlinedButton(onPressed: _loadSections, child: const Text('إعادة المحاولة')),
+                            ],
                           ),
-                        ),
-                        title: Text(
-                          cat.nameAr,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.bold,
-                            decoration: cat.isActive ? null : TextDecoration.lineThrough,
-                          ),
-                        ),
-                        subtitle: cat.description != null && cat.description!.isNotEmpty
-                            ? Text(cat.description!, style: const TextStyle(fontSize: 11.5), maxLines: 1)
-                            : null,
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined, size: 18, color: AppDesignTokens.primary),
-                              tooltip: 'تعديل',
-                              onPressed: () => _showAddEditDialog(cat),
+                        )
+                      : (sections == null || sections.isEmpty)
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.folder_open_rounded, size: 48, color: AppColors.textMuted),
+                                  const SizedBox(height: 10),
+                                  const Text(
+                                    'لا توجد أقسام مسجلة حاليًا.\nاضغط على "إضافة قسم جديد" للبدء.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  FilledButton.icon(
+                                    onPressed: () => _showAddEditDialog(),
+                                    icon: const Icon(Icons.add_rounded, size: 18),
+                                    label: const Text('إضافة قسم الآن'),
+                                    style: FilledButton.styleFrom(backgroundColor: AppDesignTokens.primary),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : ListView.separated(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              itemCount: sections.length,
+                              separatorBuilder: (_, __) => const Divider(height: 1),
+                              itemBuilder: (context, idx) {
+                                final cat = sections[idx];
+                                return ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  leading: CircleAvatar(
+                                    radius: 16,
+                                    backgroundColor: cat.isActive
+                                        ? AppDesignTokens.primary.withOpacity(0.12)
+                                        : AppDesignTokens.border(context),
+                                    child: Icon(
+                                      cat.isActive ? Icons.folder_rounded : Icons.folder_off_rounded,
+                                      color: cat.isActive ? AppDesignTokens.primary : AppColors.textMuted,
+                                      size: 18,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    cat.nameAr,
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.bold,
+                                      decoration: cat.isActive ? null : TextDecoration.lineThrough,
+                                    ),
+                                  ),
+                                  subtitle: cat.description != null && cat.description!.isNotEmpty
+                                      ? Text(cat.description!, style: const TextStyle(fontSize: 11.5), maxLines: 1)
+                                      : null,
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.edit_outlined, size: 18, color: AppDesignTokens.primary),
+                                        tooltip: 'تعديل',
+                                        onPressed: () => _showAddEditDialog(cat),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete_outline_rounded, size: 18, color: AppDesignTokens.danger),
+                                        tooltip: 'حذف',
+                                        onPressed: () => _deleteCategory(cat),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline_rounded, size: 18, color: AppDesignTokens.danger),
-                              tooltip: 'حذف',
-                              onPressed: () => _deleteCategory(cat),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  );
-                },
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Center(child: Text('خطأ في جلب الأقسام: $e')),
-              ),
             ),
           ],
         ),

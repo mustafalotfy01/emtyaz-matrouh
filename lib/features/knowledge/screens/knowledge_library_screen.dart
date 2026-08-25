@@ -163,7 +163,7 @@ class _KnowledgeLibraryScreenState extends ConsumerState<KnowledgeLibraryScreen>
                 _buildMainCategoriesGrid(context),
                 const SizedBox(height: 20),
 
-                // ── 4. Featured Scientific References ─────────────────────────
+                // ── 4. Featured Study Files ─────────────────────────
                 featuredAsync.when(
                   data: (featuredList) {
                     if (featuredList.isEmpty) return const SizedBox.shrink();
@@ -173,7 +173,7 @@ class _KnowledgeLibraryScreenState extends ConsumerState<KnowledgeLibraryScreen>
                         Row(
                           children: [
                             const Text(
-                              '⭐ مراجع علمية مميزة',
+                              '⭐ ملفات مذاكرة مميزة',
                               style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                             ),
                             const Spacer(),
@@ -219,7 +219,7 @@ class _KnowledgeLibraryScreenState extends ConsumerState<KnowledgeLibraryScreen>
                             Icon(Icons.bookmark_rounded, size: 18, color: AppDesignTokens.primary),
                             SizedBox(width: 6),
                             Text(
-                              'المراجع المحفوظة وإشارات القراءة',
+                              'الملفات المحفوظة وإشارات القراءة',
                               style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
                             ),
                           ],
@@ -438,12 +438,12 @@ class _KnowledgeLibraryScreenState extends ConsumerState<KnowledgeLibraryScreen>
                       Row(
                         children: [
                           Text(
-                            '📚 المراجع العلمية (PDF)',
+                            '📚 ملفات المذاكرة (PDF)',
                             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                           ),
                           SizedBox(width: 6),
                           Chip(
-                            label: Text('قسم المراجع', style: TextStyle(fontSize: 9.5, color: Colors.white, fontWeight: FontWeight.bold)),
+                            label: Text('ملفات تعليمية', style: TextStyle(fontSize: 9.5, color: Colors.white, fontWeight: FontWeight.bold)),
                             backgroundColor: Colors.white24,
                             padding: EdgeInsets.zero,
                             visualDensity: VisualDensity.compact,
@@ -452,7 +452,7 @@ class _KnowledgeLibraryScreenState extends ConsumerState<KnowledgeLibraryScreen>
                       ),
                       SizedBox(height: 3),
                       Text(
-                        'مراجع وكتب علمية بصيغة PDF وتصفح إلكتروني متكامل داخل التطبيق',
+                        'ملفات PDF تعليمية تساعد طلاب الامتياز على المذاكرة والمراجعة.',
                         style: TextStyle(fontSize: 11.5, color: Colors.white70, height: 1.3),
                       ),
                     ],

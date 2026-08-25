@@ -14,6 +14,105 @@ class KnowledgeRepository {
 
   // ── CATEGORIES & SUBCATEGORIES ──────────────────────────────────────────────
 
+  /// Fixed UUID for the Study Files / References main category
+  static const String studyFilesParentId = '00000000-0000-0000-0000-000000000007';
+
+  /// Ensures the parent "ملفات المذاكرة" category exists in the database
+  Future<String> ensureStudyParentCategory() async {
+    try {
+      final res = await _client
+          .from('knowledge_categories')
+          .select('id, name_ar')
+          .or('id.eq.$studyFilesParentId,name_ar.ilike.%ملفات المذاكرة%,name_ar.ilike.%المراجع%')
+          .limit(1);
+
+      if ((res as List).isNotEmpty) {
+        return res.first['id'].toString();
+      }
+
+      // Create study files parent category if not found
+      final inserted = await _client.from('knowledge_categories').insert({
+        'id': studyFilesParentId,
+        'name_ar': 'ملفات المذاكرة',
+        'description': 'ملفات PDF تعليمية وشروحات تخصصية لطلاب الامتياز',
+        'icon_name': 'menu_book',
+        'order_index': 7,
+        'is_active': true,
+        'parent_id': null,
+      }).select('id').single();
+
+      return inserted['id'].toString();
+    } catch (e) {
+      if (kDebugMode) print('[KnowledgeRepository] ensureStudyParentCategory error: $e');
+      return studyFilesParentId;
+    }
+  }
+
+  /// Fetch all sections dedicated to Study Files
+  Future<List<KnowledgeCategory>> fetchStudySections({bool includeInactive = false}) async {
+    try {
+      final parentId = await ensureStudyParentCategory();
+
+      PostgrestFilterBuilder query = _client.from('knowledge_categories').select();
+
+      if (!includeInactive) {
+        query = query.eq('is_active', true);
+      }
+
+      // Fetch categories with this parent_id
+      final res = await query
+          .eq('parent_id', parentId)
+          .order('order_index', ascending: true);
+
+      final list = (res as List)
+          .map((json) => KnowledgeCategory.fromJson(json as Map<String, dynamic>))
+          .toList();
+
+      // If no subcategories found under parent, fallback to any non-main category or all active
+      if (list.isEmpty) {
+        final fallbackQuery = _client.from('knowledge_categories').select();
+        final fallbackRes = await (includeInactive ? fallbackQuery : fallbackQuery.eq('is_active', true))
+            .not('parent_id', 'is', null)
+            .order('order_index', ascending: true);
+
+        return (fallbackRes as List)
+            .map((json) => KnowledgeCategory.fromJson(json as Map<String, dynamic>))
+            .toList();
+      }
+
+      return list;
+    } catch (e) {
+      if (kDebugMode) print('[KnowledgeRepository] fetchStudySections error: $e');
+      return [];
+    }
+  }
+
+  /// Fetch flat list of categories directly without nested dropping
+  Future<List<KnowledgeCategory>> fetchFlatCategories({
+    String? parentId,
+    bool includeInactive = false,
+  }) async {
+    try {
+      PostgrestFilterBuilder query = _client.from('knowledge_categories').select();
+
+      if (!includeInactive) {
+        query = query.eq('is_active', true);
+      }
+
+      if (parentId != null && parentId.isNotEmpty) {
+        query = query.eq('parent_id', parentId);
+      }
+
+      final res = await query.order('order_index', ascending: true);
+      return (res as List)
+          .map((json) => KnowledgeCategory.fromJson(json as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      if (kDebugMode) print('[KnowledgeRepository] fetchFlatCategories error: $e');
+      return [];
+    }
+  }
+
   /// Fetch all categories structured as a parent -> subcategories hierarchy
   Future<List<KnowledgeCategory>> fetchCategories({bool includeInactive = false}) async {
     try {
@@ -28,6 +127,11 @@ class KnowledgeRepository {
 
       final mainCategories = rawList.where((c) => c.isMainCategory).toList();
       final subcategories = rawList.where((c) => !c.isMainCategory).toList();
+
+      if (mainCategories.isEmpty && rawList.isNotEmpty) {
+        // If all categories were inserted without parent_id, return them as main categories
+        return rawList;
+      }
 
       // Build hierarchy
       return mainCategories.map((main) {
@@ -51,15 +155,21 @@ class KnowledgeRepository {
   }) async {
     try {
       final userId = _client.auth.currentUser?.id;
+      final now = DateTime.now().toIso8601String();
+
+      // If parentId was not provided, default to the Study Files parent ID
+      final effectiveParentId = parentId ?? await ensureStudyParentCategory();
+
       final res = await _client.from('knowledge_categories').insert({
         'name_ar': nameAr.trim(),
         'description': description?.trim(),
         'icon_name': iconName,
-        'parent_id': parentId,
+        'parent_id': effectiveParentId,
         'order_index': orderIndex,
         'is_active': isActive,
         'created_by': userId,
-        'updated_at': DateTime.now().toIso8601String(),
+        'created_at': now,
+        'updated_at': now,
       }).select().single();
 
       return KnowledgeCategory.fromJson(res);
@@ -106,7 +216,7 @@ class KnowledgeRepository {
           .limit(1);
 
       if ((checkRes as List).isNotEmpty) {
-        throw Exception('لا يمكن حذف القسم لوجود مقالات أو مراجع مرتبطة به. يرجى نقلها أولاً.');
+        throw Exception('لا يمكن حذف القسم لوجود مقالات أو ملفات مرتبطة به. يرجى نقلها أولاً.');
       }
 
       await _client.from('knowledge_categories').delete().eq('id', id);
@@ -115,7 +225,7 @@ class KnowledgeRepository {
     }
   }
 
-  // ── ARTICLES & SCIENTIFIC REFERENCES ─────────────────────────────────────────
+  // ── ARTICLES & STUDY FILES (PDF) ─────────────────────────────────────────────
 
   /// Fetch articles with filtering, search, and sorting
   Future<List<KnowledgeArticle>> fetchArticles({
@@ -127,7 +237,7 @@ class KnowledgeRepository {
     bool? isFeatured,
     bool? isPublished = true,
     String sort = 'newest',
-    int limit = 50,
+    int limit = 100,
   }) async {
     try {
       PostgrestFilterBuilder filterQuery = _client.from('knowledge_articles').select('''
@@ -166,7 +276,7 @@ class KnowledgeRepository {
 
       if (query != null && query.trim().isNotEmpty) {
         final q = query.trim();
-        filterQuery = filterQuery.or('title.ilike.%$q%,summary.ilike.%$q%,author_name.ilike.%$q%,publisher.ilike.%$q%');
+        filterQuery = filterQuery.or('title.ilike.%$q%,summary.ilike.%$q%');
       }
 
       final dynamic orderedQuery;
@@ -197,7 +307,7 @@ class KnowledgeRepository {
     }
   }
 
-  /// Create Article / Scientific Reference PDF
+  /// Create Article / Study File PDF
   Future<KnowledgeArticle> createArticle({
     required String title,
     required String summary,
@@ -224,13 +334,15 @@ class KnowledgeRepository {
       final authorId = _client.auth.currentUser?.id;
       final now = DateTime.now().toIso8601String();
 
+      final effectiveCategoryId = categoryId ?? (contentType == 'pdf' || contentType == 'scientific_reference' ? studyFilesParentId : null);
+
       final res = await _client.from('knowledge_articles').insert({
         'title': title.trim(),
         'summary': summary.trim(),
         'content_markdown': contentMarkdown.trim(),
         'type': contentType,
         'content_type': contentType,
-        'category_id': categoryId,
+        'category_id': effectiveCategoryId,
         'subcategory_id': subcategoryId,
         'drive_file_id': driveFileId,
         'drive_file_url': driveFileUrl,
@@ -259,11 +371,11 @@ class KnowledgeRepository {
 
       return KnowledgeArticle.fromJson(res);
     } catch (e) {
-      throw Exception('فشل في حفظ المحتوى في المكتبة: $e');
+      throw Exception('فشل في حفظ ملف المذاكرة: $e');
     }
   }
 
-  /// Update Article / Reference
+  /// Update Article / Study File
   Future<void> updateArticle({
     required String id,
     String? title,
@@ -321,7 +433,7 @@ class KnowledgeRepository {
 
       await _client.from('knowledge_articles').update(updates).eq('id', id);
     } catch (e) {
-      throw Exception('فشل في تحديث المحتوى: $e');
+      throw Exception('فشل في تحديث ملف المذاكرة: $e');
     }
   }
 

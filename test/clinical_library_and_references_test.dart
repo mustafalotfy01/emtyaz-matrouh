@@ -3,14 +3,15 @@ import 'package:nurse_matrouh/features/knowledge/models/knowledge_article.dart';
 import 'package:nurse_matrouh/features/knowledge/models/knowledge_bookmark.dart';
 import 'package:nurse_matrouh/features/knowledge/models/knowledge_category.dart';
 import 'package:nurse_matrouh/features/knowledge/models/knowledge_reading_progress.dart';
+import 'package:nurse_matrouh/features/knowledge/providers/knowledge_provider.dart';
 
 void main() {
   group('Clinical Library Models & Logic Tests', () {
     test('1. KnowledgeCategory hierarchy and subcategories parsing', () {
       final mainCatJson = {
         'id': '00000000-0000-0000-0000-000000000007',
-        'name_ar': 'المراجع العلمية',
-        'description': 'كتب وأبحاث سريرية',
+        'name_ar': 'ملفات المذاكرة',
+        'description': 'ملفات PDF تعليمية وشروحات تخصصية لطلاب الامتياز',
         'icon_name': 'menu_book',
         'order_index': 7,
         'is_active': true,
@@ -35,7 +36,7 @@ void main() {
 
       final category = KnowledgeCategory.fromJson(mainCatJson);
       expect(category.isMainCategory, isTrue);
-      expect(category.nameAr, 'المراجع العلمية');
+      expect(category.nameAr, 'ملفات المذاكرة');
       expect(category.subcategories.length, 2);
       expect(category.subcategories.first.nameAr, 'العناية المركزة (ICU)');
       expect(category.subcategories.first.isMainCategory, isFalse);
@@ -44,9 +45,9 @@ void main() {
     test('2. KnowledgeArticle PDF reference serialization & helper methods', () {
       final pdfArticleJson = {
         'id': 'pdf-ref-101',
-        'title': 'دليل بروتوكولات العناية الحرجة',
+        'title': 'ملخص بروتوكولات العناية الحرجة',
         'summary': 'شرح شامل للتعامل مع أجهزة التنفس الصناعي والصدمات',
-        'content_type': 'scientific_reference',
+        'content_type': 'pdf',
         'content_markdown': 'شرح المرجع...',
         'category_id': '00000000-0000-0000-0000-000000000007',
         'subcategory_id': 'sub-01',
@@ -75,17 +76,18 @@ void main() {
       expect(article.viewsCount, 150);
     });
 
-    test('3. ArticleCategory enum covers all 7 required top-level clinical types', () {
+    test('3. ArticleCategory enum covers all required clinical types', () {
       expect(ArticleCategory.fromString('procedure'), ArticleCategory.procedure);
       expect(ArticleCategory.fromString('disease'), ArticleCategory.disease);
       expect(ArticleCategory.fromString('medication'), ArticleCategory.medication);
       expect(ArticleCategory.fromString('health_education'), ArticleCategory.healthEducation);
       expect(ArticleCategory.fromString('lesson'), ArticleCategory.studentLessons);
       expect(ArticleCategory.fromString('scientific_reference'), ArticleCategory.scientificReference);
+      expect(ArticleCategory.fromString('pdf'), ArticleCategory.scientificReference);
       expect(ArticleCategory.fromString('general'), ArticleCategory.general);
 
       expect(ArticleCategory.procedure.displayNameAr, 'إجراءات تمريضية');
-      expect(ArticleCategory.scientificReference.displayNameAr, 'المراجع العلمية');
+      expect(ArticleCategory.scientificReference.displayNameAr, 'ملفات المذاكرة');
     });
 
     test('4. Reading Progress calculation and resumption display', () {
@@ -129,43 +131,14 @@ void main() {
       expect(bookmark.note, 'جدول جرعات الأدرينالين');
     });
 
-    test('6. Multi-field search matching across Title, Summary, Author, and Tags', () {
-      final articles = [
-        KnowledgeArticle(
-          id: '1',
-          title: 'تركيب القسطرة البولية',
-          summary: 'دليل الخطوات المعقمة',
-          category: ArticleCategory.procedure,
-          definition: '',
-          authorName: 'د. منى',
-          tags: ['قسطرة', 'تمريض'],
-        ),
-        KnowledgeArticle(
-          id: '2',
-          title: 'مرجع فارماكولوجي العناية المركزة',
-          summary: 'حسابات الجرعات والمحاليل الوريدية',
-          category: ArticleCategory.scientificReference,
-          definition: '',
-          authorName: 'د. طارق السويفي',
-          publisher: 'دار النشر الطبي',
-          tags: ['ICU', 'أدوية'],
-        ),
-      ];
+    test('6. StudyFilesFilter value equality prevents infinite rebuild loops', () {
+      const filter1 = StudyFilesFilter(subcategoryId: 'sec-1', query: 'icu', sort: 'newest');
+      const filter2 = StudyFilesFilter(subcategoryId: 'sec-1', query: 'icu', sort: 'newest');
+      const filter3 = StudyFilesFilter(subcategoryId: 'sec-2', query: 'icu', sort: 'newest');
 
-      // Query by tag
-      final resTag = articles.where((a) => a.tags.contains('ICU')).toList();
-      expect(resTag.length, 1);
-      expect(resTag.first.id, '2');
-
-      // Query by author name
-      final resAuthor = articles.where((a) => a.authorName?.contains('السويفي') ?? false).toList();
-      expect(resAuthor.length, 1);
-      expect(resAuthor.first.id, '2');
-
-      // Query by summary
-      final resSummary = articles.where((a) => a.summary.contains('المعقمة')).toList();
-      expect(resSummary.length, 1);
-      expect(resSummary.first.id, '1');
+      expect(filter1 == filter2, isTrue);
+      expect(filter1.hashCode == filter2.hashCode, isTrue);
+      expect(filter1 == filter3, isFalse);
     });
   });
 }

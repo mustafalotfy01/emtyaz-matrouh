@@ -8,7 +8,6 @@ import '../../../core/widgets/app_empty_state.dart';
 import '../../auth/models/user_profile.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../models/knowledge_article.dart';
-import '../models/knowledge_category.dart';
 import '../providers/knowledge_provider.dart';
 import '../widgets/category_management_dialog.dart';
 import 'add_knowledge_content_screen.dart';
@@ -25,33 +24,19 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
   String _searchQuery = '';
   String? _selectedSubcategoryId;
   String _selectedSort = 'newest';
-  String? _selectedTag;
-
-  final List<String> _popularTags = [
-    'تمريض',
-    'ICU',
-    'طوارئ',
-    'باطنة',
-    'جراحة',
-    'أطفال',
-    'نساء وتوليد',
-    'أدوية',
-    'مكافحة عدوى',
-    'صحة نفسية',
-  ];
 
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authProvider).user;
     final canManage = user?.role == UserRole.superAdmin || user?.role == UserRole.evaluatingDoctor;
 
-    final categoriesAsync = ref.watch(knowledgeCategoriesProvider);
-    final referencesAsync = ref.watch(scientificReferencesProvider({
-      'subcategoryId': _selectedSubcategoryId,
-      'query': _searchQuery,
-      'tag': _selectedTag,
-      'sort': _selectedSort,
-    }));
+    final sectionsAsync = ref.watch(studySectionsProvider);
+    final filter = StudyFilesFilter(
+      subcategoryId: _selectedSubcategoryId,
+      query: _searchQuery,
+      sort: _selectedSort,
+    );
+    final studyFilesAsync = ref.watch(studyFilesProvider(filter));
 
     return Scaffold(
       backgroundColor: AppDesignTokens.bg(context),
@@ -62,15 +47,15 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
                 await Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => const AddKnowledgeContentScreen(initialContentType: 'scientific_reference'),
+                    builder: (_) => const AddKnowledgeContentScreen(initialContentType: 'pdf'),
                   ),
                 );
-                ref.invalidate(scientificReferencesProvider);
+                ref.invalidate(studyFilesProvider);
               },
               backgroundColor: AppDesignTokens.primary,
               icon: const Icon(Icons.add_rounded, color: Colors.white),
               label: const Text(
-                'إضافة مرجع علمي (PDF)',
+                'إضافة ملف PDF',
                 style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
               ),
             )
@@ -80,11 +65,11 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'المراجع العلمية 📚',
+              'ملفات المذاكرة 📚',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             Text(
-              'كتب ومراجع سريرية معتمدة لطلاب الامتياز',
+              'ملفات PDF تعليمية تساعد طلاب الامتياز على المذاكرة والمراجعة.',
               style: TextStyle(fontSize: 11, color: AppColors.textMuted),
             ),
           ],
@@ -93,22 +78,13 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
           if (canManage)
             IconButton(
               icon: const Icon(Icons.tune_rounded),
-              tooltip: 'إدارة الأقسام الفرعية',
-              onPressed: () {
-                // Find scientific reference parent category ID
-                final categories = categoriesAsync.value ?? [];
-                final sciCategory = categories.firstWhere(
-                  (c) => c.nameAr.contains('المراجع') || c.id == '00000000-0000-0000-0000-000000000007',
-                  orElse: () => KnowledgeCategory(id: '00000000-0000-0000-0000-000000000007', nameAr: 'المراجع العلمية'),
-                );
-
-                showDialog(
+              tooltip: 'إدارة أقسام المذاكرة',
+              onPressed: () async {
+                await showDialog(
                   context: context,
-                  builder: (_) => CategoryManagementDialog(
-                    parentCategoryId: sciCategory.id,
-                    parentCategoryName: sciCategory.nameAr,
-                  ),
+                  builder: (_) => const CategoryManagementDialog(),
                 );
+                ref.invalidate(studySectionsProvider);
               },
             ),
         ],
@@ -117,8 +93,8 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
         child: RefreshIndicator(
           color: AppDesignTokens.primary,
           onRefresh: () async {
-            ref.invalidate(scientificReferencesProvider);
-            ref.invalidate(knowledgeCategoriesProvider);
+            ref.invalidate(studyFilesProvider);
+            ref.invalidate(studySectionsProvider);
           },
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
@@ -135,7 +111,7 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
                   onChanged: (val) => setState(() => _searchQuery = val.trim()),
                   style: TextStyle(fontSize: 13.5, color: AppDesignTokens.textPrimary(context)),
                   decoration: InputDecoration(
-                    hintText: 'ابحث عن اسم المرجع، المؤلف، الناشر، أو كلمة مفتاحية...',
+                    hintText: 'ابحث عن ملف مذاكرة...',
                     hintStyle: TextStyle(fontSize: 12.5, color: AppDesignTokens.textSecondary(context)),
                     prefixIcon: const Icon(Icons.search_rounded, size: 20, color: AppDesignTokens.primary),
                     suffixIcon: _searchQuery.isNotEmpty
@@ -152,25 +128,19 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
               const SizedBox(height: 12),
 
               // ── Dynamic Subcategories Filter ─────────────────────────────
-              categoriesAsync.when(
-                data: (allCats) {
-                  final sciCategory = allCats.firstWhere(
-                    (c) => c.nameAr.contains('المراجع') || c.id == '00000000-0000-0000-0000-000000000007',
-                    orElse: () => KnowledgeCategory(id: '', nameAr: 'المراجع العلمية'),
-                  );
-                  final subcategories = sciCategory.subcategories;
-
+              sectionsAsync.when(
+                data: (sections) {
                   return SizedBox(
                     height: 38,
                     child: ListView(
                       scrollDirection: Axis.horizontal,
                       children: [
                         _buildSubcategoryChip(
-                          label: 'جميع المراجع',
+                          label: 'جميع الملفات',
                           isSelected: _selectedSubcategoryId == null,
                           onTap: () => setState(() => _selectedSubcategoryId = null),
                         ),
-                        ...subcategories.map((sub) => _buildSubcategoryChip(
+                        ...sections.map((sub) => _buildSubcategoryChip(
                               label: sub.nameAr,
                               isSelected: _selectedSubcategoryId == sub.id,
                               onTap: () => setState(() => _selectedSubcategoryId = sub.id),
@@ -179,16 +149,24 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
                     ),
                   );
                 },
-                loading: () => const SizedBox(height: 38),
+                loading: () => const SizedBox(
+                  height: 38,
+                  child: Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppDesignTokens.primary),
+                    ),
+                  ),
+                ),
                 error: (_, __) => const SizedBox.shrink(),
               ),
               const SizedBox(height: 10),
 
-              // ── Sorting & Tags Bar ───────────────────────────────────────
+              // ── Sorting Bar ──────────────────────────────────────────────
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Sort dropdown
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
@@ -204,8 +182,8 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
                         style: TextStyle(fontSize: 12, color: AppDesignTokens.textPrimary(context), fontWeight: FontWeight.bold),
                         items: const [
                           DropdownMenuItem(value: 'newest', child: Text('الأحدث إضافة')),
-                          DropdownMenuItem(value: 'views', child: Text('الأكثر مشاهدة 🔥')),
-                          DropdownMenuItem(value: 'featured', child: Text('المراجع المميزة ⭐')),
+                          DropdownMenuItem(value: 'views', child: Text('الأكثر قراءة 🔥')),
+                          DropdownMenuItem(value: 'featured', child: Text('الملفات المميزة ⭐')),
                           DropdownMenuItem(value: 'alphabetical', child: Text('أبجديًا (أ-ي)')),
                         ],
                         onChanged: (val) {
@@ -214,72 +192,19 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
                       ),
                     ),
                   ),
-
-                  // Tag clear if selected
-                  if (_selectedTag != null)
-                    InkWell(
-                      onTap: () => setState(() => _selectedTag = null),
-                      child: Chip(
-                        label: Text('وسم: $_selectedTag ✕', style: const TextStyle(fontSize: 11, color: Colors.white)),
-                        backgroundColor: AppDesignTokens.primary,
-                        padding: EdgeInsets.zero,
-                      ),
-                    ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
 
-              // ── Tags List ────────────────────────────────────────────────
-              SizedBox(
-                height: 28,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: _popularTags.map((tag) {
-                    final isSelected = _selectedTag == tag;
-                    return Padding(
-                      padding: const EdgeInsets.only(left: 6),
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _selectedTag = isSelected ? null : tag;
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: isSelected ? AppDesignTokens.primary : AppDesignTokens.surface(context),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: isSelected ? AppDesignTokens.primary : AppDesignTokens.border(context),
-                            ),
-                          ),
-                          child: Center(
-                            child: Text(
-                              '#$tag',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                color: isSelected ? Colors.white : AppDesignTokens.textSecondary(context),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // ── References Feed ──────────────────────────────────────────
-              referencesAsync.when(
+              // ── Study Files Feed ─────────────────────────────────────────
+              studyFilesAsync.when(
                 data: (articles) {
                   if (articles.isEmpty) {
                     return const AppCard(
                       padding: EdgeInsets.symmetric(vertical: 40, horizontal: 16),
                       child: AppEmptyState(
-                        title: 'لا توجد مراجع علمية متاحة',
-                        subtitle: 'لم يتم نشر أي مراجع أو كتب في هذا القسم حتى الآن. سيقوم المشرفون بإضافة المراجع قريباً.',
+                        title: 'لا توجد ملفات مذاكرة في هذا القسم حاليًا',
+                        subtitle: 'لم يتم نشر أي ملفات PDF في هذا القسم حتى الآن. سيقوم المشرفون بإضافة ملفات المذاكرة قريباً.',
                         icon: Icons.menu_book_outlined,
                       ),
                     );
@@ -299,15 +224,36 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
                 loading: () => const Center(
                   child: Padding(
                     padding: EdgeInsets.all(40.0),
-                    child: CircularProgressIndicator(color: AppDesignTokens.primary),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(color: AppDesignTokens.primary),
+                        SizedBox(height: 12),
+                        Text(
+                          'جاري تحميل ملفات المذاكرة...',
+                          style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 error: (e, _) => AppCard(
                   padding: const EdgeInsets.all(24),
-                  child: AppEmptyState(
-                    title: 'تعذر تحميل المراجع',
-                    subtitle: '$e\nيرجى التحقق من اتصالك بالإنترنت والسحب لأسفل لتحديث الصفحة.',
-                    icon: Icons.wifi_off_rounded,
+                  child: Column(
+                    children: [
+                      const AppEmptyState(
+                        title: 'تعذر تحميل ملفات المذاكرة',
+                        subtitle: 'يرجى التحقق من اتصالك بالإنترنت والضغط على إعادة المحاولة.',
+                        icon: Icons.wifi_off_rounded,
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: () => ref.invalidate(studyFilesProvider),
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: const Text('إعادة المحاولة'),
+                        style: FilledButton.styleFrom(backgroundColor: AppDesignTokens.primary),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -368,21 +314,21 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // PDF Icon / Cover Thumbnail
+              // PDF Icon / Thumbnail
               Container(
-                width: 52,
-                height: 64,
+                width: 48,
+                height: 58,
                 decoration: BoxDecoration(
-                  color: AppDesignTokens.primary.withOpacity(0.08),
+                  color: AppDesignTokens.danger.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppDesignTokens.primary.withOpacity(0.2)),
+                  border: Border.all(color: AppDesignTokens.danger.withOpacity(0.2)),
                 ),
                 child: const Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.picture_as_pdf_rounded, color: AppDesignTokens.danger, size: 28),
+                    Icon(Icons.picture_as_pdf_rounded, color: AppDesignTokens.danger, size: 26),
                     SizedBox(height: 2),
-                    Text('PDF', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppDesignTokens.danger)),
+                    Text('PDF', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: AppDesignTokens.danger)),
                   ],
                 ),
               ),
@@ -402,7 +348,7 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Text(
-                          '⭐ مرجع مميز',
+                          '⭐ ملف مميز',
                           style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppDesignTokens.warning),
                         ),
                       ),
@@ -415,14 +361,9 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
                         height: 1.3,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'المؤلف: ${article.displayAuthor}',
-                      style: TextStyle(fontSize: 12, color: AppDesignTokens.textSecondary(context)),
-                    ),
                     if (article.subcategoryName != null && article.subcategoryName!.isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.only(top: 2),
+                        padding: const EdgeInsets.only(top: 4),
                         child: Text(
                           'القسم: ${article.subcategoryName}',
                           style: const TextStyle(fontSize: 11.5, color: AppDesignTokens.primary, fontWeight: FontWeight.w600),
@@ -448,17 +389,13 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
           const Divider(height: 1),
           const SizedBox(height: 10),
 
-          // Badges row: Pages, Size, Views, Progress
+          // Badges row: Size, Views
           Row(
             children: [
-              if (article.pageCount != null && article.pageCount! > 0)
-                _buildInfoBadge(Icons.auto_stories_rounded, '${article.pageCount} صفحة'),
-              if (article.formattedFileSize.isNotEmpty) ...[
-                const SizedBox(width: 8),
+              if (article.formattedFileSize.isNotEmpty)
                 _buildInfoBadge(Icons.file_present_rounded, article.formattedFileSize),
-              ],
-              const SizedBox(width: 8),
-              _buildInfoBadge(Icons.remove_red_eye_outlined, '${article.viewsCount} مشاهدة'),
+              const SizedBox(width: 10),
+              _buildInfoBadge(Icons.remove_red_eye_outlined, '${article.viewsCount} قراءة'),
               const Spacer(),
             ],
           ),
@@ -499,8 +436,8 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
               icon: const Icon(Icons.menu_book_rounded, size: 18, color: Colors.white),
               label: Text(
                 progress != null && progress.lastPage > 1
-                    ? 'متابعة القراءة (صفحة ${progress.lastPage})'
-                    : 'فتح المرجع 📖',
+                    ? 'متابعة القراءة من صفحة ${progress.lastPage}'
+                    : 'فتح الملف 📖',
                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
               ),
               onPressed: () {

@@ -23,7 +23,7 @@ enum ArticleCategory {
       case ArticleCategory.studentLessons:
         return 'دروس وملخصات';
       case ArticleCategory.scientificReference:
-        return 'المراجع العلمية';
+        return 'ملفات المذاكرة';
       case ArticleCategory.general:
         return 'محتوى عام';
     }

@@ -9,7 +9,50 @@ final knowledgeRepositoryProvider = Provider<KnowledgeRepository>((ref) {
   return KnowledgeRepository();
 });
 
-/// Categories hierarchy (Main categories + subcategories)
+/// Immutable filter class for Study Files / References to guarantee Riverpod parameter equality
+class StudyFilesFilter {
+  final String? subcategoryId;
+  final String? query;
+  final String? tag;
+  final String sort;
+  final bool? isFeatured;
+
+  const StudyFilesFilter({
+    this.subcategoryId,
+    this.query,
+    this.tag,
+    this.sort = 'newest',
+    this.isFeatured,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is StudyFilesFilter &&
+          runtimeType == other.runtimeType &&
+          subcategoryId == other.subcategoryId &&
+          query == other.query &&
+          tag == other.tag &&
+          sort == other.sort &&
+          isFeatured == other.isFeatured;
+
+  @override
+  int get hashCode => Object.hash(subcategoryId, query, tag, sort, isFeatured);
+}
+
+/// Dynamic sections dedicated to Study Files (ملفات المذاكرة)
+final studySectionsProvider = FutureProvider<List<KnowledgeCategory>>((ref) async {
+  final repo = ref.watch(knowledgeRepositoryProvider);
+  return await repo.fetchStudySections(includeInactive: false);
+});
+
+/// Admin all study sections (including inactive)
+final adminStudySectionsProvider = FutureProvider<List<KnowledgeCategory>>((ref) async {
+  final repo = ref.watch(knowledgeRepositoryProvider);
+  return await repo.fetchStudySections(includeInactive: true);
+});
+
+/// All Categories hierarchy (Main categories + subcategories)
 final knowledgeCategoriesProvider = FutureProvider<List<KnowledgeCategory>>((ref) async {
   final repo = ref.watch(knowledgeRepositoryProvider);
   return await repo.fetchCategories();
@@ -27,22 +70,36 @@ final knowledgeArticlesProvider = FutureProvider<List<KnowledgeArticle>>((ref) a
   return await repo.fetchArticles();
 });
 
-/// Featured scientific references & articles
+/// Featured study files & articles
 final featuredKnowledgeArticlesProvider = FutureProvider<List<KnowledgeArticle>>((ref) async {
   final repo = ref.watch(knowledgeRepositoryProvider);
   return await repo.fetchArticles(isFeatured: true, limit: 10);
 });
 
-/// Dedicated Scientific References PDF list with dynamic filters
-final scientificReferencesProvider = FutureProvider.family<List<KnowledgeArticle>, Map<String, dynamic>>((ref, params) async {
+/// Dedicated Study Files (PDF) list with value-equal filters
+final studyFilesProvider = FutureProvider.family<List<KnowledgeArticle>, StudyFilesFilter>((ref, filter) async {
+  final repo = ref.watch(knowledgeRepositoryProvider);
+  return await repo.fetchArticles(
+    contentType: 'pdf',
+    subcategoryId: filter.subcategoryId,
+    query: filter.query,
+    tag: filter.tag,
+    isFeatured: filter.isFeatured,
+    sort: filter.sort,
+    limit: 100,
+  );
+});
+
+/// Backward-compatible alias for scientific references
+final scientificReferencesProvider = FutureProvider.family<List<KnowledgeArticle>, StudyFilesFilter>((ref, filter) async {
   final repo = ref.watch(knowledgeRepositoryProvider);
   return await repo.fetchArticles(
     contentType: 'scientific_reference',
-    subcategoryId: params['subcategoryId']?.toString(),
-    query: params['query']?.toString(),
-    tag: params['tag']?.toString(),
-    isFeatured: params['isFeatured'] == true ? true : null,
-    sort: params['sort']?.toString() ?? 'newest',
+    subcategoryId: filter.subcategoryId,
+    query: filter.query,
+    tag: filter.tag,
+    isFeatured: filter.isFeatured,
+    sort: filter.sort,
     limit: 100,
   );
 });
