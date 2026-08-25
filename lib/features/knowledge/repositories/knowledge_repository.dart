@@ -296,38 +296,37 @@ class KnowledgeRepository {
     bool isPublished = true,
     bool isFeatured = false,
   }) async {
-    try {
-      final authorId = _client.auth.currentUser?.id;
-      final now = DateTime.now().toIso8601String();
+    final authorId = _client.auth.currentUser?.id;
+    final now = DateTime.now().toIso8601String();
 
-      final res = await _client.from('knowledge_articles').insert({
-        'title': title.trim(),
-        'summary': summary.trim(),
-        'content_markdown': contentMarkdown.trim(),
-        'type': contentType,
-        'content_type': contentType,
-        'category_id': categoryId ?? subcategoryId,
-        'subcategory_id': subcategoryId,
-        'drive_file_id': driveFileId,
-        'drive_file_url': driveFileUrl,
-        'file_name': fileName,
-        'file_size_bytes': fileSizeBytes,
-        'page_count': pageCount,
-        'cover_image_url': coverImageUrl,
-        'author_id': authorId,
-        'author_name': authorName?.trim(),
-        'publisher': publisher?.trim(),
-        'publication_year': publicationYear,
-        'edition': edition?.trim(),
-        'language': language,
-        'tags': tags,
-        'is_published': isPublished,
-        'is_featured': isFeatured,
-        'views_count': 0,
-        'published_at': isPublished ? now : null,
-        'created_at': now,
-        'updated_at': now,
-      }).select('''
+    final Map<String, dynamic> payload = {
+      'title': title.trim(),
+      'summary': summary.trim(),
+      'content_markdown': contentMarkdown.trim(),
+      'type': contentType,
+      'is_published': isPublished,
+      'views_count': 0,
+      'created_at': now,
+    };
+
+    if (authorId != null) payload['author_id'] = authorId;
+    if (categoryId != null && categoryId.isNotEmpty) payload['category_id'] = categoryId;
+    if (subcategoryId != null && subcategoryId.isNotEmpty) {
+      payload['subcategory_id'] = subcategoryId;
+      if (payload['category_id'] == null) payload['category_id'] = subcategoryId;
+    }
+    if (driveFileId != null && driveFileId.isNotEmpty) payload['drive_file_id'] = driveFileId;
+    if (driveFileUrl != null && driveFileUrl.isNotEmpty) payload['drive_file_url'] = driveFileUrl;
+    if (fileName != null && fileName.isNotEmpty) payload['file_name'] = fileName;
+    if (fileSizeBytes != null && fileSizeBytes > 0) payload['file_size_bytes'] = fileSizeBytes;
+    if (pageCount != null && pageCount > 0) payload['page_count'] = pageCount;
+    if (authorName != null && authorName.trim().isNotEmpty) payload['author_name'] = authorName.trim();
+    if (isFeatured) payload['is_featured'] = true;
+    if (tags.isNotEmpty) payload['tags'] = tags;
+
+    // 1. Try insert with full clean payload
+    try {
+      final res = await _client.from('knowledge_articles').insert(payload).select('''
         *,
         author:author_id(id, full_name),
         subcategory:subcategory_id(id, name_ar)
@@ -335,7 +334,33 @@ class KnowledgeRepository {
 
       return KnowledgeArticle.fromJson(res);
     } catch (e) {
-      throw Exception('فشل في حفظ ملف المذاكرة: $e');
+      if (kDebugMode) print('[KnowledgeRepository] createArticle full insert error: $e, trying simple select');
+
+      // 2. Try simpler insert without joins in case foreign key join fails
+      try {
+        final res = await _client.from('knowledge_articles').insert(payload).select().single();
+        return KnowledgeArticle.fromJson(res);
+      } catch (e2) {
+        if (kDebugMode) print('[KnowledgeRepository] createArticle simple insert error: $e2, trying minimal payload');
+
+        // 3. Fallback to basic schema columns only
+        try {
+          final minimalPayload = {
+            'title': title.trim(),
+            'summary': summary.trim(),
+            'content_markdown': contentMarkdown.trim(),
+            'type': contentType,
+            'category_id': categoryId ?? subcategoryId,
+            'is_published': isPublished,
+          };
+          if (authorId != null) minimalPayload['author_id'] = authorId;
+
+          final res = await _client.from('knowledge_articles').insert(minimalPayload).select().single();
+          return KnowledgeArticle.fromJson(res);
+        } catch (e3) {
+          throw Exception('فشل في حفظ ملف المذاكرة: $e3');
+        }
+      }
     }
   }
 
@@ -364,17 +389,12 @@ class KnowledgeRepository {
     bool? isFeatured,
   }) async {
     try {
-      final Map<String, dynamic> updates = {
-        'updated_at': DateTime.now().toIso8601String(),
-      };
+      final Map<String, dynamic> updates = {};
 
       if (title != null) updates['title'] = title.trim();
       if (summary != null) updates['summary'] = summary.trim();
       if (contentMarkdown != null) updates['content_markdown'] = contentMarkdown.trim();
-      if (contentType != null) {
-        updates['content_type'] = contentType;
-        updates['type'] = contentType;
-      }
+      if (contentType != null) updates['type'] = contentType;
       if (categoryId != null) updates['category_id'] = categoryId;
       if (subcategoryId != null) updates['subcategory_id'] = subcategoryId;
       if (driveFileId != null) updates['drive_file_id'] = driveFileId;
@@ -382,17 +402,9 @@ class KnowledgeRepository {
       if (fileName != null) updates['file_name'] = fileName;
       if (fileSizeBytes != null) updates['file_size_bytes'] = fileSizeBytes;
       if (pageCount != null) updates['page_count'] = pageCount;
-      if (coverImageUrl != null) updates['cover_image_url'] = coverImageUrl;
       if (authorName != null) updates['author_name'] = authorName.trim();
-      if (publisher != null) updates['publisher'] = publisher.trim();
-      if (publicationYear != null) updates['publication_year'] = publicationYear;
-      if (edition != null) updates['edition'] = edition.trim();
-      if (language != null) updates['language'] = language;
       if (tags != null) updates['tags'] = tags;
-      if (isPublished != null) {
-        updates['is_published'] = isPublished;
-        if (isPublished) updates['published_at'] = DateTime.now().toIso8601String();
-      }
+      if (isPublished != null) updates['is_published'] = isPublished;
       if (isFeatured != null) updates['is_featured'] = isFeatured;
 
       await _client.from('knowledge_articles').update(updates).eq('id', id);
