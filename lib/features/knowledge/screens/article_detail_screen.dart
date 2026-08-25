@@ -8,6 +8,7 @@ import '../../auth/models/user_profile.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../models/knowledge_article.dart';
 import '../providers/knowledge_provider.dart';
+import 'knowledge_article_form_screen.dart';
 
 class ArticleDetailScreen extends ConsumerWidget {
   final KnowledgeArticle article;
@@ -30,7 +31,18 @@ class ArticleDetailScreen extends ConsumerWidget {
           style: TextStyle(color: AppColors.text(context), fontSize: 16, fontWeight: FontWeight.bold),
         ),
         actions: [
-          if (canManage)
+          if (canManage) ...[
+            IconButton(
+              icon: const Icon(Icons.edit_outlined, color: AppDesignTokens.primary),
+              tooltip: 'تعديل المحتوى',
+              onPressed: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => KnowledgeArticleFormScreen(article: article)),
+                );
+                ref.invalidate(knowledgeArticlesProvider);
+              },
+            ),
             IconButton(
               icon: const Icon(Icons.delete_outline_rounded, color: AppDesignTokens.danger),
               tooltip: 'حذف المقال',
@@ -80,6 +92,7 @@ class ArticleDetailScreen extends ConsumerWidget {
                 }
               },
             ),
+          ],
         ],
       ),
       body: ListView(

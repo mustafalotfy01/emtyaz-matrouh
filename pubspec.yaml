@@ -57,6 +57,8 @@ dependencies:
   flutter_map: ^8.3.1
   latlong2: ^0.10.1
   timezone: ^0.10.1
+  syncfusion_flutter_pdfviewer: ^33.2.13
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:
