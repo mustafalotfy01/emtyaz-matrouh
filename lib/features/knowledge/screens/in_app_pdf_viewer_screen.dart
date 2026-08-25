@@ -1,18 +1,15 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
 import '../models/knowledge_article.dart';
-import '../models/knowledge_bookmark.dart';
 import '../providers/knowledge_provider.dart';
 import '../services/google_drive_document_service.dart';
 import '../services/pdf_cache_service.dart';
@@ -57,6 +54,8 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
   @override
   void dispose() {
     _progressSaveDebounce?.cancel();
+    _searchResult?.removeListener(_onSearchResultUpdate);
+    _searchResult?.dispose();
     _pdfViewerController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -350,13 +349,13 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
                           child: ListView.separated(
                             shrinkWrap: true,
                             itemCount: bookmarks.length,
-                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            separatorBuilder: (context, index) => const Divider(height: 1),
                             itemBuilder: (context, idx) {
                               final b = bookmarks[idx];
                               return ListTile(
                                 leading: CircleAvatar(
                                   radius: 14,
-                                  backgroundColor: AppDesignTokens.primary.withOpacity(0.1),
+                                  backgroundColor: AppDesignTokens.primary.withValues(alpha: 0.1),
                                   child: Text(
                                     '${b.pageNumber}',
                                     style: const TextStyle(
@@ -384,7 +383,7 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
                           child: CircularProgressIndicator(),
                         ),
                       ),
-                      error: (_, __) => const Center(child: Text('تعذر تحميل الإشارات')),
+                      error: (err, stack) => const Center(child: Text('تعذر تحميل الإشارات')),
                     ),
                   ],
                 ),
@@ -396,25 +395,40 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
     );
   }
 
-  Future<void> _openInExternalBrowser() async {
-    final fileId = widget.article.driveFileId ??
-        GoogleDriveDocumentService.extractFileId(widget.article.driveFileUrl ?? '');
-    final urlStr = widget.article.driveFileUrl != null && widget.article.driveFileUrl!.isNotEmpty
-        ? widget.article.driveFileUrl!
-        : (fileId != null ? GoogleDriveDocumentService.getDriveViewUrl(fileId) : null);
-
-    if (urlStr != null) {
-      final uri = Uri.parse(urlStr);
-      try {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('تعذر فتح الرابط خارجيًا: $e')),
-          );
-        }
-      }
+  void _startSearch(String query) {
+    final clean = query.trim();
+    if (clean.isEmpty) {
+      _clearSearch();
+      return;
     }
+    _searchResult?.removeListener(_onSearchResultUpdate);
+    _searchResult?.clear();
+    _searchResult = _pdfViewerController.searchText(clean);
+    _searchResult?.addListener(_onSearchResultUpdate);
+    setState(() {});
+  }
+
+  void _onSearchResultUpdate() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _clearSearch() {
+    _searchResult?.removeListener(_onSearchResultUpdate);
+    _searchResult?.clear();
+    _searchResult = null;
+    _searchController.clear();
+    setState(() {});
+  }
+
+  void _toggleSearch() {
+    setState(() {
+      _isSearching = !_isSearching;
+      if (!_isSearching) {
+        _clearSearch();
+      }
+    });
   }
 
   @override
@@ -447,25 +461,11 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
           ],
         ),
         actions: [
-          // Open externally in Drive / Browser
-          IconButton(
-            icon: const Icon(Icons.open_in_new_rounded),
-            tooltip: 'فتح في Google Drive / المتصفح',
-            onPressed: _openInExternalBrowser,
-          ),
           // Search in PDF
           IconButton(
             icon: Icon(_isSearching ? Icons.close_rounded : Icons.search_rounded),
-            tooltip: 'بحث داخل المرجع',
-            onPressed: () {
-              setState(() {
-                _isSearching = !_isSearching;
-                if (!_isSearching) {
-                  _searchResult?.clear();
-                  _searchController.clear();
-                }
-              });
-            },
+            tooltip: _isSearching ? 'إغلاق البحث' : 'بحث داخل المرجع',
+            onPressed: _toggleSearch,
           ),
           // Jump to page
           if (_totalPages > 1)
@@ -492,42 +492,102 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
         ],
         bottom: _isSearching
             ? PreferredSize(
-                preferredSize: const Size.fromHeight(52),
+                preferredSize: const Size.fromHeight(56),
                 child: Container(
-                  color: AppDesignTokens.surface(context),
+                  decoration: BoxDecoration(
+                    color: AppDesignTokens.surface(context),
+                    border: Border(
+                      bottom: BorderSide(color: AppDesignTokens.border(context)),
+                    ),
+                  ),
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   child: Row(
                     children: [
                       Expanded(
                         child: TextField(
                           controller: _searchController,
+                          autofocus: true,
+                          textInputAction: TextInputAction.search,
                           style: TextStyle(fontSize: 13, color: AppDesignTokens.textPrimary(context)),
                           decoration: InputDecoration(
-                            hintText: 'ابحث عن نص في المرجع...',
+                            isDense: true,
+                            hintText: 'ابحث عن كلمة أو عبارة في الملف...',
                             hintStyle: TextStyle(fontSize: 12, color: AppDesignTokens.textSecondary(context)),
-                            border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide(color: AppDesignTokens.border(context)),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide(color: AppDesignTokens.border(context)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: AppDesignTokens.primary, width: 1.5),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            prefixIcon: const Icon(Icons.search_rounded, size: 20, color: AppDesignTokens.primary),
+                            suffixIcon: _searchController.text.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear_rounded, size: 18),
+                                    tooltip: 'مسح',
+                                    onPressed: _clearSearch,
+                                  )
+                                : null,
                           ),
+                          onChanged: (val) {
+                            setState(() {});
+                          },
                           onSubmitted: (val) {
-                            if (val.trim().isNotEmpty) {
-                              _searchResult = _pdfViewerController.searchText(val.trim());
-                              _searchResult?.addListener(() => setState(() {}));
-                            }
+                            _startSearch(val);
                           },
                         ),
                       ),
+                      const SizedBox(width: 6),
                       if (_searchResult != null && _searchResult!.hasResult) ...[
-                        Text(
-                          '${_searchResult!.currentInstanceIndex} / ${_searchResult!.totalInstanceCount}',
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: AppDesignTokens.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${_searchResult!.currentInstanceIndex} / ${_searchResult!.totalInstanceCount}',
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.bold,
+                              color: AppDesignTokens.primary,
+                            ),
+                          ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.navigate_before_rounded),
+                          icon: const Icon(Icons.keyboard_arrow_up_rounded, size: 22),
+                          tooltip: 'النتيجة السابقة',
                           onPressed: () => _searchResult?.previousInstance(),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.navigate_next_rounded),
+                          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 22),
+                          tooltip: 'التالي',
                           onPressed: () => _searchResult?.nextInstance(),
+                        ),
+                      ] else if (_searchResult != null && !_searchResult!.hasResult && _searchResult!.isSearchCompleted) ...[
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 6.0),
+                          child: Text(
+                            'لا توجد نتائج',
+                            style: TextStyle(fontSize: 11, color: AppDesignTokens.danger, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.search_rounded, color: AppDesignTokens.primary),
+                          tooltip: 'بحث',
+                          onPressed: () => _startSearch(_searchController.text),
+                        ),
+                      ] else ...[
+                        IconButton(
+                          icon: const Icon(Icons.search_rounded, color: AppDesignTokens.primary),
+                          tooltip: 'بحث',
+                          onPressed: () => _startSearch(_searchController.text),
                         ),
                       ],
                     ],
@@ -596,12 +656,6 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
                 ),
-                const SizedBox(height: 16),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                  label: const Text('فتح في Google Drive', style: TextStyle(fontSize: 12)),
-                  onPressed: _openInExternalBrowser,
-                ),
               ],
             ),
           ),
@@ -631,26 +685,14 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
                   style: const TextStyle(fontSize: 13, color: AppColors.textMuted, height: 1.4),
                 ),
                 const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: AppButton(
-                        text: 'إعادة المحاولة',
-                        icon: Icons.refresh_rounded,
-                        variant: AppButtonVariant.primary,
-                        onPressed: _loadPdfDocument,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: AppButton(
-                        text: 'فتح خارجيًا',
-                        icon: Icons.open_in_new_rounded,
-                        variant: AppButtonVariant.secondary,
-                        onPressed: _openInExternalBrowser,
-                      ),
-                    ),
-                  ],
+                SizedBox(
+                  width: double.infinity,
+                  child: AppButton(
+                    text: 'إعادة المحاولة',
+                    icon: Icons.refresh_rounded,
+                    variant: AppButtonVariant.primary,
+                    onPressed: _loadPdfDocument,
+                  ),
                 ),
               ],
             ),
@@ -674,6 +716,9 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
         canShowScrollHead: true,
         canShowScrollStatus: true,
         enableDoubleTapZooming: true,
+        enableTextSelection: true,
+        currentSearchTextHighlightColor: const Color(0xFFFF9800).withValues(alpha: 0.85),
+        otherSearchTextHighlightColor: const Color(0xFFFFEB3B).withValues(alpha: 0.55),
         pageLayoutMode: PdfPageLayoutMode.continuous,
         onDocumentLoaded: _onDocumentLoaded,
         onPageChanged: _onPageChanged,
@@ -692,6 +737,9 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
         canShowScrollHead: true,
         canShowScrollStatus: true,
         enableDoubleTapZooming: true,
+        enableTextSelection: true,
+        currentSearchTextHighlightColor: const Color(0xFFFF9800).withValues(alpha: 0.85),
+        otherSearchTextHighlightColor: const Color(0xFFFFEB3B).withValues(alpha: 0.55),
         pageLayoutMode: PdfPageLayoutMode.continuous,
         onDocumentLoaded: _onDocumentLoaded,
         onPageChanged: _onPageChanged,
