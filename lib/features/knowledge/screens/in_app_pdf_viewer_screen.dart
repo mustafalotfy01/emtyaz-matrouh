@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/widgets/app_button.dart';
@@ -15,6 +16,7 @@ import '../models/knowledge_bookmark.dart';
 import '../providers/knowledge_provider.dart';
 import '../services/google_drive_document_service.dart';
 import '../services/pdf_cache_service.dart';
+import '../widgets/web_pdf_iframe.dart';
 
 class InAppPdfViewerScreen extends ConsumerStatefulWidget {
   final KnowledgeArticle article;
@@ -66,14 +68,6 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
   }
 
   Future<void> _loadPdfDocument() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-      _downloadProgress = 0.0;
-      _downloadedBytes = 0;
-      _totalBytes = 0;
-    });
-
     final fileId = widget.article.driveFileId ??
         GoogleDriveDocumentService.extractFileId(widget.article.driveFileUrl ?? '');
 
@@ -84,6 +78,22 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
       });
       return;
     }
+
+    // On Flutter Web, use direct WebPdfIframe rendering without browser CORS restrictions
+    if (kIsWeb) {
+      setState(() {
+        _isLoading = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+      _downloadProgress = 0.0;
+      _downloadedBytes = 0;
+      _totalBytes = 0;
+    });
 
     try {
       // 1. Check local cache
@@ -386,6 +396,27 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
     );
   }
 
+  Future<void> _openInExternalBrowser() async {
+    final fileId = widget.article.driveFileId ??
+        GoogleDriveDocumentService.extractFileId(widget.article.driveFileUrl ?? '');
+    final urlStr = widget.article.driveFileUrl != null && widget.article.driveFileUrl!.isNotEmpty
+        ? widget.article.driveFileUrl!
+        : (fileId != null ? GoogleDriveDocumentService.getDriveViewUrl(fileId) : null);
+
+    if (urlStr != null) {
+      final uri = Uri.parse(urlStr);
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('تعذر فتح الرابط خارجيًا: $e')),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final bookmarksAsync = ref.watch(articleBookmarksProvider(widget.article.id));
@@ -416,6 +447,12 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
           ],
         ),
         actions: [
+          // Open externally in Drive / Browser
+          IconButton(
+            icon: const Icon(Icons.open_in_new_rounded),
+            tooltip: 'فتح في Google Drive / المتصفح',
+            onPressed: _openInExternalBrowser,
+          ),
           // Search in PDF
           IconButton(
             icon: Icon(_isSearching ? Icons.close_rounded : Icons.search_rounded),
@@ -559,6 +596,12 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
                 ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                  label: const Text('فتح في Google Drive', style: TextStyle(fontSize: 12)),
+                  onPressed: _openInExternalBrowser,
+                ),
               ],
             ),
           ),
@@ -588,17 +631,39 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
                   style: const TextStyle(fontSize: 13, color: AppColors.textMuted, height: 1.4),
                 ),
                 const SizedBox(height: 20),
-                AppButton(
-                  text: 'إعادة المحاولة',
-                  icon: Icons.refresh_rounded,
-                  variant: AppButtonVariant.primary,
-                  onPressed: _loadPdfDocument,
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppButton(
+                        text: 'إعادة المحاولة',
+                        icon: Icons.refresh_rounded,
+                        variant: AppButtonVariant.primary,
+                        onPressed: _loadPdfDocument,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: AppButton(
+                        text: 'فتح خارجيًا',
+                        icon: Icons.open_in_new_rounded,
+                        variant: AppButtonVariant.secondary,
+                        onPressed: _openInExternalBrowser,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
         ),
       );
+    }
+
+    // Render Embedded PDF Viewer for Flutter Web
+    if (kIsWeb) {
+      final fileId = widget.article.driveFileId ??
+          GoogleDriveDocumentService.extractFileId(widget.article.driveFileUrl ?? '') ?? '';
+      return WebPdfIframe(fileId: fileId, title: widget.article.title);
     }
 
     // Render Native Embedded PDF

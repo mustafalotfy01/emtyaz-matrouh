@@ -122,5 +122,67 @@ void main() {
       expect(reportedTotal, bytes.length);
       expect(utf8.decode(bytes), contains('%PDF-1.4'));
     });
+
+    test('6. downloadPdfBytes automatically bypasses Google Drive virus scan warning', () async {
+      final mockClient = MockClient((request) async {
+        if (request.url.toString().contains('confirm=abc123token')) {
+          final pdfBytes = utf8.encode('%PDF-1.5 Confirmed Large Clinical Reference');
+          return http.Response.bytes(
+            pdfBytes,
+            200,
+            headers: {'content-type': 'application/pdf', 'content-length': '${pdfBytes.length}'},
+          );
+        }
+
+        // Return initial HTML virus warning page
+        final html = '''
+        <!DOCTYPE html>
+        <html>
+          <form id="download-form" action="https://drive.usercontent.google.com/download" method="get">
+            <input type="hidden" name="id" value="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms">
+            <input type="hidden" name="export" value="download">
+            <input type="hidden" name="confirm" value="abc123token">
+            <input type="hidden" name="uuid" value="uuid-999">
+          </form>
+        </html>
+        ''';
+        return http.Response(
+          html,
+          200,
+          headers: {'content-type': 'text/html', 'set-cookie': 'download_warning=1; Path=/'},
+        );
+      });
+
+      final bytes = await GoogleDriveDocumentService.downloadPdfBytes(
+        '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms',
+        client: mockClient,
+      );
+
+      expect(bytes, isNotEmpty);
+      expect(utf8.decode(bytes), contains('%PDF-1.5 Confirmed Large'));
+    });
+
+    test('7. downloadPdfBytes falls back to secondary endpoint if primary fails', () async {
+      final mockClient = MockClient((request) async {
+        if (request.url.host == 'drive.usercontent.google.com') {
+          return http.Response('Service Unavailable', 503);
+        }
+        // Fallback endpoint succeeds
+        final pdfBytes = utf8.encode('%PDF-1.6 Fallback Clinical Document');
+        return http.Response.bytes(
+          pdfBytes,
+          200,
+          headers: {'content-type': 'application/pdf', 'content-length': '${pdfBytes.length}'},
+        );
+      });
+
+      final bytes = await GoogleDriveDocumentService.downloadPdfBytes(
+        '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms',
+        client: mockClient,
+      );
+
+      expect(bytes, isNotEmpty);
+      expect(utf8.decode(bytes), contains('%PDF-1.6 Fallback'));
+    });
   });
 }

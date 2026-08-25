@@ -198,50 +198,149 @@ class GoogleDriveDocumentService {
     return false;
   }
 
-  /// Download PDF Bytes in Chunks with Progress Callback
+  /// Public share/view URL for Google Drive
+  static String getDriveViewUrl(String fileId) {
+    return 'https://drive.google.com/file/d/$fileId/view?usp=sharing';
+  }
+
+  /// Download PDF Bytes in Chunks with Progress Callback & Multi-endpoint Fallback
   static Future<Uint8List> downloadPdfBytes(
     String fileId, {
     void Function(int receivedBytes, int totalBytes)? onProgress,
     http.Client? client,
   }) async {
-    final directUrl = getDirectDownloadUrl(fileId);
     final httpClient = client ?? http.Client();
     final shouldCloseClient = client == null;
 
+    final candidateUrls = [
+      getDirectDownloadUrl(fileId),
+      getFallbackDownloadUrl(fileId),
+      'https://drive.google.com/uc?export=download&id=$fileId&confirm=t',
+      'https://drive.google.com/uc?id=$fileId&export=download',
+    ];
+
     try {
-      final request = http.Request('GET', Uri.parse(directUrl))
-        ..headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+      Object? lastError;
 
-      final response = await httpClient.send(request).timeout(const Duration(seconds: 30));
-
-      if (response.statusCode != 200 && response.statusCode != 206) {
-        throw Exception('فشل في تحميل الملف من Google Drive (كود الخطأ: ${response.statusCode})');
-      }
-
-      final totalBytes = response.contentLength ?? 0;
-      int receivedBytes = 0;
-      final List<int> accumulatedBytes = [];
-
-      await for (final chunk in response.stream) {
-        accumulatedBytes.addAll(chunk);
-        receivedBytes += chunk.length;
-        if (onProgress != null) {
-          onProgress(receivedBytes, totalBytes);
+      for (final url in candidateUrls) {
+        try {
+          final result = await _streamFromUrl(
+            url: url,
+            httpClient: httpClient,
+            onProgress: onProgress,
+          );
+          if (result != null && result.isNotEmpty) {
+            return result;
+          }
+        } catch (e) {
+          lastError = e;
+          if (kDebugMode) {
+            print('[GoogleDriveDocumentService] Attempt failed for $url: $e');
+          }
         }
       }
 
-      final resultBytes = Uint8List.fromList(accumulatedBytes);
-
-      // Validate PDF magic bytes
-      if (!_checkPdfMagicBytes(resultBytes)) {
-        throw Exception('الملف الذي تم تنزيله ليس ملف PDF صالحاً أو يتطلب إذن وصول.');
+      if (lastError != null) {
+        if (lastError is Exception) {
+          throw lastError;
+        }
+        throw Exception(lastError.toString());
       }
 
-      return resultBytes;
+      throw Exception('تعذر تنزيل الملف من Google Drive بعد تجربة عدة مسارات.');
     } finally {
       if (shouldCloseClient) {
         httpClient.close();
       }
     }
+  }
+
+  static Future<Uint8List?> _streamFromUrl({
+    required String url,
+    required http.Client httpClient,
+    void Function(int receivedBytes, int totalBytes)? onProgress,
+  }) async {
+    final request = http.Request('GET', Uri.parse(url))
+      ..headers['User-Agent'] =
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      ..headers['Accept'] = 'application/pdf,application/octet-stream,*/*';
+
+    final response = await httpClient.send(request).timeout(const Duration(seconds: 25));
+
+    if (response.statusCode != 200 && response.statusCode != 206) {
+      throw Exception('كود الاستجابة: ${response.statusCode}');
+    }
+
+    final totalBytes = response.contentLength ?? 0;
+    int receivedBytes = 0;
+    final List<int> accumulatedBytes = [];
+
+    await for (final chunk in response.stream.timeout(const Duration(seconds: 20))) {
+      accumulatedBytes.addAll(chunk);
+      receivedBytes += chunk.length;
+      if (onProgress != null) {
+        onProgress(receivedBytes, totalBytes);
+      }
+    }
+
+    final resultBytes = Uint8List.fromList(accumulatedBytes);
+
+    // If it's a genuine PDF
+    if (_checkPdfMagicBytes(resultBytes)) {
+      return resultBytes;
+    }
+
+    // If it's an HTML response (e.g. Google Drive virus scan warning for large files)
+    final text = utf8.decode(resultBytes.take(4000).toList(), allowMalformed: true);
+    if (text.contains('accounts.google.com') ||
+        text.contains('ServiceLogin') ||
+        text.contains('Access Denied') ||
+        text.contains('طلب إذن الوصول')) {
+      throw Exception('الملف محمي بطلب إذن وصول. يرجى التأكد من ضبط مشاركة الملف في Drive إلى "عام - أي شخص لديه الرابط".');
+    }
+
+    // Check if it's a virus scan warning confirmation form
+    final confirmMatch = RegExp(r'name="confirm"\s+value="([^"]+)"').firstMatch(text) ??
+        RegExp(r'[?&]confirm=([a-zA-Z0-9_-]+)').firstMatch(text);
+    final uuidMatch = RegExp(r'name="uuid"\s+value="([^"]+)"').firstMatch(text);
+
+    if (confirmMatch != null) {
+      final confirmToken = confirmMatch.group(1);
+      final uuidToken = uuidMatch?.group(1);
+      final cookies = response.headers['set-cookie'];
+
+      var confirmUrl = 'https://drive.usercontent.google.com/download?id=${extractFileId(url) ?? ''}&export=download&confirm=$confirmToken';
+      if (uuidToken != null) {
+        confirmUrl += '&uuid=$uuidToken';
+      }
+
+      final confirmReq = http.Request('GET', Uri.parse(confirmUrl))
+        ..headers['User-Agent'] =
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        ..headers['Accept'] = 'application/pdf,*/*';
+      if (cookies != null) {
+        confirmReq.headers['Cookie'] = cookies;
+      }
+
+      final confirmRes = await httpClient.send(confirmReq).timeout(const Duration(seconds: 25));
+      if (confirmRes.statusCode == 200 || confirmRes.statusCode == 206) {
+        final cTotal = confirmRes.contentLength ?? 0;
+        int cReceived = 0;
+        final List<int> cBytes = [];
+        await for (final chunk in confirmRes.stream.timeout(const Duration(seconds: 20))) {
+          cBytes.addAll(chunk);
+          cReceived += chunk.length;
+          if (onProgress != null) {
+            onProgress(cReceived, cTotal);
+          }
+        }
+        final finalBytes = Uint8List.fromList(cBytes);
+        if (_checkPdfMagicBytes(finalBytes)) {
+          return finalBytes;
+        }
+      }
+    }
+
+    throw Exception('الملف الذي تم تنزيله ليس ملف PDF صالحاً أو يتطلب إذن وصول.');
   }
 }
