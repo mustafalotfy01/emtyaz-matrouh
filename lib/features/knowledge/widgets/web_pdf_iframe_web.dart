@@ -33,8 +33,7 @@ class WebPdfIframe extends StatelessWidget {
           ..style.width = '100%'
           ..style.height = '100%'
           ..setAttribute('allow', 'autoplay')
-          ..setAttribute('allowfullscreen', 'true')
-          ..setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms');
+          ..setAttribute('allowfullscreen', 'true');
 
         // Blocker overlay placed over the top-right corner to conceal and block the pop-out icon
         final blocker = web.document.createElement('div') as web.HTMLDivElement

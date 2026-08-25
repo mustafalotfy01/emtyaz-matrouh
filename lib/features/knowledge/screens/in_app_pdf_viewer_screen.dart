@@ -277,6 +277,11 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
 
   void _toggleBookmark() async {
     HapticFeedback.lightImpact();
+    if (kIsWeb) {
+      _showWebBookmarkDialog();
+      return;
+    }
+
     final isBookmarked = await ref.read(knowledgeRepositoryProvider).toggleBookmark(
           articleId: widget.article.id,
           pageNumber: _currentPage,
@@ -296,6 +301,73 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
         ),
       );
     }
+  }
+
+  void _showWebBookmarkDialog() {
+    final controller = TextEditingController(text: '$_currentPage');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.bookmark_add_rounded, color: AppDesignTokens.primary),
+            SizedBox(width: 8),
+            Text('حفظ إشارة مرجعية', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'أدخل رقم الصفحة لحفظ إشارة مرجعية عندها:',
+              style: TextStyle(fontSize: 12.5),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: 'رقم الصفحة (مثلاً: 1, 5, 10...)',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppDesignTokens.primary),
+            onPressed: () async {
+              final page = int.tryParse(controller.text.trim());
+              if (page != null && page >= 1) {
+                Navigator.pop(ctx);
+                await ref.read(knowledgeRepositoryProvider).toggleBookmark(
+                      articleId: widget.article.id,
+                      pageNumber: page,
+                    );
+                ref.invalidate(articleBookmarksProvider(widget.article.id));
+                ref.invalidate(userBookmarkedArticlesProvider);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: AppDesignTokens.primary,
+                      content: Text('تم حفظ إشارة مرجعية عند الصفحة $page 🔖'),
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('حفظ'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showBookmarksSheet() {
@@ -400,6 +472,17 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
       _clearSearch();
       return;
     }
+
+    if (kIsWeb) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('💡 للبحث في النص على الويب، يمكنك استخدام اختصار (Ctrl + F) أو قائمة المتصفح.'),
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
     _searchResult?.removeListener(_onSearchResultUpdate);
     _searchResult?.clear();
     _searchResult = _pdfViewerController.searchText(clean);
