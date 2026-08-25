@@ -212,7 +212,12 @@ class GoogleDriveDocumentService {
     final httpClient = client ?? http.Client();
     final shouldCloseClient = client == null;
 
-    final candidateUrls = [
+    final candidateUrls = <String>[
+      if (kIsWeb) ...[
+        '/api/proxy-pdf?fileId=$fileId',
+        'https://corsproxy.io/?url=${Uri.encodeComponent(getDirectDownloadUrl(fileId))}',
+        'https://api.allorigins.win/raw?url=${Uri.encodeComponent(getDirectDownloadUrl(fileId))}',
+      ],
       getDirectDownloadUrl(fileId),
       getFallbackDownloadUrl(fileId),
       'https://drive.google.com/uc?export=download&id=$fileId&confirm=t',

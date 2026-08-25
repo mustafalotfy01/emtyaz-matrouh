@@ -1,4 +1,5 @@
-﻿const http = require('http');
+const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
@@ -30,6 +31,74 @@ const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', '*');
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  // Google Drive PDF Proxy API
+  if (req.url.startsWith('/api/proxy-pdf')) {
+    try {
+      const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+      const fileId = parsedUrl.searchParams.get('fileId');
+
+      if (!fileId) {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('Missing fileId parameter');
+        return;
+      }
+
+      const initialUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`;
+
+      const fetchTarget = (targetUrl, redirectLimit = 5) => {
+        if (redirectLimit <= 0) {
+          res.writeHead(502, { 'Content-Type': 'text/plain' });
+          res.end('Too many redirects');
+          return;
+        }
+
+        const client = targetUrl.startsWith('https:') ? https : http;
+        const proxyReq = client.get(targetUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          }
+        }, (proxyRes) => {
+          if (proxyRes.statusCode >= 300 && proxyRes.statusCode < 400 && proxyRes.headers.location) {
+            let nextUrl = proxyRes.headers.location;
+            if (!nextUrl.startsWith('http')) {
+              nextUrl = new URL(nextUrl, targetUrl).toString();
+            }
+            fetchTarget(nextUrl, redirectLimit - 1);
+            return;
+          }
+
+          res.writeHead(proxyRes.statusCode, {
+            'Content-Type': proxyRes.headers['content-type'] || 'application/pdf',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=86400',
+          });
+          proxyRes.pipe(res);
+        });
+
+        proxyReq.on('error', (err) => {
+          console.error('[Proxy Error]', err);
+          if (!res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'text/plain' });
+            res.end(`Proxy error: ${err.message}`);
+          }
+        });
+      };
+
+      fetchTarget(initialUrl);
+      return;
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end(`Server Error: ${e.message}`);
+      return;
+    }
+  }
 
   let safePath = path.normalize(decodeURI(req.url.split('?')[0])).replace(/^(\.\.[\/\\])+/, '');
   let filePath = path.join(WEB_DIR, safePath);

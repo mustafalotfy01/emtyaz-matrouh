@@ -13,7 +13,6 @@ import '../models/knowledge_article.dart';
 import '../providers/knowledge_provider.dart';
 import '../services/google_drive_document_service.dart';
 import '../services/pdf_cache_service.dart';
-import '../widgets/web_pdf_iframe.dart';
 
 class InAppPdfViewerScreen extends ConsumerStatefulWidget {
   final KnowledgeArticle article;
@@ -74,14 +73,6 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
       setState(() {
         _isLoading = false;
         _errorMessage = 'معرّف المرجع غير موجود أو الرابط غير صالح.';
-      });
-      return;
-    }
-
-    // On Flutter Web, use direct WebPdfIframe rendering without browser CORS restrictions
-    if (kIsWeb) {
-      setState(() {
-        _isLoading = false;
       });
       return;
     }
@@ -699,13 +690,6 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
           ),
         ),
       );
-    }
-
-    // Render Embedded PDF Viewer for Flutter Web
-    if (kIsWeb) {
-      final fileId = widget.article.driveFileId ??
-          GoogleDriveDocumentService.extractFileId(widget.article.driveFileUrl ?? '') ?? '';
-      return WebPdfIframe(fileId: fileId, title: widget.article.title);
     }
 
     // Render Native Embedded PDF
