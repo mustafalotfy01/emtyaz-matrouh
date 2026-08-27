@@ -34,6 +34,8 @@ class _WebPdfIframeState extends State<WebPdfIframe> {
             ..style.border = 'none'
             ..style.width = '100%'
             ..style.height = '100%'
+            ..style.touchAction = 'pan-x pan-y pinch-zoom'
+            ..style.overscrollBehavior = 'contain'
             ..setAttribute('allow', 'autoplay; fullscreen')
             ..setAttribute('allowfullscreen', 'true');
           return iframe;

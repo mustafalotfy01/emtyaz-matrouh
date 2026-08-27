@@ -520,15 +520,27 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
     final hasBookmarkOnCurrentPage = bookmarksAsync.value?.any((b) => b.pageNumber == _currentPage) ?? false;
 
     return PopScope(
-      canPop: true,
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
         try {
           FocusScope.of(context).unfocus();
         } catch (_) {}
+        Navigator.of(context).pop();
       },
       child: Scaffold(
         backgroundColor: AppDesignTokens.bg(context),
         appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            tooltip: 'رجوع',
+            onPressed: () {
+              try {
+                FocusScope.of(context).unfocus();
+              } catch (_) {}
+              Navigator.of(context).pop();
+            },
+          ),
           titleSpacing: 0,
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
