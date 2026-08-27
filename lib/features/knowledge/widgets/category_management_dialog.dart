@@ -40,7 +40,10 @@ class _CategoryManagementDialogState extends ConsumerState<CategoryManagementDia
 
     try {
       final repo = ref.read(knowledgeRepositoryProvider);
-      final sections = await repo.fetchStudySections(includeInactive: true);
+      final sections = await repo.fetchStudySections(
+        parentId: widget.parentCategoryId,
+        includeInactive: true,
+      );
       if (mounted) {
         setState(() {
           _localSections = sections;
@@ -128,6 +131,7 @@ class _CategoryManagementDialogState extends ConsumerState<CategoryManagementDia
                       await repo.createCategory(
                         nameAr: name,
                         description: descController.text.trim(),
+                        parentId: widget.parentCategoryId,
                         isActive: isActive,
                       );
                     }

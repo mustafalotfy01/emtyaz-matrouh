@@ -257,6 +257,21 @@ final List<UserProfile> _registeredStudentsRegistry = [
     residenceAddress: 'مطروح',
     registrationStatus: RegistrationStatus.approved,
   ),
+  UserProfile(
+    id: 'ldr-007-ahmed-hamouly',
+    email: 'ahmed.elhamouly@matrouh-nursing.edu.eg',
+    fullName: 'أحمد الحامولى',
+    universityCode: 'LDR-07',
+    phoneNumber: '01000000015',
+    role: UserRole.leader,
+    gender: 'male',
+    maritalStatus: 'أعزب/عزباء',
+    childrenCount: 0,
+    isMatrouhResident: true,
+    emergencyContact: '01000000000',
+    residenceAddress: 'مطروح',
+    registrationStatus: RegistrationStatus.approved,
+  ),
 ];
 final Map<String, String> _userPasswordsRegistry = {};
 
@@ -385,6 +400,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
     final localMatch = _registeredStudentsRegistry.where(
       (s) => s.universityCode?.trim().toLowerCase() == cleanInput ||
              s.email.trim().toLowerCase() == cleanInput ||
+             ((cleanInput.contains('hamoul') || cleanInput.contains('حامول')) && (s.email.contains('hamoul') || s.fullName.contains('حامول'))) ||
+             s.fullName.trim() == input.trim() ||
              s.phoneNumber.trim() == input.trim() ||
              s.nationalId?.trim() == input.trim(),
     ).firstOrNull;

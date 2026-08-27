@@ -86,7 +86,6 @@ class ApkDownloadService {
   StreamSubscription<List<int>>? _streamSubscription;
   IOSink? _fileSink;
   bool _isCanceled = false;
-  String? _expectedSha256;
   int? _expectedVersionCode;
 
   void _emit(ApkDownloadState state) {
@@ -121,7 +120,6 @@ class ApkDownloadService {
     String? fileName,
     String? expectedSha256,
   }) async {
-    _expectedSha256 = expectedSha256;
     _expectedVersionCode = versionCode;
     if (kIsWeb) {
       _emit(_currentState.copyWith(
@@ -146,10 +144,30 @@ class ApkDownloadService {
       int existingBytes = 0;
       if (targetFile.existsSync()) {
         existingBytes = targetFile.lengthSync();
+        // If file already equals expected size, verify or reset
+        if (expectedTotalBytes != null && expectedTotalBytes > 0 && existingBytes == expectedTotalBytes) {
+          final validation = await AndroidInstallerService.verifyApk(targetFile.path);
+          if (validation.isValid) {
+            _emit(_currentState.copyWith(
+              status: ApkDownloadStatus.completed,
+              downloadedBytes: existingBytes,
+              totalBytes: existingBytes,
+              progress: 1.0,
+              filePath: targetFile.path,
+              errorMessage: null,
+            ));
+            return;
+          } else {
+            try {
+              targetFile.deleteSync();
+            } catch (_) {}
+            existingBytes = 0;
+          }
+        }
       }
 
       final uri = Uri.parse(downloadUrl.trim());
-      final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+      final client = HttpClient()..connectionTimeout = const Duration(seconds: 25);
 
       _activeRequest = await client.getUrl(uri);
 
@@ -160,14 +178,31 @@ class ApkDownloadService {
         isResuming = true;
       }
 
-      final response = await _activeRequest!.close();
+      var response = await _activeRequest!.close();
 
       if (_isCanceled) {
         client.close(force: true);
         return;
       }
 
-      final statusCode = response.statusCode;
+      var statusCode = response.statusCode;
+
+      // If server rejected the Range request (HTTP 416) or failed resume, delete local file and start fresh from byte 0
+      if (statusCode == HttpStatus.requestedRangeNotSatisfiable ||
+          (statusCode != HttpStatus.ok && statusCode != HttpStatus.partialContent && isResuming)) {
+        if (targetFile.existsSync()) {
+          try {
+            targetFile.deleteSync();
+          } catch (_) {}
+        }
+        existingBytes = 0;
+        isResuming = false;
+
+        _activeRequest = await client.getUrl(uri);
+        response = await _activeRequest!.close();
+        statusCode = response.statusCode;
+      }
+
       int totalBytes = expectedTotalBytes ?? 0;
       int startByte = 0;
       FileMode openMode = FileMode.write;

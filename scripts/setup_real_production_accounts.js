@@ -124,6 +124,14 @@ const ACCOUNTS = [
     jobTitle: 'ليدر الامتياز',
     gender: 'male',
     category: 'leader'
+  },
+  {
+    fullName: 'أحمد الحامولى',
+    email: 'ahmed.elhamouly@matrouh-nursing.edu.eg',
+    role: 'leader',
+    jobTitle: 'ليدر الامتياز',
+    gender: 'male',
+    category: 'leader'
   }
 ];
 

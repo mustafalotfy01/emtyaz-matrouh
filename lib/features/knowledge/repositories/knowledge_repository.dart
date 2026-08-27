@@ -15,7 +15,10 @@ class KnowledgeRepository {
   // ── CATEGORIES & SECTIONS ───────────────────────────────────────────────────
 
   /// Fetch all sections/categories available in the database
-  Future<List<KnowledgeCategory>> fetchStudySections({bool includeInactive = false}) async {
+  Future<List<KnowledgeCategory>> fetchStudySections({
+    String? parentId,
+    bool includeInactive = false,
+  }) async {
     try {
       // 1. Try structured query with ordering
       dynamic res;
@@ -23,6 +26,9 @@ class KnowledgeRepository {
         PostgrestFilterBuilder query = _client.from('knowledge_categories').select();
         if (!includeInactive) {
           query = query.eq('is_active', true);
+        }
+        if (parentId != null && parentId.isNotEmpty) {
+          query = query.eq('parent_id', parentId);
         }
         res = await query.order('order_index', ascending: true);
       } catch (e) {
@@ -36,19 +42,21 @@ class KnowledgeRepository {
 
       if (rawList.isEmpty) return [];
 
-      // Separate main containers vs subcategories if any hierarchy exists
-      final subcategories = rawList.where((c) => !c.isMainCategory).toList();
-      if (subcategories.isNotEmpty) {
-        return subcategories;
+      // If specific parentId requested, return matching items
+      if (parentId != null && parentId.isNotEmpty) {
+        return rawList;
       }
 
-      // If no subcategories, return all categories (excluding root container if specific)
-      final filtered = rawList.where((c) {
+      // Umbrella root containers to exclude if present
+      const rootUmbrellas = {'المكتبة السريرية', 'المراجع العلمية'};
+
+      // Return both subcategories AND top-level custom sections (excluding root umbrella names)
+      final sections = rawList.where((c) {
         final name = c.nameAr.trim();
-        return name != 'المكتبة السريرية';
+        return !rootUmbrellas.contains(name);
       }).toList();
 
-      return filtered.isNotEmpty ? filtered : rawList;
+      return sections.isNotEmpty ? sections : rawList;
     } catch (e) {
       if (kDebugMode) print('[KnowledgeRepository] fetchStudySections error: $e');
       return [];
@@ -60,7 +68,7 @@ class KnowledgeRepository {
     String? parentId,
     bool includeInactive = false,
   }) async {
-    return await fetchStudySections(includeInactive: includeInactive);
+    return await fetchStudySections(parentId: parentId, includeInactive: includeInactive);
   }
 
   /// Fetch all categories structured as a parent -> subcategories hierarchy
@@ -108,33 +116,58 @@ class KnowledgeRepository {
     final name = nameAr.trim();
     if (name.isEmpty) throw Exception('اسم القسم لا يمكن أن يكون فارغاً');
 
+    final userId = _client.auth.currentUser?.id;
+
     // 1. Try full payload insert
     try {
       final Map<String, dynamic> payload = {
         'name_ar': name,
-        'description': description?.trim(),
         'icon_name': iconName,
         'order_index': orderIndex,
         'is_active': isActive,
       };
+      if (description != null && description.trim().isNotEmpty) {
+        payload['description'] = description.trim();
+      }
       if (parentId != null && parentId.isNotEmpty) {
         payload['parent_id'] = parentId;
+      }
+      if (userId != null) {
+        payload['created_by'] = userId;
       }
 
       final res = await _client.from('knowledge_categories').insert(payload).select().single();
       return KnowledgeCategory.fromJson(res);
     } catch (e) {
-      if (kDebugMode) print('[KnowledgeRepository] createCategory full payload error: $e, trying minimal payload');
+      if (kDebugMode) print('[KnowledgeRepository] createCategory full payload error: $e, trying fallback payload');
 
-      // 2. Fallback to basic columns insert if extended columns do not exist yet in DB
+      // 2. Fallback to basic payload without created_by / order_index
       try {
-        final res = await _client.from('knowledge_categories').insert({
+        final Map<String, dynamic> fallbackPayload = {
           'name_ar': name,
           'icon_name': iconName,
-        }).select().single();
+          'is_active': isActive,
+        };
+        if (description != null && description.trim().isNotEmpty) {
+          fallbackPayload['description'] = description.trim();
+        }
+        if (parentId != null && parentId.isNotEmpty) {
+          fallbackPayload['parent_id'] = parentId;
+        }
+
+        final res = await _client.from('knowledge_categories').insert(fallbackPayload).select().single();
         return KnowledgeCategory.fromJson(res);
       } catch (e2) {
-        throw Exception('فشل في إنشاء القسم في قاعدة البيانات: $e2');
+        // 3. Fallback to minimal schema columns
+        try {
+          final res = await _client.from('knowledge_categories').insert({
+            'name_ar': name,
+            'icon_name': iconName,
+          }).select().single();
+          return KnowledgeCategory.fromJson(res);
+        } catch (e3) {
+          throw Exception('فشل في إضافة القسم في قاعدة البيانات: $e3');
+        }
       }
     }
   }
