@@ -31,7 +31,9 @@ class _KnowledgeLibraryScreenState extends ConsumerState<KnowledgeLibraryScreen>
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authProvider).user;
-    final canManage = user?.role == UserRole.superAdmin || user?.role == UserRole.evaluatingDoctor;
+    final canManage = user?.role == UserRole.superAdmin ||
+        user?.role == UserRole.leader ||
+        user?.role == UserRole.evaluatingDoctor;
 
     final articlesAsync = ref.watch(knowledgeArticlesProvider);
     final featuredAsync = ref.watch(featuredKnowledgeArticlesProvider);

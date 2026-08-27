@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/widgets/app_button.dart';
@@ -518,60 +519,85 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
     final bookmarksAsync = ref.watch(articleBookmarksProvider(widget.article.id));
     final hasBookmarkOnCurrentPage = bookmarksAsync.value?.any((b) => b.pageNumber == _currentPage) ?? false;
 
-    return Scaffold(
-      backgroundColor: AppDesignTokens.bg(context),
-      appBar: AppBar(
-        titleSpacing: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.article.title,
-              style: TextStyle(
-                fontSize: 14.5,
-                fontWeight: FontWeight.bold,
-                color: AppDesignTokens.textPrimary(context),
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (_totalPages > 0)
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        try {
+          FocusScope.of(context).unfocus();
+        } catch (_) {}
+      },
+      child: Scaffold(
+        backgroundColor: AppDesignTokens.bg(context),
+        appBar: AppBar(
+          titleSpacing: 0,
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Text(
-                'الصفحة $_currentPage من $_totalPages',
-                style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
+                widget.article.title,
+                style: TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.bold,
+                  color: AppDesignTokens.textPrimary(context),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-          ],
-        ),
-        actions: [
-          // Search in PDF
-          IconButton(
-            icon: Icon(_isSearching ? Icons.close_rounded : Icons.search_rounded),
-            tooltip: _isSearching ? 'إغلاق البحث' : 'بحث داخل المرجع',
-            onPressed: _toggleSearch,
+              if (_totalPages > 0)
+                Text(
+                  'الصفحة $_currentPage من $_totalPages',
+                  style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
+                ),
+            ],
           ),
-          // Jump to page
-          if (_totalPages > 1)
+          actions: [
+            // Open PDF in new window / external Drive tab
             IconButton(
-              icon: const Icon(Icons.redo_rounded),
-              tooltip: 'انتقال إلى صفحة',
-              onPressed: _showJumpToPageDialog,
+              icon: const Icon(Icons.open_in_new_rounded),
+              tooltip: 'فتح المرجع في المتصفح',
+              onPressed: () async {
+                final url = widget.article.driveFileUrl?.isNotEmpty == true
+                    ? widget.article.driveFileUrl!
+                    : (widget.article.driveFileId != null && widget.article.driveFileId!.isNotEmpty
+                        ? 'https://drive.google.com/file/d/${widget.article.driveFileId}/view'
+                        : '');
+                if (url.isNotEmpty) {
+                  final uri = Uri.tryParse(url);
+                  if (uri != null) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                }
+              },
             ),
-          // Bookmarks List
-          IconButton(
-            icon: const Icon(Icons.collections_bookmark_outlined),
-            tooltip: 'قائمة الإشارات',
-            onPressed: _showBookmarksSheet,
-          ),
-          // Toggle current page bookmark
-          IconButton(
-            icon: Icon(
-              hasBookmarkOnCurrentPage ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-              color: hasBookmarkOnCurrentPage ? AppDesignTokens.primary : null,
+            // Search in PDF
+            IconButton(
+              icon: Icon(_isSearching ? Icons.close_rounded : Icons.search_rounded),
+              tooltip: _isSearching ? 'إغلاق البحث' : 'بحث داخل المرجع',
+              onPressed: _toggleSearch,
             ),
-            tooltip: 'حفظ الصفحة الحالية',
-            onPressed: _toggleBookmark,
-          ),
-        ],
+            // Jump to page
+            if (_totalPages > 1)
+              IconButton(
+                icon: const Icon(Icons.redo_rounded),
+                tooltip: 'انتقال إلى صفحة',
+                onPressed: _showJumpToPageDialog,
+              ),
+            // Bookmarks List
+            IconButton(
+              icon: const Icon(Icons.collections_bookmark_outlined),
+              tooltip: 'قائمة الإشارات',
+              onPressed: _showBookmarksSheet,
+            ),
+            // Toggle current page bookmark
+            IconButton(
+              icon: Icon(
+                hasBookmarkOnCurrentPage ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                color: hasBookmarkOnCurrentPage ? AppDesignTokens.primary : null,
+              ),
+              tooltip: 'حفظ الصفحة الحالية',
+              onPressed: _toggleBookmark,
+            ),
+          ],
         bottom: _isSearching
             ? PreferredSize(
                 preferredSize: const Size.fromHeight(56),
@@ -677,8 +703,9 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
                 ),
               )
             : null,
+        ),
+        body: _buildBody(),
       ),
-      body: _buildBody(),
     );
   }
 
@@ -797,6 +824,8 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
         controller: _pdfViewerController,
         canShowScrollHead: true,
         canShowScrollStatus: true,
+        canShowPaginationDialog: false,
+        maxZoomLevel: 3.0,
         enableDoubleTapZooming: true,
         enableTextSelection: true,
         currentSearchTextHighlightColor: const Color(0xFFFF9800).withValues(alpha: 0.85),
@@ -818,6 +847,8 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
         controller: _pdfViewerController,
         canShowScrollHead: true,
         canShowScrollStatus: true,
+        canShowPaginationDialog: false,
+        maxZoomLevel: 3.0,
         enableDoubleTapZooming: true,
         enableTextSelection: true,
         currentSearchTextHighlightColor: const Color(0xFFFF9800).withValues(alpha: 0.85),

@@ -5,6 +5,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/theme/app_design_tokens.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/app_empty_state.dart';
+import '../../../core/services/supabase_service.dart';
 import '../../auth/models/user_profile.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../models/knowledge_article.dart';
@@ -28,7 +29,10 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authProvider).user;
-    final canManage = user?.role == UserRole.superAdmin || user?.role == UserRole.evaluatingDoctor;
+    final currentUid = SupabaseService.client.auth.currentUser?.id;
+    final canManage = user?.role == UserRole.superAdmin ||
+        user?.role == UserRole.leader ||
+        user?.role == UserRole.evaluatingDoctor;
 
     final sectionsAsync = ref.watch(studySectionsProvider);
     final filter = StudyFilesFilter(
@@ -217,7 +221,9 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
                     separatorBuilder: (_, __) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final article = articles[index];
-                      final isOwnerOrAdmin = canManage || (user != null && article.authorId == user.id);
+                      final isOwnerOrAdmin = canManage ||
+                          (user != null && article.authorId == user.id) ||
+                          (currentUid != null && article.authorId == currentUid);
                       return _buildReferenceCard(context, article, isOwnerOrAdmin: isOwnerOrAdmin);
                     },
                   );
