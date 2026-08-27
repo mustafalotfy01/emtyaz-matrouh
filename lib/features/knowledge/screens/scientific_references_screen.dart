@@ -217,7 +217,8 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
                     separatorBuilder: (_, __) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final article = articles[index];
-                      return _buildReferenceCard(context, article);
+                      final isOwnerOrAdmin = canManage || (user != null && article.authorId == user.id);
+                      return _buildReferenceCard(context, article, isOwnerOrAdmin: isOwnerOrAdmin);
                     },
                   );
                 },
@@ -302,7 +303,7 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
     );
   }
 
-  Widget _buildReferenceCard(BuildContext context, KnowledgeArticle article) {
+  Widget _buildReferenceCard(BuildContext context, KnowledgeArticle article, {bool isOwnerOrAdmin = false}) {
     final progressAsync = ref.watch(articleReadingProgressProvider(article.id));
     final progress = progressAsync.value;
 
@@ -372,6 +373,35 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
                   ],
                 ),
               ),
+
+              // Edit & Delete actions for admins / owners
+              if (isOwnerOrAdmin)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, size: 19, color: AppDesignTokens.primary),
+                      tooltip: 'تعديل الملف',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AddKnowledgeContentScreen(article: article),
+                          ),
+                        );
+                        ref.invalidate(studyFilesProvider);
+                        ref.invalidate(knowledgeArticlesProvider);
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded, size: 19, color: AppDesignTokens.danger),
+                      tooltip: 'حذف الملف',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _deleteArticle(article),
+                    ),
+                  ],
+                ),
             ],
           ),
 
@@ -454,6 +484,55 @@ class _ScientificReferencesScreenState extends ConsumerState<ScientificReference
         ],
       ),
     );
+  }
+
+  void _deleteArticle(KnowledgeArticle article) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('تأكيد حذف الملف'),
+        content: Text('هل أنت متأكد من رغبتك في حذف "${article.title}" نهائياً من المكتبة؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppDesignTokens.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('حذف الآن'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      try {
+        await ref.read(knowledgeRepositoryProvider).deleteArticle(article.id);
+        ref.invalidate(studyFilesProvider);
+        ref.invalidate(knowledgeArticlesProvider);
+        ref.invalidate(featuredKnowledgeArticlesProvider);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: AppDesignTokens.success,
+              content: Text('تم حذف الملف بنجاح ✅'),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: AppDesignTokens.danger,
+              content: Text('فشل حذف الملف: $e'),
+            ),
+          );
+        }
+      }
+    }
   }
 
   Widget _buildInfoBadge(IconData icon, String text) {
