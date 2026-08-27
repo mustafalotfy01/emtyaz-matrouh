@@ -822,11 +822,11 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
       );
     }
 
-    // Render Embedded PDF Viewer for Flutter Web
+    // Render Dedicated Web / PWA Reader View for Web
     if (kIsWeb) {
       final fileId = widget.article.driveFileId ??
           GoogleDriveDocumentService.extractFileId(widget.article.driveFileUrl ?? '') ?? '';
-      return WebPdfIframe(fileId: fileId, title: widget.article.title);
+      return _buildWebReaderView(fileId);
     }
 
     // Render Native Embedded PDF
@@ -877,5 +877,165 @@ class _InAppPdfViewerScreenState extends ConsumerState<InAppPdfViewerScreen> {
     }
 
     return const Center(child: Text('لا توجد بيانات للعرض'));
+  }
+
+  Widget _buildWebReaderView(String fileId) {
+    final driveViewUrl = widget.article.driveFileUrl?.isNotEmpty == true
+        ? widget.article.driveFileUrl!
+        : (fileId.isNotEmpty ? 'https://drive.google.com/file/d/$fileId/view' : '');
+    final downloadUrl = fileId.isNotEmpty
+        ? GoogleDriveDocumentService.getDirectDownloadUrl(fileId)
+        : driveViewUrl;
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 580),
+          child: Column(
+            children: [
+              AppCard(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 68,
+                      height: 68,
+                      decoration: BoxDecoration(
+                        color: AppDesignTokens.danger.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: AppDesignTokens.danger.withOpacity(0.25)),
+                      ),
+                      child: const Icon(Icons.picture_as_pdf_rounded, color: AppDesignTokens.danger, size: 38),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      widget.article.title,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold, height: 1.3),
+                    ),
+                    if (widget.article.subcategoryName != null && widget.article.subcategoryName!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppDesignTokens.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          widget.article.subcategoryName!,
+                          style: const TextStyle(fontSize: 12, color: AppDesignTokens.primary, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                    if (widget.article.summary.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      Text(
+                        widget.article.summary,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13, color: AppDesignTokens.textSecondary(context), height: 1.45),
+                      ),
+                    ],
+                    const SizedBox(height: 18),
+                    const Divider(),
+                    const SizedBox(height: 14),
+                    // Badges row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (widget.article.formattedFileSize.isNotEmpty) ...[
+                          _buildWebBadge(Icons.file_present_rounded, widget.article.formattedFileSize),
+                          const SizedBox(width: 16),
+                        ],
+                        _buildWebBadge(Icons.remove_red_eye_outlined, '${widget.article.viewsCount} قراءة'),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    // Primary Open Viewer Button with Full Zoom Support
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppDesignTokens.primary,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        icon: const Icon(Icons.menu_book_rounded, size: 22, color: Colors.white),
+                        label: const Text(
+                          'قراءة المرجع مع إمكانية التكبير 📖',
+                          style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                        onPressed: () async {
+                          if (driveViewUrl.isNotEmpty) {
+                            final uri = Uri.tryParse(driveViewUrl);
+                            if (uri != null) {
+                              await launchUrl(uri, mode: LaunchMode.externalApplication);
+                            }
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Download Button
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        icon: const Icon(Icons.download_rounded, size: 20),
+                        label: const Text('تحميل المرجع بصيغة PDF 📥', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                        onPressed: () async {
+                          if (downloadUrl.isNotEmpty) {
+                            final uri = Uri.tryParse(downloadUrl);
+                            if (uri != null) {
+                              await launchUrl(uri, mode: LaunchMode.externalApplication);
+                            }
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Helper info for PWA users
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppDesignTokens.primary.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppDesignTokens.primary.withOpacity(0.15)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.touch_app_rounded, color: AppDesignTokens.primary, size: 22),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'عند الضغط على "قراءة المرجع"، يفتح القارئ المستقل بكامل ميزاته (التكبير بإصبعين Pinch-to-zoom، البحث، التنقل) بسلاسة فائقة ودون التأثير على التطبيق.',
+                        style: TextStyle(fontSize: 11.5, height: 1.45),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWebBadge(IconData icon, String text) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: AppColors.textMuted),
+        const SizedBox(width: 5),
+        Text(text, style: const TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w500)),
+      ],
+    );
   }
 }
