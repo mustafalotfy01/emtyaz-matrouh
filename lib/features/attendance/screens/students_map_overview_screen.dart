@@ -40,7 +40,7 @@ class _StudentsMapOverviewScreenState extends ConsumerState<StudentsMapOverviewS
   List<StudentHousingLocation> _filteredLocations = [];
 
   String _searchQuery = '';
-  String _selectedFilter = 'all'; // all, groupA, groupB, outside
+  String _selectedFilter = 'all';
 
   final MapController _mapController = MapController();
   UserProfile? _selectedStudent;
@@ -413,8 +413,7 @@ class _StudentsMapOverviewScreenState extends ConsumerState<StudentsMapOverviewS
                                     ..._filteredLocations
                                         .where((l) => l.profile.latitude != null && l.profile.longitude != null)
                                         .map((item) {
-                                      final isA = item.profile.studentGroup == StudentGroup.groupA;
-                                      final color = isA ? AppDesignTokens.primary : Colors.orange;
+                                      const color = AppDesignTokens.primary;
                                       final isSelected = _selectedStudent?.id == item.profile.id;
 
                                       return Marker(

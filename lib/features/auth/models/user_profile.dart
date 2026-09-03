@@ -106,33 +106,12 @@ enum StudentClassification {
 }
 
 enum StudentGroup {
-  groupA,
-  groupB;
+  unassigned;
 
-  String get displayNameAr {
-    switch (this) {
-      case StudentGroup.groupA:
-        return 'المجموعة A (الأيام 1 - 15)';
-      case StudentGroup.groupB:
-        return 'المجموعة B (الأيام 16 - نهاية الشهر)';
-    }
-  }
+  String get displayNameAr => 'بدون جروب';
+  String get code => '';
 
-  String get code {
-    switch (this) {
-      case StudentGroup.groupA:
-        return 'A';
-      case StudentGroup.groupB:
-        return 'B';
-    }
-  }
-
-  static StudentGroup fromString(String? val) {
-    if (val == 'B' || val == 'groupB' || val == 'group_b') {
-      return StudentGroup.groupB;
-    }
-    return StudentGroup.groupA;
-  }
+  static StudentGroup fromString(String? val) => StudentGroup.unassigned;
 }
 
 enum RegistrationStatus {
@@ -225,7 +204,7 @@ class UserProfile {
     this.longitude,
     this.avatarUrl,
     required this.role,
-    this.studentGroup = StudentGroup.groupA,
+    this.studentGroup = StudentGroup.unassigned,
     this.registrationStatus = RegistrationStatus.pending,
     this.reviewedBy,
     this.rejectionReason,
@@ -289,7 +268,17 @@ class UserProfile {
       createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at']) : null,
       classification: parsedClass,
       studentGroupId: json['student_group_id']?.toString(),
-      studentGroupName: json['group_name']?.toString() ?? json['student_group_name']?.toString() ?? json['student_group']?.toString(),
+      studentGroupName: () {
+        final raw = json['group_name']?.toString() ?? json['student_group_name']?.toString();
+        if (raw != null && raw.trim().isNotEmpty && raw != 'A' && raw != 'B' && raw != 'group_a' && raw != 'group_b' && raw != 'Group A' && raw != 'Group B' && raw != 'المجموعة A' && raw != 'المجموعة B') {
+          return raw.trim();
+        }
+        final leg = json['student_group']?.toString();
+        if (leg != null && leg.trim().isNotEmpty && leg != 'A' && leg != 'B' && leg != 'group_a' && leg != 'group_b' && leg != 'Group A' && leg != 'Group B' && leg != 'المجموعة A' && leg != 'المجموعة B') {
+          return leg.trim();
+        }
+        return null;
+      }(),
       departmentName: json['department_name']?.toString(),
       supervisorDoctorName: json['supervisor_doctor_name']?.toString(),
       previousWorkExperience: prevExp,
@@ -321,7 +310,7 @@ class UserProfile {
       'longitude': longitude,
       'avatar_url': avatarUrl,
       'role': role.toDbString(),
-      'student_group': studentGroupName ?? studentGroup.code,
+      'student_group': studentGroupName,
       'registration_status': registrationStatus.toDbString(),
       'reviewed_by': reviewedBy,
       'rejection_reason': rejectionReason,
@@ -436,9 +425,15 @@ class UserProfile {
       departmentName: departmentName ?? this.departmentName,
       supervisorDoctorName: supervisorDoctorName ?? this.supervisorDoctorName,
       previousWorkExperience: previousWorkExperience ?? this.previousWorkExperience,
-      previousWorkplace: previousWorkplace ?? this.previousWorkplace,
-      previousWorkDepartment: previousWorkDepartment ?? this.previousWorkDepartment,
-      previousWorkExperienceDetails: previousWorkExperienceDetails ?? this.previousWorkExperienceDetails,
+      previousWorkplace: (previousWorkExperience == false)
+          ? null
+          : (previousWorkplace ?? this.previousWorkplace),
+      previousWorkDepartment: (previousWorkExperience == false)
+          ? null
+          : (previousWorkDepartment ?? this.previousWorkDepartment),
+      previousWorkExperienceDetails: (previousWorkExperience == false)
+          ? null
+          : (previousWorkExperienceDetails ?? this.previousWorkExperienceDetails),
     );
   }
 

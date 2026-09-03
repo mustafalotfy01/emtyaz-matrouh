@@ -80,8 +80,18 @@ class AdminStudentOverviewModel {
       email: json['email']?.toString() ?? '',
       phoneNumber: json['phone_number']?.toString() ?? '',
       gpa: (json['gpa'] as num?)?.toDouble(),
-      studentGroup: json['group_name']?.toString() ?? json['student_group']?.toString() ?? 'بدون جروب',
       studentGroupId: json['student_group_id']?.toString(),
+      studentGroup: () {
+        final raw = json['group_name']?.toString() ?? json['student_group_name']?.toString();
+        if (raw != null && raw.trim().isNotEmpty && raw != 'A' && raw != 'B' && raw != 'group_a' && raw != 'group_b' && raw != 'Group A' && raw != 'Group B' && raw != 'المجموعة A' && raw != 'المجموعة B') {
+          return raw.trim();
+        }
+        final leg = json['student_group']?.toString();
+        if (leg != null && leg.trim().isNotEmpty && leg != 'A' && leg != 'B' && leg != 'group_a' && leg != 'group_b' && leg != 'Group A' && leg != 'Group B' && leg != 'المجموعة A' && leg != 'المجموعة B') {
+          return leg.trim();
+        }
+        return 'بدون جروب';
+      }(),
       classification: parsedClass,
       departmentName: json['department_name']?.toString(),
       supervisorDoctorName: json['supervisor_doctor_name']?.toString(),

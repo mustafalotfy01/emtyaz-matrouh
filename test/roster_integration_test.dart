@@ -46,7 +46,7 @@ void main() {
     final submitRes = await RosterService.submitPreferences(
       studentId: studentId,
       rosterId: currentMonth.id,
-      studentGroup: StudentGroup.groupA,
+      studentGroup: StudentGroup.unassigned,
       preferences: studentPrefs,
     );
 
@@ -67,7 +67,7 @@ void main() {
       emergencyContact: '01000000000',
       residenceAddress: 'مطروح',
       role: UserRole.student,
-      studentGroup: StudentGroup.groupA,
+      studentGroup: StudentGroup.unassigned,
       registrationStatus: RegistrationStatus.approved,
       createdAt: DateTime.now(),
     );

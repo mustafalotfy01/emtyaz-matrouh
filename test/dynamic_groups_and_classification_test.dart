@@ -302,4 +302,93 @@ void main() {
       expect(dept.currentTotal, 125);
     });
   });
+
+  group('Legacy Group A/B Elimination & Experience Tests', () {
+    test('UserProfile.fromJson strictly filters out legacy "A" and "B" as group name', () {
+      final jsonWithA = {
+        'id': 'usr-legacy-a',
+        'full_name': 'مصطفى محمود لطفي',
+        'university_code': '222605000074',
+        'role': 'student',
+        'student_group': 'A',
+        'group_name': 'A',
+      };
+
+      final profile = UserProfile.fromJson(jsonWithA);
+      // Must NOT be 'A'
+      expect(profile.studentGroupName, isNull);
+      expect(profile.studentGroupId, isNull);
+
+      final jsonWithGroupB = {
+        'id': 'usr-legacy-b',
+        'full_name': 'طالب ب',
+        'university_code': '222605000075',
+        'role': 'student',
+        'student_group': 'group_b',
+      };
+      final profileB = UserProfile.fromJson(jsonWithGroupB);
+      expect(profileB.studentGroupName, isNull);
+    });
+
+    test('AdminStudentOverviewModel.fromJson strictly filters out legacy "A" and "B"', () {
+      final dbJsonWithA = {
+        'student_id': 'std-001',
+        'full_name': 'مصطفى محمود لطفي',
+        'university_code': '222605000074',
+        'role': 'student',
+        'student_group': 'A',
+        'group_name': 'A',
+      };
+
+      final model = AdminStudentOverviewModel.fromJson(dbJsonWithA);
+      expect(model.studentGroup, 'بدون جروب');
+
+      final dbJsonWithRealGroup = {
+        'student_id': 'std-002',
+        'full_name': 'أحمد علي',
+        'university_code': '222605000076',
+        'role': 'student',
+        'student_group_id': '00000000-0000-0000-0000-000000000001',
+        'group_name': 'جروب 1',
+      };
+      final modelReal = AdminStudentOverviewModel.fromJson(dbJsonWithRealGroup);
+      expect(modelReal.studentGroup, 'جروب 1');
+    });
+
+    test('Student can update previous experience answers', () {
+      final student = createMockUser(
+        id: 'std-exp-01',
+        fullName: 'مصطفى محمود لطفي',
+        universityCode: '222605000074',
+        previousWorkExperience: false,
+      );
+
+      expect(student.previousWorkExperience, isFalse);
+      expect(student.previousWorkplace, isNull);
+
+      // Student answers "أيوه" and fills out the 3 fields
+      final answered = student.copyWith(
+        previousWorkExperience: true,
+        previousWorkplace: 'مستشفى مطروح العام',
+        previousWorkDepartment: 'قسم العناية المركزة',
+        previousWorkExperienceDetails: 'سنتان تمريض سريري ورعاية حرجة',
+      );
+
+      expect(answered.previousWorkExperience, isTrue);
+      expect(answered.previousWorkplace, 'مستشفى مطروح العام');
+      expect(answered.previousWorkDepartment, 'قسم العناية المركزة');
+      expect(answered.previousWorkExperienceDetails, 'سنتان تمريض سريري ورعاية حرجة');
+
+      // Student changes answer to "لا"
+      final resetExp = answered.copyWith(
+        previousWorkExperience: false,
+        previousWorkplace: null,
+        previousWorkDepartment: null,
+        previousWorkExperienceDetails: null,
+      );
+
+      expect(resetExp.previousWorkExperience, isFalse);
+      expect(resetExp.previousWorkplace, isNull);
+    });
+  });
 }

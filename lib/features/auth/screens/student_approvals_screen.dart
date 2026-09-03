@@ -714,7 +714,7 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
               Builder(builder: (context) {
                 final groups = _allStudents
                     .map((s) => s.studentGroup)
-                    .where((g) => g.isNotEmpty && g != 'بدون جروب')
+                    .where((g) => g.isNotEmpty && g != 'بدون جروب' && g != 'A' && g != 'B' && g != 'group_a' && g != 'group_b' && g != 'Group A' && g != 'Group B')
                     .toSet()
                     .toList()
                   ..sort();

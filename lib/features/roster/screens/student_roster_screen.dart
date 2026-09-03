@@ -216,7 +216,7 @@ class StudentRosterScreen extends ConsumerWidget {
                   child: RosterCalendarGrid(
                     month: rosterMonth.month,
                     year: rosterMonth.year,
-                    studentGroup: user?.studentGroup ?? StudentGroup.groupA,
+                    studentGroup: user?.studentGroup ?? StudentGroup.unassigned,
                     preferences: prefState.preferences,
                     publishedShifts: publishedShifts,
                     isPublishedView: isPublished,
@@ -237,7 +237,7 @@ class StudentRosterScreen extends ConsumerWidget {
                                     .read(studentPreferencesProvider.notifier)
                                     .toggleDatePreference(
                                       date,
-                                      user?.studentGroup ?? StudentGroup.groupA,
+                                      user?.studentGroup ?? StudentGroup.unassigned,
                                     );
                               }),
                   ),

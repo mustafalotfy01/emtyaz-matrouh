@@ -67,146 +67,440 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final phoneController = TextEditingController(text: user.phoneNumber);
     final emergencyController = TextEditingController(text: user.emergencyContact);
     final addressController = TextEditingController(text: user.residenceAddress);
+    bool hasExp = user.previousWorkExperience;
+    final workplaceController = TextEditingController(text: user.previousWorkplace ?? '');
+    final departmentController = TextEditingController(text: user.previousWorkDepartment ?? '');
+    final detailsController = TextEditingController(text: user.previousWorkExperienceDetails ?? '');
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 20,
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-        ),
-        decoration: BoxDecoration(
-          color: AppDesignTokens.surface(context),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          border: Border.all(color: AppDesignTokens.border(context)),
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'تعديل البيانات الشخصية',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppDesignTokens.textPrimary(context),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, size: 20),
-                    onPressed: () => Navigator.pop(ctx),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              // Centered Avatar Preview with Camera / Gallery Action
-              Center(
-                child: Column(
+      builder: (ctx) => StatefulBuilder(
+        builder: (bottomSheetCtx, setModalState) => Container(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(bottomSheetCtx).viewInsets.bottom + 24,
+          ),
+          decoration: BoxDecoration(
+            color: AppDesignTokens.surface(context),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            border: Border.all(color: AppDesignTokens.border(context)),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    AppAvatar(
-                      name: user.fullName,
-                      imageUrl: user.avatarUrl,
-                      size: AppAvatarSize.large,
-                      onEditTap: () {
-                        Navigator.pop(ctx);
-                        _openAvatarActionsModal(context, user);
-                      },
+                    Text(
+                      'تعديل البيانات الشخصية',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppDesignTokens.textPrimary(context),
+                      ),
                     ),
-                    const SizedBox(height: 6),
-                    TextButton.icon(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        _openAvatarActionsModal(context, user);
-                      },
-                      icon: const Icon(Icons.photo_camera_rounded, size: 16),
-                      label: const Text('تغيير الصورة الشخصية (كاميرا / معرض)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      onPressed: () => Navigator.pop(bottomSheetCtx),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 12),
-              AppInput(
-                label: 'الاسم الكامل',
-                controller: nameController,
-                prefixIcon: const Icon(Icons.person_outline_rounded, size: 18),
-              ),
-              const SizedBox(height: 12),
-              AppInput(
-                label: 'رقم الهاتف',
-                controller: phoneController,
-                keyboardType: TextInputType.phone,
-                prefixIcon: const Icon(Icons.phone_outlined, size: 18),
-              ),
-              const SizedBox(height: 12),
-              AppInput(
-                label: 'رقم طوارئ للتواصل',
-                controller: emergencyController,
-                keyboardType: TextInputType.phone,
-                prefixIcon: const Icon(Icons.contact_phone_outlined, size: 18),
-              ),
-              const SizedBox(height: 12),
-              AppInput(
-                label: 'عنوان السكن في مطروح',
-                controller: addressController,
-                prefixIcon: const Icon(Icons.home_outlined, size: 18),
-              ),
-              const SizedBox(height: 14),
-              AppButton(
-                text: 'تغيير كلمة المرور 🔑',
-                icon: Icons.lock_reset_rounded,
-                variant: AppButtonVariant.outline,
-                width: double.infinity,
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _openChangePasswordDialog(context);
-                },
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: AppButton(
-                      text: 'إلغاء',
-                      variant: AppButtonVariant.ghost,
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
+                const SizedBox(height: 12),
+                // Centered Avatar Preview with Camera / Gallery Action
+                Center(
+                  child: Column(
+                    children: [
+                      AppAvatar(
+                        name: user.fullName,
+                        imageUrl: user.avatarUrl,
+                        size: AppAvatarSize.large,
+                        onEditTap: () {
+                          Navigator.pop(bottomSheetCtx);
+                          _openAvatarActionsModal(context, user);
+                        },
+                      ),
+                      const SizedBox(height: 6),
+                      TextButton.icon(
+                        onPressed: () {
+                          Navigator.pop(bottomSheetCtx);
+                          _openAvatarActionsModal(context, user);
+                        },
+                        icon: const Icon(Icons.photo_camera_rounded, size: 16),
+                        label: const Text('تغيير الصورة الشخصية (كاميرا / معرض)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: AppButton(
-                      text: 'حفظ التعديلات',
-                      variant: AppButtonVariant.primary,
-                      onPressed: () async {
-                        Navigator.pop(ctx);
-                        final ok = await ref.read(authProvider.notifier).updateProfile(
-                          fullName: nameController.text,
-                          phoneNumber: phoneController.text,
-                          emergencyContact: emergencyController.text,
-                          residenceAddress: addressController.text,
-                        );
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              backgroundColor: ok ? AppDesignTokens.success : AppDesignTokens.danger,
-                              content: Text(ok ? 'تم تحديث البيانات بنجاح ✅' : 'فشل تحديث البيانات ❌'),
+                ),
+                const SizedBox(height: 12),
+                AppInput(
+                  label: 'الاسم الكامل',
+                  controller: nameController,
+                  prefixIcon: const Icon(Icons.person_outline_rounded, size: 18),
+                ),
+                const SizedBox(height: 12),
+                AppInput(
+                  label: 'رقم الهاتف',
+                  controller: phoneController,
+                  keyboardType: TextInputType.phone,
+                  prefixIcon: const Icon(Icons.phone_outlined, size: 18),
+                ),
+                const SizedBox(height: 12),
+                AppInput(
+                  label: 'رقم طوارئ للتواصل',
+                  controller: emergencyController,
+                  keyboardType: TextInputType.phone,
+                  prefixIcon: const Icon(Icons.contact_phone_outlined, size: 18),
+                ),
+                const SizedBox(height: 12),
+                AppInput(
+                  label: 'عنوان السكن في مطروح',
+                  controller: addressController,
+                  prefixIcon: const Icon(Icons.home_outlined, size: 18),
+                ),
+                if (user.role == UserRole.student) ...[
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  const Text('الخبرة السابقة', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppDesignTokens.primary)),
+                  const SizedBox(height: 6),
+                  const Text('اشتغلت قبل كده؟', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => setModalState(() => hasExp = true),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: hasExp ? AppDesignTokens.primary : Colors.grey.shade400,
+                                width: hasExp ? 2 : 1,
+                              ),
+                              color: hasExp ? AppDesignTokens.primary.withOpacity(0.08) : Colors.transparent,
                             ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  hasExp ? Icons.radio_button_checked : Icons.radio_button_off,
+                                  size: 18,
+                                  color: hasExp ? AppDesignTokens.primary : Colors.grey,
+                                ),
+                                const SizedBox(width: 6),
+                                const Text('أيوه', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => setModalState(() => hasExp = false),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: !hasExp ? AppDesignTokens.primary : Colors.grey.shade400,
+                                width: !hasExp ? 2 : 1,
+                              ),
+                              color: !hasExp ? AppDesignTokens.primary.withOpacity(0.08) : Colors.transparent,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  !hasExp ? Icons.radio_button_checked : Icons.radio_button_off,
+                                  size: 18,
+                                  color: !hasExp ? AppDesignTokens.primary : Colors.grey,
+                                ),
+                                const SizedBox(width: 6),
+                                const Text('لا', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (hasExp) ...[
+                    const SizedBox(height: 14),
+                    const Text('اذكر المكان والقسم والخبرة بتاعتك:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppDesignTokens.primary)),
+                    const SizedBox(height: 8),
+                    AppInput(
+                      label: 'مكان العمل',
+                      controller: workplaceController,
+                      hintText: 'اسم المستشفى أو المركز الطبي',
+                      prefixIcon: const Icon(Icons.business_outlined, size: 18),
+                    ),
+                    const SizedBox(height: 10),
+                    AppInput(
+                      label: 'القسم',
+                      controller: departmentController,
+                      hintText: 'عناية مركزة، طوارئ، أطفال...',
+                      prefixIcon: const Icon(Icons.domain_outlined, size: 18),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: detailsController,
+                      minLines: 3,
+                      maxLines: 5,
+                      style: TextStyle(color: AppDesignTokens.textPrimary(context), fontSize: 13),
+                      decoration: InputDecoration(
+                        labelText: 'الخبرة السابقة بالتفصيل',
+                        hintText: 'صف مهامك وخبراتك السريرية والتمريضية...',
+                        alignLabelWithHint: true,
+                        prefixIcon: const Padding(
+                          padding: EdgeInsets.only(bottom: 40),
+                          child: Icon(Icons.description_outlined, size: 18),
+                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm)),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                ],
+                const SizedBox(height: 14),
+                AppButton(
+                  text: 'تغيير كلمة المرور 🔑',
+                  icon: Icons.lock_reset_rounded,
+                  variant: AppButtonVariant.outline,
+                  width: double.infinity,
+                  onPressed: () {
+                    Navigator.pop(bottomSheetCtx);
+                    _openChangePasswordDialog(context);
+                  },
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppButton(
+                        text: 'إلغاء',
+                        variant: AppButtonVariant.ghost,
+                        onPressed: () => Navigator.pop(bottomSheetCtx),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: AppButton(
+                        text: 'حفظ التعديلات',
+                        variant: AppButtonVariant.primary,
+                        onPressed: () async {
+                          Navigator.pop(bottomSheetCtx);
+                          final ok = await ref.read(authProvider.notifier).updateProfile(
+                            fullName: nameController.text,
+                            phoneNumber: phoneController.text,
+                            emergencyContact: emergencyController.text,
+                            residenceAddress: addressController.text,
+                            previousWorkExperience: user.role == UserRole.student ? hasExp : null,
+                            previousWorkplace: user.role == UserRole.student ? (hasExp ? workplaceController.text : '') : null,
+                            previousWorkDepartment: user.role == UserRole.student ? (hasExp ? departmentController.text : '') : null,
+                            previousWorkExperienceDetails: user.role == UserRole.student ? (hasExp ? detailsController.text : '') : null,
                           );
-                        }
-                      },
+                          if (user.role == UserRole.student) {
+                            await ref.read(authProvider.notifier).updateStudentExperience(
+                              hasExperience: hasExp,
+                              workplace: hasExp ? workplaceController.text : null,
+                              department: hasExp ? departmentController.text : null,
+                              details: hasExp ? detailsController.text : null,
+                            );
+                          }
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                backgroundColor: ok ? AppDesignTokens.success : AppDesignTokens.danger,
+                                content: Text(ok ? 'تم تحديث البيانات بنجاح ✅' : 'فشل تحديث البيانات ❌'),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openEditExperienceDialog(BuildContext context, UserProfile user) {
+    bool hasExp = user.previousWorkExperience;
+    final workplaceController = TextEditingController(text: user.previousWorkplace ?? '');
+    final departmentController = TextEditingController(text: user.previousWorkDepartment ?? '');
+    final detailsController = TextEditingController(text: user.previousWorkExperienceDetails ?? '');
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDesignTokens.radiusMd)),
+          title: Row(
+            children: [
+              const Icon(Icons.work_outline_rounded, color: AppDesignTokens.primary),
+              const SizedBox(width: 8),
+              const Text('الخبرة السابقة', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'اشتغلت قبل كده؟',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => setDialogState(() => hasExp = true),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: hasExp ? AppDesignTokens.primary : Colors.grey.shade400,
+                              width: hasExp ? 2 : 1,
+                            ),
+                            color: hasExp ? AppDesignTokens.primary.withOpacity(0.08) : Colors.transparent,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                hasExp ? Icons.radio_button_checked : Icons.radio_button_off,
+                                size: 18,
+                                color: hasExp ? AppDesignTokens.primary : Colors.grey,
+                              ),
+                              const SizedBox(width: 6),
+                              const Text('أيوه', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => setDialogState(() => hasExp = false),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: !hasExp ? AppDesignTokens.primary : Colors.grey.shade400,
+                              width: !hasExp ? 2 : 1,
+                            ),
+                            color: !hasExp ? AppDesignTokens.primary.withOpacity(0.08) : Colors.transparent,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                !hasExp ? Icons.radio_button_checked : Icons.radio_button_off,
+                                size: 18,
+                                color: !hasExp ? AppDesignTokens.primary : Colors.grey,
+                              ),
+                              const SizedBox(width: 6),
+                              const Text('لا', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (hasExp) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    'اذكر المكان والقسم والخبرة بتاعتك:',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppDesignTokens.primary),
+                  ),
+                  const SizedBox(height: 10),
+                  AppInput(
+                    label: 'مكان العمل',
+                    controller: workplaceController,
+                    hintText: 'اسم المستشفى أو المركز الطبي',
+                    prefixIcon: const Icon(Icons.business_outlined, size: 18),
+                  ),
+                  const SizedBox(height: 10),
+                  AppInput(
+                    label: 'القسم',
+                    controller: departmentController,
+                    hintText: 'عناية مركزة، طوارئ، أطفال، عمليات...',
+                    prefixIcon: const Icon(Icons.domain_outlined, size: 18),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: detailsController,
+                    minLines: 3,
+                    maxLines: 5,
+                    style: TextStyle(color: AppDesignTokens.textPrimary(context), fontSize: 13),
+                    decoration: InputDecoration(
+                      labelText: 'الخبرة السابقة بالتفصيل',
+                      hintText: 'صف مهامك وخبراتك السريرية والتمريضية السابقة...',
+                      alignLabelWithHint: true,
+                      prefixIcon: const Padding(
+                        padding: EdgeInsets.only(bottom: 40),
+                        child: Icon(Icons.description_outlined, size: 18),
+                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm)),
                     ),
                   ),
                 ],
-              ),
-            ],
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.save_rounded, size: 18),
+              label: const Text('حفظ التعديلات'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppDesignTokens.primary,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
+                Navigator.pop(dialogCtx);
+                final ok = await ref.read(authProvider.notifier).updateStudentExperience(
+                  hasExperience: hasExp,
+                  workplace: hasExp ? workplaceController.text : null,
+                  department: hasExp ? departmentController.text : null,
+                  details: hasExp ? detailsController.text : null,
+                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: ok ? AppDesignTokens.success : AppDesignTokens.danger,
+                      content: Text(ok ? 'تم حفظ بيانات الخبرة السابقة بنجاح ✅' : 'فشل حفظ بيانات الخبرة ❌'),
+                    ),
+                  );
+                }
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -578,12 +872,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           size: AppBadgeSize.medium,
                         ),
                         if (user.role == UserRole.student) ...[
-                          const SizedBox(width: 8),
-                          AppBadge(
-                            label: user.studentGroupName ?? 'بدون جروب',
-                            variant: user.studentGroupId != null ? AppBadgeVariant.primary : AppBadgeVariant.neutral,
-                            size: AppBadgeSize.medium,
-                          ),
+                          if (user.studentGroupName != null &&
+                              user.studentGroupName!.trim().isNotEmpty &&
+                              user.studentGroupName != 'A' &&
+                              user.studentGroupName != 'B' &&
+                              user.studentGroupName != 'group_a' &&
+                              user.studentGroupName != 'group_b') ...[
+                            const SizedBox(width: 8),
+                            AppBadge(
+                              label: user.studentGroupName!,
+                              variant: AppBadgeVariant.primary,
+                              size: AppBadgeSize.medium,
+                            ),
+                          ],
                           if (user.classification != null) ...[
                             const SizedBox(width: 8),
                             AppBadge(
@@ -630,7 +931,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           user.gpa != null ? user.gpa!.toStringAsFixed(2) : 'غير مسجل'),
                       Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
                       _buildInfoRow(context, Icons.group_work_outlined, 'الجروب التدريبي',
-                          user.studentGroupName ?? 'بدون جروب'),
+                          (user.studentGroupName != null &&
+                                  user.studentGroupName != 'A' &&
+                                  user.studentGroupName != 'B' &&
+                                  user.studentGroupName != 'group_a' &&
+                                  user.studentGroupName != 'group_b')
+                              ? user.studentGroupName!
+                              : 'بدون جروب'),
                       Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
                       _buildInfoRow(context, Icons.local_hospital_outlined, 'قسم الشهر الحالي',
                           user.departmentName ?? 'غير مخصص لهذا الشهر'),
@@ -674,6 +981,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               user.previousWorkExperienceDetails!),
                         ],
                       ],
+                      const SizedBox(height: 10),
+                      AppButton(
+                        text: 'تعديل بيانات الخبرة السابقة ✏️',
+                        icon: Icons.edit_note_rounded,
+                        variant: AppButtonVariant.outline,
+                        size: AppButtonSize.small,
+                        width: double.infinity,
+                        onPressed: () => _openEditExperienceDialog(context, user),
+                      ),
                     ],
                   ),
                 ),

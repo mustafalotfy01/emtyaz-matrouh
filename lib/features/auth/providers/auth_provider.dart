@@ -723,6 +723,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
     String? emergencyContact,
     String? residenceAddress,
     String? avatarUrl,
+    bool? previousWorkExperience,
+    String? previousWorkplace,
+    String? previousWorkDepartment,
+    String? previousWorkExperienceDetails,
   }) async {
     final currentUser = state.user;
     if (currentUser == null) return false;
@@ -735,6 +739,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
       emergencyContact: emergencyContact?.trim() ?? currentUser.emergencyContact,
       residenceAddress: residenceAddress?.trim() ?? currentUser.residenceAddress,
       avatarUrl: avatarUrl ?? currentUser.avatarUrl,
+      previousWorkExperience: previousWorkExperience ?? currentUser.previousWorkExperience,
+      previousWorkplace: previousWorkplace ?? currentUser.previousWorkplace,
+      previousWorkDepartment: previousWorkDepartment ?? currentUser.previousWorkDepartment,
+      previousWorkExperienceDetails: previousWorkExperienceDetails ?? currentUser.previousWorkExperienceDetails,
     );
 
     // 1. Update in local registry
@@ -752,9 +760,74 @@ class AuthNotifier extends StateNotifier<AuthState> {
           'emergency_contact': updated.emergencyContact,
           'residence_address': updated.residenceAddress,
           if (avatarUrl != null) 'avatar_url': avatarUrl,
+          if (previousWorkExperience != null) 'previous_work_experience': previousWorkExperience,
+          if (previousWorkplace != null) 'previous_workplace': previousWorkplace,
+          if (previousWorkDepartment != null) 'previous_work_department': previousWorkDepartment,
+          if (previousWorkExperienceDetails != null) 'previous_work_experience_details': previousWorkExperienceDetails,
         }).eq('id', currentUser.id);
       } catch (e) {
         if (kDebugMode) print('Update profile error: $e');
+      }
+    }
+
+    state = state.copyWith(user: updated, isLoading: false, error: null);
+    await _saveUserToCache(updated);
+    return true;
+  }
+
+  /// Update student previous experience questions and persist to DB
+  Future<bool> updateStudentExperience({
+    required bool hasExperience,
+    String? workplace,
+    String? department,
+    String? details,
+  }) async {
+    final currentUser = state.user;
+    if (currentUser == null) return false;
+
+    state = state.copyWith(isLoading: true, error: null);
+
+    final cleanWorkplace = hasExperience ? workplace?.trim() : null;
+    final cleanDepartment = hasExperience ? department?.trim() : null;
+    final cleanDetails = hasExperience ? details?.trim() : null;
+
+    final updated = currentUser.copyWith(
+      previousWorkExperience: hasExperience,
+      previousWorkplace: cleanWorkplace,
+      previousWorkDepartment: cleanDepartment,
+      previousWorkExperienceDetails: cleanDetails,
+    );
+
+    // 1. Update local registry
+    final regIdx = _registeredStudentsRegistry.indexWhere((s) => s.id == currentUser.id || s.universityCode == currentUser.universityCode);
+    if (regIdx != -1) {
+      _registeredStudentsRegistry[regIdx] = updated;
+    }
+
+    // 2. Persist to Supabase
+    if (SupabaseService.isInitialized && currentUser.id.isNotEmpty) {
+      try {
+        // Try secure RPC first
+        try {
+          await SupabaseService.client.rpc('update_student_experience', params: {
+            'p_has_experience': hasExperience,
+            'p_workplace': cleanWorkplace,
+            'p_department': cleanDepartment,
+            'p_details': cleanDetails,
+          });
+        } catch (rpcErr) {
+          if (kDebugMode) print('update_student_experience RPC fallback: $rpcErr');
+          // Direct update fallback (safe with trg_enforce_student_profile_security)
+          await SupabaseService.client.from('profiles').update({
+            'previous_work_experience': hasExperience,
+            'previous_workplace': cleanWorkplace,
+            'previous_work_department': cleanDepartment,
+            'previous_work_experience_details': cleanDetails,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          }).eq('id', currentUser.id);
+        }
+      } catch (e) {
+        if (kDebugMode) print('⚠️ updateStudentExperience error: $e');
       }
     }
 
@@ -898,18 +971,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
 class GroupCapacityInfo {
   final int maxMale;
   final int maxFemale;
-  final int groupAMaleCount;
-  final int groupAFemaleCount;
-  final int groupBMaleCount;
-  final int groupBFemaleCount;
 
   const GroupCapacityInfo({
     this.maxMale = 99999,
     this.maxFemale = 99999,
-    this.groupAMaleCount = 0,
-    this.groupAFemaleCount = 0,
-    this.groupBMaleCount = 0,
-    this.groupBFemaleCount = 0,
   });
 
   int get remainingGroupAMale => 99999;
@@ -917,81 +982,18 @@ class GroupCapacityInfo {
   int get remainingGroupBMale => 99999;
   int get remainingGroupBFemale => 99999;
 
-  int getRemaining(StudentGroup group, String gender) => 99999;
-
+  int getRemaining(dynamic group, String gender) => 99999;
   int getMax(String gender) => 99999;
-
-  bool isAvailable(StudentGroup group, String gender) => true;
+  bool isAvailable(dynamic group, String gender) => true;
 }
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   return AuthNotifier();
 });
 
-/// Computes live capacity stats for Group A & Group B by gender
+/// Unlimited open capacity provider (No group capacity limits)
 final groupCapacityProvider = FutureProvider<GroupCapacityInfo>((ref) async {
-  int aMale = 0;
-  int aFemale = 0;
-  int bMale = 0;
-  int bFemale = 0;
-
-  // 1. From local memory registry
-  for (final s in _registeredStudentsRegistry) {
-    if (s.studentGroup == StudentGroup.groupA) {
-      if (s.gender == 'female') {
-        aFemale++;
-      } else {
-        aMale++;
-      }
-    } else {
-      if (s.gender == 'female') {
-        bFemale++;
-      } else {
-        bMale++;
-      }
-    }
-  }
-
-  // 2. From Supabase if available
-  if (SupabaseService.isInitialized) {
-    try {
-      final res = await SupabaseService.client
-          .from('profiles')
-          .select('gender, student_group')
-          .eq('role', 'student')
-          .or('is_approved.eq.true,registration_status.eq.approved');
-      if (res.isNotEmpty) {
-        aMale = 0;
-        aFemale = 0;
-        bMale = 0;
-        bFemale = 0;
-        for (final row in res) {
-          final g = row['gender']?.toString() ?? 'male';
-          final grp = row['student_group']?.toString() ?? 'A';
-          if (grp == 'A') {
-            if (g == 'female') {
-              aFemale++;
-            } else {
-              aMale++;
-            }
-          } else {
-            if (g == 'female') {
-              bFemale++;
-            } else {
-              bMale++;
-            }
-          }
-        }
-      }
-    } catch (_) {}
-  }
-
-  return GroupCapacityInfo(
-    groupAMaleCount: aMale,
-    groupAFemaleCount: aFemale,
-    groupBMaleCount: bMale,
-    groupBFemaleCount: bFemale,
-  );
+  return const GroupCapacityInfo();
 });
 
 /// Expose registered students to student approvals provider
