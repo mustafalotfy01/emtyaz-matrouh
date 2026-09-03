@@ -18,6 +18,7 @@ import '../../admin/services/admin_student_management_service.dart';
 import '../models/user_profile.dart';
 import '../providers/auth_provider.dart';
 import '../providers/student_approvals_provider.dart';
+import '../../groups/screens/dynamic_groups_management_screen.dart';
 
 class StudentApprovalsScreen extends ConsumerStatefulWidget {
   const StudentApprovalsScreen({super.key});
@@ -33,7 +34,9 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
   String _selectedStatusFilter = 'all'; // 'all', 'pending', 'approved', 'rejected'
   String _selectedPresenceFilter = 'all'; // 'all', 'online', 'offline'
   String _selectedUpdateFilter = 'all'; // 'all', 'up_to_date', 'outdated'
-  String _selectedGroupFilter = 'all'; // 'all', 'A', 'B'
+  String _selectedGroupFilter = 'all'; // 'all', 'unassigned', or specific group name
+  StudentClassification? _selectedClassificationFilter;
+  bool? _selectedExperienceFilter;
 
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _rejectionController = TextEditingController();
@@ -134,6 +137,8 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
       _selectedPresenceFilter = 'all';
       _selectedUpdateFilter = 'all';
       _selectedGroupFilter = 'all';
+      _selectedClassificationFilter = null;
+      _selectedExperienceFilter = null;
     });
   }
 
@@ -170,9 +175,15 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
         return false;
       }
 
-      // 5. Group Filter
-      if (_selectedGroupFilter == 'A' && s.studentGroup != 'A') return false;
-      if (_selectedGroupFilter == 'B' && s.studentGroup != 'B') return false;
+      // 5. Dynamic Group Filter
+      if (_selectedGroupFilter == 'unassigned' && (s.studentGroupId != null || s.studentGroup != 'بدون جروب')) return false;
+      if (_selectedGroupFilter != 'all' && _selectedGroupFilter != 'unassigned' && s.studentGroup != _selectedGroupFilter) return false;
+
+      // 6. Classification Filter
+      if (_selectedClassificationFilter != null && s.classification != _selectedClassificationFilter) return false;
+
+      // 7. Experience Filter
+      if (_selectedExperienceFilter != null && s.previousWorkExperience != _selectedExperienceFilter) return false;
 
       return true;
     }).toList();
@@ -315,10 +326,12 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
 
     // Calculate real-time KPIs
     final totalCount = _allStudents.length;
+    final unassignedCount = _allStudents.where((s) => s.studentGroupId == null || s.studentGroup == 'بدون جروب').length;
+    final practicalCount = _allStudents.where((s) => s.classification == StudentClassification.practicalStrong).length;
+    final theoreticalCount = _allStudents.where((s) => s.classification == StudentClassification.theoreticalStrong).length;
+    final weakCount = _allStudents.where((s) => s.classification == StudentClassification.weak).length;
+    final withExpCount = _allStudents.where((s) => s.previousWorkExperience).length;
     final onlineCount = _allStudents.where((s) => s.isEffectivelyOnlineAt(serverNow)).length;
-    final needsUpdateCount = _allStudents.where((s) =>
-        s.updateStatus == AppUpdateStatus.outdated || s.updateStatus == AppUpdateStatus.forceUpdateRequired).length;
-    final upToDateCount = _allStudents.where((s) => s.updateStatus == AppUpdateStatus.upToDate).length;
     final pendingCount = _allStudents.where((s) => s.registrationStatus == 'pending').length;
 
     final filtered = _filteredStudents;
@@ -333,6 +346,14 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.group_work_rounded, color: AppDesignTokens.primary),
+            tooltip: 'إدارة وتوزيع جروبات الطلاب',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const DynamicGroupsManagementScreen()),
+            ).then((_) => _loadStudents()),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: 'تحديث البيانات',
@@ -353,9 +374,12 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
                 // 1. Top KPIs Cards
                 _buildKpiSection(
                   total: totalCount,
+                  unassigned: unassignedCount,
+                  practicalStrong: practicalCount,
+                  theoreticalStrong: theoreticalCount,
+                  weak: weakCount,
+                  withExperience: withExpCount,
                   online: onlineCount,
-                  needsUpdate: needsUpdateCount,
-                  upToDate: upToDateCount,
                   pending: pendingCount,
                 ),
 
@@ -443,32 +467,35 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
 
   Widget _buildKpiSection({
     required int total,
+    required int unassigned,
+    required int practicalStrong,
+    required int theoreticalStrong,
+    required int weak,
+    required int withExperience,
     required int online,
-    required int needsUpdate,
-    required int upToDate,
     required int pending,
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isNarrow = constraints.maxWidth < 600;
         final children = [
           _buildKpiCard('إجمالي الطلاب', '$total', Icons.groups_rounded, AppDesignTokens.primary),
+          _buildKpiCard('بدون جروب', '$unassigned', Icons.group_off_rounded, unassigned > 0 ? Colors.orange : Colors.grey),
+          _buildKpiCard('🩺 شاطر عملي', '$practicalStrong', Icons.medical_services_rounded, Colors.teal),
+          _buildKpiCard('📚 دحيح نظري', '$theoreticalStrong', Icons.menu_book_rounded, Colors.indigo),
+          _buildKpiCard('⚠️ ضعيف', '$weak', Icons.warning_amber_rounded, weak > 0 ? Colors.deepOrange : Colors.grey),
+          _buildKpiCard('💼 لديه خبرة', '$withExperience', Icons.work_outline_rounded, Colors.blueGrey),
           _buildKpiCard('متصل الآن', '$online', Icons.circle_rounded, AppDesignTokens.success),
-          _buildKpiCard('يحتاج تحديث', '$needsUpdate', Icons.system_update_rounded, AppDesignTokens.warning),
-          _buildKpiCard('محدث', '$upToDate', Icons.verified_rounded, AppDesignTokens.primaryAccent),
           _buildKpiCard('بانتظار الاعتماد', '$pending', Icons.hourglass_top_rounded, pending > 0 ? AppDesignTokens.danger : AppDesignTokens.textSecondary(context)),
         ];
 
-        if (isNarrow) {
-          return Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: children.map((c) => SizedBox(width: (constraints.maxWidth - 10) / 2, child: c)).toList(),
-          );
-        }
+        final itemWidth = constraints.maxWidth < 600
+            ? (constraints.maxWidth - 12) / 2
+            : (constraints.maxWidth < 1100 ? (constraints.maxWidth - 24) / 4 : (constraints.maxWidth - 36) / 8);
 
-        return Row(
-          children: children.map((c) => Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: c))).toList(),
+        return Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: children.map((c) => SizedBox(width: itemWidth, child: c)).toList(),
         );
       },
     );
@@ -546,6 +573,53 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
                 onChanged: (val) => setState(() => _selectedStatusFilter = val ?? 'all'),
               ),
 
+              // Classification Filter
+              _buildFilterDropdown<StudentClassification?>(
+                label: 'التصنيف:',
+                value: _selectedClassificationFilter,
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('كل التصنيفات')),
+                  ...StudentClassification.values.map((c) => DropdownMenuItem(
+                        value: c,
+                        child: Text(c.displayNameAr),
+                      )),
+                ],
+                onChanged: (val) => setState(() => _selectedClassificationFilter = val),
+              ),
+
+              // Dynamic Group Filter
+              Builder(builder: (context) {
+                final groups = _allStudents
+                    .map((s) => s.studentGroup)
+                    .where((g) => g.isNotEmpty && g != 'بدون جروب')
+                    .toSet()
+                    .toList()
+                  ..sort();
+
+                return _buildFilterDropdown(
+                  label: 'الجروب:',
+                  value: _selectedGroupFilter,
+                  items: [
+                    const DropdownMenuItem(value: 'all', child: Text('كل الجروبات')),
+                    const DropdownMenuItem(value: 'unassigned', child: Text('بدون جروب')),
+                    ...groups.map((g) => DropdownMenuItem(value: g, child: Text(g))),
+                  ],
+                  onChanged: (val) => setState(() => _selectedGroupFilter = val ?? 'all'),
+                );
+              }),
+
+              // Experience Filter
+              _buildFilterDropdown<bool?>(
+                label: 'الخبرة:',
+                value: _selectedExperienceFilter,
+                items: const [
+                  DropdownMenuItem(value: null, child: Text('كل الطلاب')),
+                  DropdownMenuItem(value: true, child: Text('💼 لديه خبرة سابقة')),
+                  DropdownMenuItem(value: false, child: Text('بدون خبرة')),
+                ],
+                onChanged: (val) => setState(() => _selectedExperienceFilter = val),
+              ),
+
               // Presence Filter
               _buildFilterDropdown(
                 label: 'التواجد:',
@@ -569,18 +643,6 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
                 ],
                 onChanged: (val) => setState(() => _selectedUpdateFilter = val ?? 'all'),
               ),
-
-              // Group Filter
-              _buildFilterDropdown(
-                label: 'المجموعة:',
-                value: _selectedGroupFilter,
-                items: const [
-                  DropdownMenuItem(value: 'all', child: Text('كل المجموعات')),
-                  DropdownMenuItem(value: 'A', child: Text('مجموعة A')),
-                  DropdownMenuItem(value: 'B', child: Text('مجموعة B')),
-                ],
-                onChanged: (val) => setState(() => _selectedGroupFilter = val ?? 'all'),
-              ),
             ],
           ),
         ],
@@ -588,11 +650,11 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
     );
   }
 
-  Widget _buildFilterDropdown({
+  Widget _buildFilterDropdown<T>({
     required String label,
-    required String value,
-    required List<DropdownMenuItem<String>> items,
-    required ValueChanged<String?> onChanged,
+    required T value,
+    required List<DropdownMenuItem<T>> items,
+    required ValueChanged<T?> onChanged,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
@@ -607,7 +669,7 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
           Text(label, style: TextStyle(fontSize: 11.5, color: AppDesignTokens.textSecondary(context), fontWeight: FontWeight.w600)),
           const SizedBox(width: 6),
           DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
+            child: DropdownButton<T>(
               value: value,
               items: items,
               onChanged: onChanged,
@@ -681,11 +743,11 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
                 // GPA
                 DataCell(Text(s.gpa != null ? s.gpa!.toStringAsFixed(2) : '-', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5))),
 
-                // المجموعة
+                // الجروب
                 DataCell(
                   AppBadge(
                     label: s.studentGroup,
-                    variant: s.studentGroup == 'A' ? AppBadgeVariant.primary : AppBadgeVariant.info,
+                    variant: s.studentGroupId != null ? AppBadgeVariant.primary : AppBadgeVariant.neutral,
                     size: AppBadgeSize.small,
                   ),
                 ),
@@ -810,8 +872,20 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
                       children: [
                         Text(s.fullName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                         const SizedBox(height: 2),
-                        Text('كود: ${s.universityCode} • GPA: ${s.gpa ?? "-"} • مجموعة ${s.studentGroup}',
+                        Text('كود: ${s.universityCode} • GPA: ${s.gpa != null ? s.gpa!.toStringAsFixed(2) : "-"} • ${s.studentGroup}',
                             style: TextStyle(fontSize: 11.5, color: AppDesignTokens.textSecondary(context))),
+                        if (s.classification != null || s.previousWorkExperience) ...[
+                          const SizedBox(height: 4),
+                          Wrap(
+                            spacing: 6,
+                            children: [
+                              if (s.classification != null)
+                                Text(s.classification!.displayNameAr, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                              if (s.previousWorkExperience)
+                                const Text('💼 خبرة سابقة', style: TextStyle(fontSize: 11, color: Colors.teal, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),

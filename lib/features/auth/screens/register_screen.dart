@@ -24,10 +24,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _universityCodeController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _gpaController = TextEditingController();
   final _emergencyContactController = TextEditingController();
   final _addressController = TextEditingController();
   final _passwordController = TextEditingController();
+
+  bool _hasWorkExperience = false;
+  final _workplaceController = TextEditingController();
+  final _workDepartmentController = TextEditingController();
+  final _workExperienceDetailsController = TextEditingController();
 
   String _gender = 'male';
   final String _maritalStatus = 'أعزب/عزباء';
@@ -43,7 +47,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _universityCodeController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
-    _gpaController.dispose();
+    _workplaceController.dispose();
+    _workDepartmentController.dispose();
+    _workExperienceDetailsController.dispose();
     _emergencyContactController.dispose();
     _addressController.dispose();
     _passwordController.dispose();
@@ -126,7 +132,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       fullName: _fullNameController.text.trim(),
       universityCode: _universityCodeController.text.trim(),
       phoneNumber: _phoneController.text.trim(),
-      gpa: double.tryParse(_gpaController.text.trim()),
       gender: _gender,
       maritalStatus: _maritalStatus,
       childrenCount: _childrenCount,
@@ -138,7 +143,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       latitude: _selectedHomeLat ?? 31.3520,
       longitude: _selectedHomeLng ?? 27.2410,
       role: UserRole.student,
-      studentGroup: StudentGroup.groupA,
+      previousWorkExperience: _hasWorkExperience,
+      previousWorkplace: _hasWorkExperience ? _workplaceController.text.trim() : null,
+      previousWorkDepartment: _hasWorkExperience ? _workDepartmentController.text.trim() : null,
+      previousWorkExperienceDetails: _hasWorkExperience ? _workExperienceDetailsController.text.trim() : null,
     );
 
     final success = await ref.read(authProvider.notifier).register(
@@ -361,25 +369,99 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       ),
                       const SizedBox(height: 14),
 
-                      TextFormField(
-                        controller: _gpaController,
-                        style: TextStyle(color: AppColors.text(context)),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(
-                          labelText: 'المعدل التراكمي (GPA) *',
-                          hintText: 'مثال: 3.85',
-                          prefixIcon: Icon(Icons.school_outlined, color: AppColors.primaryTeal),
+                      // Previous Work Experience Section ("اشتغلت قبل كده؟")
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryTeal.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.primaryTeal.withValues(alpha: 0.2)),
                         ),
-                        validator: (v) {
-                          if (v == null || v.trim().isEmpty) {
-                            return 'المعدل التراكمي (GPA) مطلوب';
-                          }
-                          final gpaVal = double.tryParse(v.trim());
-                          if (gpaVal == null || gpaVal < 0.0 || gpaVal > 4.0) {
-                            return 'يرجى إدخال GPA صحيح بين 0.00 و 4.00';
-                          }
-                          return null;
-                        },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.work_outline, color: AppColors.primaryTeal, size: 20),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'اشتغلت قبل كده؟',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.text(context),
+                                  ),
+                                ),
+                                const Spacer(),
+                                Row(
+                                  children: [
+                                    Radio<bool>(
+                                      value: true,
+                                      groupValue: _hasWorkExperience,
+                                      activeColor: AppColors.primaryTeal,
+                                      onChanged: (v) => setState(() => _hasWorkExperience = v ?? false),
+                                    ),
+                                    Text('أيوه', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.text(context))),
+                                    const SizedBox(width: 12),
+                                    Radio<bool>(
+                                      value: false,
+                                      groupValue: _hasWorkExperience,
+                                      activeColor: AppColors.primaryTeal,
+                                      onChanged: (v) {
+                                        setState(() {
+                                          _hasWorkExperience = v ?? false;
+                                          _workplaceController.clear();
+                                          _workDepartmentController.clear();
+                                          _workExperienceDetailsController.clear();
+                                        });
+                                      },
+                                    ),
+                                    Text('لا', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.text(context))),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            if (_hasWorkExperience) ...[
+                              const SizedBox(height: 12),
+                              const Divider(height: 1),
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: _workplaceController,
+                                style: TextStyle(color: AppColors.text(context)),
+                                decoration: const InputDecoration(
+                                  labelText: 'مكان العمل / المستشفى',
+                                  hintText: 'مثال: مستشفى مطروح العام أو مركز طبي',
+                                  prefixIcon: Icon(Icons.local_hospital_outlined, color: AppColors.primaryTeal),
+                                ),
+                                validator: (v) => _hasWorkExperience && (v == null || v.trim().isEmpty) ? 'يرجى تحديد مكان العمل' : null,
+                              ),
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: _workDepartmentController,
+                                style: TextStyle(color: AppColors.text(context)),
+                                decoration: const InputDecoration(
+                                  labelText: 'القسم الذي عملت به',
+                                  hintText: 'مثال: العناية المركزة (ICU) أو الطوارئ أو الباطنة',
+                                  prefixIcon: Icon(Icons.meeting_room_outlined, color: AppColors.primaryTeal),
+                                ),
+                                validator: (v) => _hasWorkExperience && (v == null || v.trim().isEmpty) ? 'يرجى تحديد القسم' : null,
+                              ),
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: _workExperienceDetailsController,
+                                style: TextStyle(color: AppColors.text(context)),
+                                maxLines: 4,
+                                decoration: const InputDecoration(
+                                  labelText: 'اذكر تفاصيل المكان والقسم والخبرة بتاعتك *',
+                                  hintText: 'اكتب هنا طبيعة المهام والخبرات التمريضية والسريرية السابقة...',
+                                  alignLabelWithHint: true,
+                                  prefixIcon: Icon(Icons.description_outlined, color: AppColors.primaryTeal),
+                                ),
+                                validator: (v) => _hasWorkExperience && (v == null || v.trim().isEmpty) ? 'يرجى كتابة تفاصيل الخبرة السابقة' : null,
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 14),
 

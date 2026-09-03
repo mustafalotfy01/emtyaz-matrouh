@@ -54,16 +54,6 @@ class _DepartmentFormScreenState extends ConsumerState<DepartmentFormScreen> {
     final maleCap = int.tryParse(_maleCapController.text.trim()) ?? 0;
     final femaleCap = int.tryParse(_femaleCapController.text.trim()) ?? 0;
 
-    if (maleCap + femaleCap <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('يجب أن تكون السعة الإجمالية للقسم أكبر من الصفر'),
-          backgroundColor: AppDesignTokens.warning,
-        ),
-      );
-      return;
-    }
-
     setState(() => _isSaving = true);
 
     try {
@@ -172,57 +162,39 @@ class _DepartmentFormScreenState extends ConsumerState<DepartmentFormScreen> {
 
                 const SizedBox(height: 16),
 
-                // Capacity Configuration Card
+                // Open Capacity Information Card
                 AppCard(
                   padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      Text(
-                        'السعة الاستيعابية للطلاب',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: AppDesignTokens.textPrimary(context),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppDesignTokens.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
                         ),
+                        child: const Icon(Icons.all_inclusive_rounded, color: AppDesignTokens.primary, size: 24),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'يتم تحديد الحصة المطلوبة للذكور والإناث، ولن يسمح النظام بتجاوز هذه السعة في الروستر.',
-                        style: TextStyle(fontSize: 11.5, color: AppDesignTokens.textSecondary(context)),
-                      ),
-                      const SizedBox(height: 14),
-
-                      Row(
-                        children: [
-                          Expanded(
-                            child: AppInput(
-                              label: 'حصة الذكور 👨',
-                              hint: '4',
-                              controller: _maleCapController,
-                              keyboardType: TextInputType.number,
-                              validator: (v) {
-                                if (v == null || v.trim().isEmpty) return 'مطلوب';
-                                if (int.tryParse(v.trim()) == null) return 'أرقام فقط';
-                                return null;
-                              },
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'السعة الاستيعابية: مفتوحة بالكامل',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: AppDesignTokens.textPrimary(context),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: AppInput(
-                              label: 'حصة الإناث 👩',
-                              hint: '7',
-                              controller: _femaleCapController,
-                              keyboardType: TextInputType.number,
-                              validator: (v) {
-                                if (v == null || v.trim().isEmpty) return 'مطلوب';
-                                if (int.tryParse(v.trim()) == null) return 'أرقام فقط';
-                                return null;
-                              },
+                            const SizedBox(height: 2),
+                            Text(
+                              'لا توجد قيود على عدد الطلاب أو الذكور أو الإناث في هذا القسم، والتوزيع مفتوح بالكامل.',
+                              style: TextStyle(fontSize: 11.5, color: AppDesignTokens.textSecondary(context)),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ],
                   ),

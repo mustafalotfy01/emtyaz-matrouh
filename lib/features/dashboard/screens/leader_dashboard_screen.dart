@@ -495,7 +495,7 @@ class LeaderDashboardScreen extends ConsumerWidget {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  '${s.studentGroup == StudentGroup.groupA ? l10n.groupA : l10n.groupB} • صباحي: ${s.prefMorningCount} | طويل: ${s.prefLongCount} | ليلي: ${s.prefNightCount} • ${s.isSubmitted ? 'تم الإرسال 📨' : 'مسودة 📝'}',
+                                  'صباحي: ${s.prefMorningCount} | طويل: ${s.prefLongCount} | ليلي: ${s.prefNightCount} • ${s.isSubmitted ? 'تم الإرسال 📨' : 'مسودة 📝'}',
                                   style: TextStyle(fontSize: 11, color: AppDesignTokens.textSecondary(context)),
                                 ),
                               ],

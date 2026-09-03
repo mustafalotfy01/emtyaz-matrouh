@@ -22,6 +22,7 @@ import '../../knowledge/screens/knowledge_article_form_screen.dart';
 import '../../knowledge/screens/knowledge_library_screen.dart';
 import '../../notifications/screens/send_notification_screen.dart';
 import '../../app_versions/screens/app_versions_screen.dart';
+import '../../groups/screens/dynamic_groups_management_screen.dart';
 import '../../leaderboard/screens/clinical_leaderboard_screen.dart';
 import '../../quizzes/screens/quiz_create_screen.dart';
 import '../../quizzes/screens/quiz_list_screen.dart';
@@ -247,6 +248,15 @@ class AdminDashboardScreen extends ConsumerWidget {
                     '$pendingCount طلب بانتظار الاعتماد',
                     AppDesignTokens.primary,
                     () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StudentApprovalsScreen())),
+                  ),
+                  // جروبات الطلاب والتوزيع
+                  _buildAdminTile(
+                    context,
+                    Icons.group_work_rounded,
+                    'جروبات الطلاب والتوزيع',
+                    'إنشاء وتوزيع الجروبات السريرية',
+                    Colors.teal,
+                    () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DynamicGroupsManagementScreen())),
                   ),
                   // 2. الأقسام والتوزيع
                   _buildAdminTile(

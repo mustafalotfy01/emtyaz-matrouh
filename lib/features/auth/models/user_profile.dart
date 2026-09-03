@@ -60,6 +60,51 @@ enum UserRole {
   }
 }
 
+enum StudentClassification {
+  practicalStrong,
+  theoreticalStrong,
+  weak;
+
+  String get displayNameAr {
+    switch (this) {
+      case StudentClassification.practicalStrong:
+        return 'شاطر عملي 🩺';
+      case StudentClassification.theoreticalStrong:
+        return 'دحيح نظري 📚';
+      case StudentClassification.weak:
+        return 'ضعيف ⚠️';
+    }
+  }
+
+  String get code {
+    switch (this) {
+      case StudentClassification.practicalStrong:
+        return 'practical_strong';
+      case StudentClassification.theoreticalStrong:
+        return 'theoretical_strong';
+      case StudentClassification.weak:
+        return 'weak';
+    }
+  }
+
+  static StudentClassification? fromString(String? val) {
+    if (val == null) return null;
+    final cleaned = val.toLowerCase().trim();
+    if (cleaned == 'practical_strong' || cleaned == 'practicalstrong') {
+      return StudentClassification.practicalStrong;
+    }
+    if (cleaned == 'theoretical_strong' || cleaned == 'theoreticalstrong') {
+      return StudentClassification.theoreticalStrong;
+    }
+    if (cleaned == 'weak') {
+      return StudentClassification.weak;
+    }
+    return null;
+  }
+
+  String toDbString() => code;
+}
+
 enum StudentGroup {
   groupA,
   groupB;
@@ -152,6 +197,15 @@ class UserProfile {
   final String? rejectionReason;
   final DateTime? reviewedAt;
   final DateTime? createdAt;
+  final StudentClassification? classification;
+  final String? studentGroupId;
+  final String? studentGroupName;
+  final String? departmentName;
+  final String? supervisorDoctorName;
+  final bool previousWorkExperience;
+  final String? previousWorkplace;
+  final String? previousWorkDepartment;
+  final String? previousWorkExperienceDetails;
 
   UserProfile({
     required this.id,
@@ -177,6 +231,15 @@ class UserProfile {
     this.rejectionReason,
     this.reviewedAt,
     this.createdAt,
+    this.classification,
+    this.studentGroupId,
+    this.studentGroupName,
+    this.departmentName,
+    this.supervisorDoctorName,
+    this.previousWorkExperience = false,
+    this.previousWorkplace,
+    this.previousWorkDepartment,
+    this.previousWorkExperienceDetails,
   });
 
   bool get isApproved => registrationStatus == RegistrationStatus.approved;
@@ -193,6 +256,12 @@ class UserProfile {
       final g = json['raw_user_meta_data']['gpa'];
       parsedGpa = (g is num) ? g.toDouble() : double.tryParse(g.toString());
     }
+
+    final rawClass = json['student_classification'] ?? json['classification'];
+    final parsedClass = StudentClassification.fromString(rawClass?.toString());
+
+    final prevExp = json['previous_work_experience'] == true ||
+        (json['raw_user_meta_data'] is Map && json['raw_user_meta_data']['previous_work_experience'] == true);
 
     return UserProfile(
       id: json['id'] ?? '',
@@ -218,6 +287,18 @@ class UserProfile {
       rejectionReason: json['rejection_reason'],
       reviewedAt: json['reviewed_at'] != null ? DateTime.tryParse(json['reviewed_at']) : null,
       createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at']) : null,
+      classification: parsedClass,
+      studentGroupId: json['student_group_id']?.toString(),
+      studentGroupName: json['group_name']?.toString() ?? json['student_group_name']?.toString() ?? json['student_group']?.toString(),
+      departmentName: json['department_name']?.toString(),
+      supervisorDoctorName: json['supervisor_doctor_name']?.toString(),
+      previousWorkExperience: prevExp,
+      previousWorkplace: json['previous_workplace']?.toString() ??
+          (json['raw_user_meta_data'] is Map ? json['raw_user_meta_data']['previous_workplace']?.toString() : null),
+      previousWorkDepartment: json['previous_work_department']?.toString() ??
+          (json['raw_user_meta_data'] is Map ? json['raw_user_meta_data']['previous_work_department']?.toString() : null),
+      previousWorkExperienceDetails: json['previous_work_experience_details']?.toString() ??
+          (json['raw_user_meta_data'] is Map ? json['raw_user_meta_data']['previous_work_experience_details']?.toString() : null),
     );
   }
 
@@ -240,11 +321,20 @@ class UserProfile {
       'longitude': longitude,
       'avatar_url': avatarUrl,
       'role': role.toDbString(),
-      'student_group': studentGroup.code,
+      'student_group': studentGroupName ?? studentGroup.code,
       'registration_status': registrationStatus.toDbString(),
       'reviewed_by': reviewedBy,
       'rejection_reason': rejectionReason,
       'reviewed_at': reviewedAt?.toIso8601String(),
+      'student_classification': classification?.code,
+      'student_group_id': studentGroupId,
+      'group_name': studentGroupName,
+      'department_name': departmentName,
+      'supervisor_doctor_name': supervisorDoctorName,
+      'previous_work_experience': previousWorkExperience,
+      'previous_workplace': previousWorkplace,
+      'previous_work_department': previousWorkDepartment,
+      'previous_work_experience_details': previousWorkExperienceDetails,
     };
   }
 
@@ -267,12 +357,18 @@ class UserProfile {
       'residence_address': residenceAddress,
       'avatar_url': avatarUrl,
       'role': role.toDbString(),
-      'student_group': studentGroup.code,
+      'student_group': studentGroupName ?? studentGroup.code,
       'is_approved': isApproved,
       'registration_status': registrationStatus.toDbString(),
       'reviewed_by': reviewedBy,
       'rejection_reason': rejectionReason,
       'reviewed_at': reviewedAt?.toIso8601String(),
+      'student_classification': classification?.code,
+      'student_group_id': studentGroupId,
+      'previous_work_experience': previousWorkExperience,
+      'previous_workplace': previousWorkplace,
+      'previous_work_department': previousWorkDepartment,
+      'previous_work_experience_details': previousWorkExperienceDetails,
     };
   }
 
@@ -300,6 +396,15 @@ class UserProfile {
     String? rejectionReason,
     DateTime? reviewedAt,
     DateTime? createdAt,
+    StudentClassification? classification,
+    String? studentGroupId,
+    String? studentGroupName,
+    String? departmentName,
+    String? supervisorDoctorName,
+    bool? previousWorkExperience,
+    String? previousWorkplace,
+    String? previousWorkDepartment,
+    String? previousWorkExperienceDetails,
   }) {
     return UserProfile(
       id: id ?? this.id,
@@ -325,6 +430,15 @@ class UserProfile {
       rejectionReason: rejectionReason ?? this.rejectionReason,
       reviewedAt: reviewedAt ?? this.reviewedAt,
       createdAt: createdAt ?? this.createdAt,
+      classification: classification ?? this.classification,
+      studentGroupId: studentGroupId ?? this.studentGroupId,
+      studentGroupName: studentGroupName ?? this.studentGroupName,
+      departmentName: departmentName ?? this.departmentName,
+      supervisorDoctorName: supervisorDoctorName ?? this.supervisorDoctorName,
+      previousWorkExperience: previousWorkExperience ?? this.previousWorkExperience,
+      previousWorkplace: previousWorkplace ?? this.previousWorkplace,
+      previousWorkDepartment: previousWorkDepartment ?? this.previousWorkDepartment,
+      previousWorkExperienceDetails: previousWorkExperienceDetails ?? this.previousWorkExperienceDetails,
     );
   }
 

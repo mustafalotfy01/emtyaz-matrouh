@@ -5,6 +5,7 @@ import '../../features/auth/screens/register_screen.dart';
 import '../../features/auth/screens/student_approvals_screen.dart';
 import '../../features/dashboard/screens/main_navigation_screen.dart';
 import '../../features/app_versions/screens/app_versions_screen.dart';
+import '../../features/groups/screens/dynamic_groups_management_screen.dart';
 import '../../features/notifications/screens/fcm_debug_screen.dart';
 import '../../features/notifications/screens/notification_center_screen.dart';
 import '../../features/notifications/screens/send_notification_screen.dart';
@@ -39,6 +40,10 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/approvals',
       builder: (context, state) => const StudentApprovalsScreen(),
+    ),
+    GoRoute(
+      path: '/groups',
+      builder: (context, state) => const DynamicGroupsManagementScreen(),
     ),
     GoRoute(
       path: '/fcm-debug',

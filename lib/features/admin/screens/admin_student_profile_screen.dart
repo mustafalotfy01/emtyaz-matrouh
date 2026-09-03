@@ -143,6 +143,214 @@ class _AdminStudentProfileScreenState extends State<AdminStudentProfileScreen> w
     }
   }
 
+  Future<void> _showEditGpaDialog() async {
+    final currentGpa = _profileData?['gpa'] != null
+        ? (_profileData!['gpa'] as num).toDouble()
+        : 0.0;
+    final controller = TextEditingController(text: currentGpa > 0 ? currentGpa.toStringAsFixed(2) : '');
+    final formKey = GlobalKey<FormState>();
+    bool isSaving = false;
+
+    await showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppDesignTokens.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.school_rounded, color: AppDesignTokens.primary),
+              ),
+              const SizedBox(width: 10),
+              const Text('تعديل المعدل التراكمي (GPA)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'المعدل الحالي المسجل: ${currentGpa > 0 ? currentGpa.toStringAsFixed(2) : "غير محدد"}',
+                  style: TextStyle(fontSize: 13, color: AppDesignTokens.textSecondary(context)),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: controller,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'المعدل التراكمي الجديد (0.00 - 4.00) *',
+                    hintText: '3.85',
+                    prefixIcon: Icon(Icons.grade_outlined),
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (val) {
+                    if (val == null || val.trim().isEmpty) return 'يرجى إدخال المعدل التراكمي';
+                    final parsed = double.tryParse(val.trim());
+                    if (parsed == null) return 'قيمة غير صالحة';
+                    if (parsed < 0.0 || parsed > 4.0) return 'يجب أن يكون المعدل بين 0.00 و 4.00';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'ملاحظة: هذا التعديل مقصور على Super Admin ومسجل في سجل النظام.',
+                  style: TextStyle(fontSize: 11, color: AppDesignTokens.textMuted(context)),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(dialogCtx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppDesignTokens.primary,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      if (!formKey.currentState!.validate()) return;
+                      final newGpa = double.parse(controller.text.trim());
+                      setDialogState(() => isSaving = true);
+                      try {
+                        await AdminStudentManagementService.instance.updateStudentGpa(
+                          studentId: widget.studentId,
+                          newGpa: newGpa,
+                        );
+                        if (mounted) {
+                          setState(() {
+                            _profileData?['gpa'] = newGpa;
+                          });
+                          Navigator.pop(dialogCtx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('تم تحديث المعدل التراكمي بنجاح إلى ${newGpa.toStringAsFixed(2)}'),
+                              backgroundColor: AppDesignTokens.success,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        setDialogState(() => isSaving = false);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('خطأ أثناء التعديل: ${e.toString().replaceAll("Exception: ", "")}'),
+                              backgroundColor: AppDesignTokens.danger,
+                            ),
+                          );
+                        }
+                      }
+                    },
+              child: isSaving
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('حفظ التعديل'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showEditClassificationDialog() async {
+    final rawClass = _profileData?['student_classification'];
+    StudentClassification? current = StudentClassification.fromString(rawClass?.toString());
+
+    await showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.military_tech_outlined, color: AppDesignTokens.primary),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'تصنيف الطالب الأكاديمي والسريري',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'اختر تصنيف الطالب للمساعدة في توزيع الجروبات المتوازنة:',
+                style: TextStyle(fontSize: 13, color: AppDesignTokens.textSecondary(context)),
+              ),
+              const SizedBox(height: 16),
+              ...StudentClassification.values.map((cls) {
+                final isSelected = current == cls;
+                return ListTile(
+                  leading: Text(
+                    cls == StudentClassification.practicalStrong
+                        ? '🩺'
+                        : (cls == StudentClassification.theoreticalStrong ? '📚' : '⚠️'),
+                    style: const TextStyle(fontSize: 22),
+                  ),
+                  title: Text(
+                    cls.displayNameAr,
+                    style: TextStyle(
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isSelected ? AppDesignTokens.primary : null,
+                    ),
+                  ),
+                  trailing: isSelected ? const Icon(Icons.check_circle, color: AppDesignTokens.primary) : null,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  tileColor: isSelected ? AppDesignTokens.primary.withOpacity(0.08) : null,
+                  onTap: () async {
+                    Navigator.pop(sheetCtx);
+                    try {
+                      await AdminStudentManagementService.instance.updateStudentClassification(
+                        studentId: widget.studentId,
+                        classification: cls,
+                      );
+                      if (mounted) {
+                        setState(() {
+                          _profileData?['student_classification'] = cls.code;
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('تم تعيين تصنيف الطالب إلى: ${cls.displayNameAr}'),
+                            backgroundColor: AppDesignTokens.success,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('خطأ في حفظ التصنيف: $e'),
+                            backgroundColor: AppDesignTokens.danger,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -330,6 +538,97 @@ class _AdminStudentProfileScreenState extends State<AdminStudentProfileScreen> w
                                     ],
                                   ),
                                 ),
+
+                                // Classification Badge (Clickable)
+                                Builder(builder: (context) {
+                                  final rawCls = _profileData?['student_classification'];
+                                  final cls = StudentClassification.fromString(rawCls?.toString());
+                                  return InkWell(
+                                    onTap: _showEditClassificationDialog,
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: AppDesignTokens.primary.withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: AppDesignTokens.primary.withOpacity(0.4)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            cls != null ? cls.displayNameAr : '🏷️ غير مصنف (اضغط للتصنيف)',
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppDesignTokens.primary),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          const Icon(Icons.arrow_drop_down, size: 16, color: AppDesignTokens.primary),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }),
+
+                                // GPA Badge with Edit Button
+                                Builder(builder: (context) {
+                                  final rawGpa = _profileData?['gpa'];
+                                  final gpaVal = (rawGpa is num) ? rawGpa.toDouble() : double.tryParse(rawGpa?.toString() ?? '');
+                                  return InkWell(
+                                    onTap: _showEditGpaDialog,
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.amber.withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: Colors.amber.withOpacity(0.5)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.school_rounded, size: 14, color: Colors.amber),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            'GPA: ${gpaVal != null && gpaVal > 0 ? gpaVal.toStringAsFixed(2) : "غير مسجل"}',
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.amber.withOpacity(0.2),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: const Text('تعديل GPA', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.brown)),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }),
+
+                                // Dynamic Group Badge
+                                Builder(builder: (context) {
+                                  final grpName = _profileData?['group_name'] ?? _profileData?['student_group'] ?? 'بدون جروب';
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.indigo.withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: Colors.indigo.withOpacity(0.4)),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.group_work_outlined, size: 14, color: Colors.indigo),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'الجروب: $grpName',
+                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.indigo),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }),
                               ],
                             ),
                           ],
@@ -379,8 +678,17 @@ class _AdminStudentProfileScreenState extends State<AdminStudentProfileScreen> w
   }
 
   Widget _buildOverviewTab() {
-    final gpa = _profileData?['gpa']?.toString() ?? 'غير محدد';
-    final group = _profileData?['student_group'] ?? 'A';
+    final rawGpa = _profileData?['gpa'];
+    final gpaVal = (rawGpa is num) ? rawGpa.toDouble() : double.tryParse(rawGpa?.toString() ?? '');
+    final gpa = gpaVal != null && gpaVal > 0 ? gpaVal.toStringAsFixed(2) : 'غير مسجل';
+    final group = _profileData?['group_name'] ?? _profileData?['student_group'] ?? 'بدون جروب';
+    final deptName = _profileData?['department_name'] ?? 'غير مخصص';
+    final docName = _profileData?['supervisor_doctor_name'] ?? 'غير مخصص';
+    final hasPrevExp = _profileData?['previous_work_experience'] == true;
+    final prevWorkplace = _profileData?['previous_workplace'] ?? 'غير محدد';
+    final prevWorkDept = _profileData?['previous_work_department'] ?? 'غير محدد';
+    final prevWorkDetails = _profileData?['previous_work_experience_details'] ?? '';
+
     final attStats = _profileData?['attendance_stats'] as Map<String, dynamic>?;
     final attPct = attStats?['attendance_percentage']?.toString() ?? '100.0';
     final rewardsList = _profileData?['rewards'] as List? ?? [];
@@ -391,9 +699,15 @@ class _AdminStudentProfileScreenState extends State<AdminStudentProfileScreen> w
       children: [
         Row(
           children: [
-            Expanded(child: _buildMetricCard('المعدل التراكمي (GPA)', gpa, Icons.school_rounded, AppDesignTokens.primary)),
+            Expanded(
+              child: InkWell(
+                onTap: _showEditGpaDialog,
+                borderRadius: BorderRadius.circular(12),
+                child: _buildMetricCard('المعدل التراكمي (GPA) ✏️', gpa, Icons.school_rounded, AppDesignTokens.primary),
+              ),
+            ),
             const SizedBox(width: 12),
-            Expanded(child: _buildMetricCard('المجموعة', 'Group $group', Icons.group_rounded, Colors.indigo)),
+            Expanded(child: _buildMetricCard('الجروب الحالي', group, Icons.group_work_rounded, Colors.indigo)),
             const SizedBox(width: 12),
             Expanded(child: _buildMetricCard('نسبة الحضور', '%$attPct', Icons.event_available_rounded, AppDesignTokens.success)),
           ],
@@ -407,7 +721,40 @@ class _AdminStudentProfileScreenState extends State<AdminStudentProfileScreen> w
           ],
         ),
         const SizedBox(height: 20),
-        _buildSectionTitle('ملخص النشاط الأخير'),
+
+        // Assignment Card: Group, Department, Supervisor Doctor
+        _buildSectionTitle('التوزيعة والجروب السريري'),
+        const SizedBox(height: 8),
+        AppCard(
+          child: Column(
+            children: [
+              _buildInfoRow('الجروب التدريبي', group),
+              _buildInfoRow('القسم السريري الحالي', deptName),
+              _buildInfoRow('الطبيب المشرف', docName),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // Previous Work Experience Card
+        _buildSectionTitle('الخبرة العملية السابقة'),
+        const SizedBox(height: 8),
+        AppCard(
+          child: Column(
+            children: [
+              _buildInfoRow('اشتغلت قبل كده؟', hasPrevExp ? 'أيوه (لديه خبرة عمل سابقة)' : 'لا (بدون خبرة سابقة)'),
+              if (hasPrevExp) ...[
+                _buildInfoRow('مكان العمل السابق', prevWorkplace),
+                _buildInfoRow('القسم السابق', prevWorkDept),
+                if (prevWorkDetails.isNotEmpty)
+                  _buildInfoRow('تفاصيل الخبرة والمهام', prevWorkDetails),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        _buildSectionTitle('ملخص النشاط وحالة الحساب'),
         const SizedBox(height: 8),
         AppCard(
           child: Column(
@@ -424,6 +771,14 @@ class _AdminStudentProfileScreenState extends State<AdminStudentProfileScreen> w
   }
 
   Widget _buildAcademicTab() {
+    final rawCls = _profileData?['student_classification'];
+    final cls = StudentClassification.fromString(rawCls?.toString());
+    final rawGpa = _profileData?['gpa'];
+    final gpaVal = (rawGpa is num) ? rawGpa.toDouble() : double.tryParse(rawGpa?.toString() ?? '');
+    final gpa = gpaVal != null && gpaVal > 0 ? gpaVal.toStringAsFixed(2) : 'غير مسجل';
+    final group = _profileData?['group_name'] ?? _profileData?['student_group'] ?? 'بدون جروب';
+    final hasPrevExp = _profileData?['previous_work_experience'] == true;
+
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -431,12 +786,32 @@ class _AdminStudentProfileScreenState extends State<AdminStudentProfileScreen> w
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildSectionTitle('البيانات الأكاديمية والشخصية'),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildSectionTitle('البيانات الأكاديمية والسريرية'),
+                  TextButton.icon(
+                    onPressed: _showEditGpaDialog,
+                    icon: const Icon(Icons.edit, size: 16),
+                    label: const Text('تعديل GPA'),
+                  ),
+                ],
+              ),
               const SizedBox(height: 12),
               _buildInfoRow('الاسم بالكامل', _profileData?['full_name'] ?? '-'),
               _buildInfoRow('الكود الجامعي', _profileData?['university_code'] ?? '-'),
-              _buildInfoRow('المعدل التراكمي (GPA)', _profileData?['gpa']?.toString() ?? 'غير محدد'),
-              _buildInfoRow('المجموعة التدريبية', 'المجموعة ${_profileData?['student_group'] ?? "A"}'),
+              _buildInfoRow('المعدل التراكمي (GPA)', gpa),
+              _buildInfoRow('تصنيف الطالب الإداري', cls != null ? cls.displayNameAr : 'غير مصنف'),
+              _buildInfoRow('الجروب المسكن عليه', group),
+              _buildInfoRow('القسم المشرف', _profileData?['department_name'] ?? 'غير مخصص'),
+              _buildInfoRow('الطبيب المشرف', _profileData?['supervisor_doctor_name'] ?? 'غير مخصص'),
+              _buildInfoRow('خبرة عمل سابقة', hasPrevExp ? 'نعم (لديه خبرة)' : 'لا'),
+              if (hasPrevExp) ...[
+                _buildInfoRow('مكان العمل', _profileData?['previous_workplace'] ?? '-'),
+                _buildInfoRow('القسم', _profileData?['previous_work_department'] ?? '-'),
+                if ((_profileData?['previous_work_experience_details'] ?? '').isNotEmpty)
+                  _buildInfoRow('تفاصيل الخبرة', _profileData?['previous_work_experience_details']),
+              ],
               _buildInfoRow('الرقم القومي (سري للـ Super Admin)', _profileData?['national_id'] ?? '••••••••••••••'),
               _buildInfoRow('محل الإقامة', _profileData?['residence_address'] ?? 'محافظة مطروح'),
               _buildInfoRow('جهة الاتصال في الطوارئ', _profileData?['emergency_contact'] ?? 'غير مسجل'),

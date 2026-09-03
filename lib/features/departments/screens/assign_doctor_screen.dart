@@ -65,16 +65,6 @@ class _AssignDoctorScreenState extends ConsumerState<AssignDoctorScreen> {
     final maleCap = int.tryParse(_maleCapController.text.trim()) ?? 0;
     final femaleCap = int.tryParse(_femaleCapController.text.trim()) ?? 0;
 
-    if (maleCap + femaleCap <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('يجب تحديد سعة استيعابية أكبر من الصفر'),
-          backgroundColor: AppDesignTokens.warning,
-        ),
-      );
-      return;
-    }
-
     setState(() => _isSaving = true);
 
     try {
@@ -266,47 +256,39 @@ class _AssignDoctorScreenState extends ConsumerState<AssignDoctorScreen> {
 
                   const SizedBox(height: 20),
 
-                  // Capacity assignment for this supervisor
+                  // Open Supervision Capacity Information
                   AppCard(
                     padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        Text(
-                          'تخصيص حصة الإشراف للقسم',
-                          style: TextStyle(
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.bold,
-                            color: AppDesignTokens.textPrimary(context),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppDesignTokens.primary.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(10),
                           ),
+                          child: const Icon(Icons.all_inclusive_rounded, color: AppDesignTokens.primary, size: 24),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'حدد عدد الطلاب الذكور والإناث المخصصين لإشراف هذا الطبيب في القسم.',
-                          style: TextStyle(fontSize: 11.5, color: AppDesignTokens.textSecondary(context)),
-                        ),
-                        const SizedBox(height: 14),
-
-                        Row(
-                          children: [
-                            Expanded(
-                              child: AppInput(
-                                label: 'حصة الذكور 👨',
-                                hint: '4',
-                                controller: _maleCapController,
-                                keyboardType: TextInputType.number,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'حصة الإشراف: مفتوحة بالكامل',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppDesignTokens.textPrimary(context),
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: AppInput(
-                                label: 'حصة الإناث 👩',
-                                hint: '7',
-                                controller: _femaleCapController,
-                                keyboardType: TextInputType.number,
+                              const SizedBox(height: 2),
+                              Text(
+                                'يمكن تكليف الطبيب المشرف بمتابعة وتقييم أي عدد من الطلاب والجروبات في هذا القسم بدون حد أقصى.',
+                                style: TextStyle(fontSize: 11.5, color: AppDesignTokens.textSecondary(context)),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ],
                     ),

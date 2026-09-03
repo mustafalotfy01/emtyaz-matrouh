@@ -1,0 +1,231 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:nurse_matrouh/features/auth/models/user_profile.dart';
+import 'package:nurse_matrouh/features/groups/models/student_group.dart';
+import 'package:nurse_matrouh/features/admin/models/admin_student_overview_model.dart';
+import 'package:nurse_matrouh/features/departments/models/department.dart';
+
+void main() {
+  group('Student Classification Enum Tests', () {
+    test('StudentClassification has all 3 defined values', () {
+      expect(StudentClassification.values.length, 3);
+      expect(StudentClassification.values, contains(StudentClassification.practicalStrong));
+      expect(StudentClassification.values, contains(StudentClassification.theoreticalStrong));
+      expect(StudentClassification.values, contains(StudentClassification.weak));
+    });
+
+    test('StudentClassification string serialization and parsing', () {
+      expect(StudentClassification.practicalStrong.toDbString(), 'practical_strong');
+      expect(StudentClassification.theoreticalStrong.toDbString(), 'theoretical_strong');
+      expect(StudentClassification.weak.toDbString(), 'weak');
+
+      expect(StudentClassification.fromString('practical_strong'), StudentClassification.practicalStrong);
+      expect(StudentClassification.fromString('theoretical_strong'), StudentClassification.theoreticalStrong);
+      expect(StudentClassification.fromString('weak'), StudentClassification.weak);
+      expect(StudentClassification.fromString(null), isNull);
+      expect(StudentClassification.fromString('unknown_val'), isNull);
+    });
+
+    test('StudentClassification Arabic display names', () {
+      expect(StudentClassification.practicalStrong.displayNameAr, 'شاطر عملي 🩺');
+      expect(StudentClassification.theoreticalStrong.displayNameAr, 'دحيح نظري 📚');
+      expect(StudentClassification.weak.displayNameAr, 'ضعيف ⚠️');
+    });
+  });
+
+  group('StudentGroupModel Tests', () {
+    test('StudentGroupModel instantiates with open capacity (no max limit)', () {
+      const group = StudentGroupModel(
+        id: 'grp-001',
+        name: 'ICU Champions',
+        description: 'Critical Care Dynamic Group',
+        departmentId: 'dept-icu',
+        departmentName: 'العناية المركزة',
+        supervisorDoctorId: 'doc-007',
+        supervisorDoctorName: 'أحمد محمود',
+        studentCount: 150, // 150 students with ZERO capacity restriction!
+        isActive: true,
+      );
+
+      expect(group.id, 'grp-001');
+      expect(group.name, 'ICU Champions');
+      expect(group.studentCount, 150);
+      expect(group.departmentName, 'العناية المركزة');
+      expect(group.supervisorDoctorName, 'أحمد محمود');
+    });
+
+    test('StudentGroupModel serialization to/from JSON', () {
+      final json = {
+        'id': 'grp-icu-01',
+        'name': 'جروب الطوارئ 1',
+        'description': 'تدريب قسم الطوارئ والحوادث',
+        'department_id': 'dept-er-01',
+        'department_name': 'طوارئ',
+        'supervisor_doctor_id': 'doc-123',
+        'supervisor_doctor_name': 'محمد علي',
+        'student_count': 42,
+        'is_active': true,
+      };
+
+      final model = StudentGroupModel.fromJson(json);
+      expect(model.id, 'grp-icu-01');
+      expect(model.name, 'جروب الطوارئ 1');
+      expect(model.departmentName, 'طوارئ');
+      expect(model.supervisorDoctorName, 'محمد علي');
+      expect(model.studentCount, 42);
+
+      final outJson = model.toJson();
+      expect(outJson['name'], 'جروب الطوارئ 1');
+      expect(outJson['department_id'], 'dept-er-01');
+      expect(outJson['supervisor_doctor_id'], 'doc-123');
+    });
+  });
+
+  UserProfile createMockUser({
+    required String id,
+    required String fullName,
+    required String universityCode,
+    double? gpa,
+    StudentClassification? classification,
+    String? studentGroupId,
+    String? studentGroupName,
+    String? departmentName,
+    String? supervisorDoctorName,
+    bool previousWorkExperience = false,
+    String? previousWorkplace,
+    String? previousWorkDepartment,
+    String? previousWorkExperienceDetails,
+  }) {
+    return UserProfile(
+      id: id,
+      email: '$universityCode@nurse.matrouh.edu',
+      fullName: fullName,
+      universityCode: universityCode,
+      phoneNumber: '01012345678',
+      role: UserRole.student,
+      gender: 'male',
+      maritalStatus: 'single',
+      childrenCount: 0,
+      emergencyContact: '01099999999',
+      isMatrouhResident: true,
+      residenceAddress: 'مطروح',
+      gpa: gpa,
+      classification: classification,
+      studentGroupId: studentGroupId,
+      studentGroupName: studentGroupName,
+      departmentName: departmentName,
+      supervisorDoctorName: supervisorDoctorName,
+      previousWorkExperience: previousWorkExperience,
+      previousWorkplace: previousWorkplace,
+      previousWorkDepartment: previousWorkDepartment,
+      previousWorkExperienceDetails: previousWorkExperienceDetails,
+    );
+  }
+
+  group('UserProfile Dynamic Groups & Work Experience Tests', () {
+    test('UserProfile handles classification, dynamic group, and work experience fields', () {
+      final user = createMockUser(
+        id: 'usr-100',
+        fullName: 'مصطفى لطفي',
+        universityCode: '2026101',
+        gpa: 3.85,
+        classification: StudentClassification.practicalStrong,
+        studentGroupId: 'grp-icu-01',
+        studentGroupName: 'جروب الطوارئ 1',
+        departmentName: 'طوارئ',
+        supervisorDoctorName: 'د. سامي',
+        previousWorkExperience: true,
+        previousWorkplace: 'مستشفى مطروح العام',
+        previousWorkDepartment: 'العناية المركزة',
+        previousWorkExperienceDetails: 'سنة كاملة تمريض عناية وسحب عينات وتركيب كانيولات وريد مركزي',
+      );
+
+      expect(user.gpa, 3.85);
+      expect(user.classification, StudentClassification.practicalStrong);
+      expect(user.studentGroupId, 'grp-icu-01');
+      expect(user.studentGroupName, 'جروب الطوارئ 1');
+      expect(user.previousWorkExperience, isTrue);
+      expect(user.previousWorkplace, 'مستشفى مطروح العام');
+      expect(user.previousWorkExperienceDetails, contains('سنة كاملة تمريض عناية'));
+
+      // Test JSON roundtrip
+      final json = user.toJson();
+      expect(json['student_classification'], 'practical_strong');
+      expect(json['student_group_id'], 'grp-icu-01');
+      expect(json['previous_work_experience'], isTrue);
+      expect(json['previous_workplace'], 'مستشفى مطروح العام');
+
+      final reconstructed = UserProfile.fromJson(json);
+      expect(reconstructed.classification, StudentClassification.practicalStrong);
+      expect(reconstructed.studentGroupId, 'grp-icu-01');
+      expect(reconstructed.previousWorkExperience, isTrue);
+    });
+
+    test('UserProfile copyWith correctly updates GPA and Classification', () {
+      final user = createMockUser(
+        id: 'usr-101',
+        fullName: 'أحمد إبراهيم',
+        universityCode: '2026102',
+        gpa: 2.50,
+        classification: StudentClassification.weak,
+      );
+
+      final updated = user.copyWith(
+        gpa: 3.20,
+        classification: StudentClassification.theoreticalStrong,
+      );
+
+      expect(updated.gpa, 3.20);
+      expect(updated.classification, StudentClassification.theoreticalStrong);
+      expect(updated.fullName, 'أحمد إبراهيم');
+    });
+  });
+
+  group('AdminStudentOverviewModel Dynamic Groups Tests', () {
+    test('AdminStudentOverviewModel parses dynamic group and classification from DB json', () {
+      final dbJson = {
+        'id': 'std-999',
+        'full_name': 'سارة أحمد',
+        'university_code': '2026099',
+        'email': 'sara@nurse.matrouh.edu',
+        'phone_number': '01012345678',
+        'registration_status': 'approved',
+        'gpa': 3.92,
+        'student_classification': 'theoretical_strong',
+        'student_group_id': 'grp-ped-02',
+        'group_name': 'جروب الأطفال ب',
+        'department_name': 'قسم الأطفال',
+        'supervisor_doctor_name': 'د. نادية',
+        'previous_work_experience': false,
+        'app_version_code': 105,
+      };
+
+      final model = AdminStudentOverviewModel.fromJson(dbJson);
+      expect(model.studentId, 'std-999');
+      expect(model.fullName, 'سارة أحمد');
+      expect(model.gpa, 3.92);
+      expect(model.classification, StudentClassification.theoreticalStrong);
+      expect(model.studentGroupId, 'grp-ped-02');
+      expect(model.studentGroup, 'جروب الأطفال ب');
+      expect(model.departmentName, 'قسم الأطفال');
+      expect(model.supervisorDoctorName, 'د. نادية');
+      expect(model.previousWorkExperience, isFalse);
+    });
+  });
+
+  group('Department Open Capacity Tests', () {
+    test('Department allows infinite students without capacity blockage', () {
+      final dept = Department(
+        id: 'dept-er',
+        nameAr: 'قسم الطوارئ',
+        nameEn: 'Emergency',
+        maleCapacity: 0,
+        femaleCapacity: 0,
+        currentMale: 45,
+        currentFemale: 80,
+      );
+
+      // Even with 125 students, no capacity validation should fail
+      expect(dept.currentTotal, 125);
+    });
+  });
+}

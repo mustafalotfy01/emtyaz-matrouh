@@ -317,18 +317,10 @@ class RosterService {
 
     for (final p in normalized) {
       final day = p.preferenceDate.day;
-      final isAllowed = ShiftRulesHelper.isDayAvailableForGroup(
-        day: day,
-        isGroupA: studentGroup == StudentGroup.groupA,
-        daysInMonth: daysInMonth,
-      );
-
-      if (!isAllowed) {
+      if (day < 1 || day > daysInMonth) {
         return {
           'success': false,
-          'message': studentGroup == StudentGroup.groupA
-              ? 'المجموعة A مقيدة بالأيام من 1 إلى 15 فقط. اليوم $day غير صالح.'
-              : 'المجموعة B مقيدة بالأيام من 16 إلى نهاية الشهر. اليوم $day غير صالح.',
+          'message': 'اليوم $day غير صالح في هذا الشهر.',
         };
       }
     }

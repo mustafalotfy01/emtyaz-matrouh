@@ -127,10 +127,14 @@ class _StudentsMapOverviewScreenState extends ConsumerState<StudentsMapOverviewS
       }).toList();
     }
 
-    if (_selectedFilter == 'groupA') {
-      list = list.where((l) => l.profile.studentGroup == StudentGroup.groupA).toList();
-    } else if (_selectedFilter == 'groupB') {
-      list = list.where((l) => l.profile.studentGroup == StudentGroup.groupB).toList();
+    if (_selectedFilter == 'unassigned') {
+      list = list.where((l) => l.profile.studentGroupId == null).toList();
+    } else if (_selectedFilter == 'practical') {
+      list = list.where((l) => l.profile.classification == StudentClassification.practicalStrong).toList();
+    } else if (_selectedFilter == 'theoretical') {
+      list = list.where((l) => l.profile.classification == StudentClassification.theoreticalStrong).toList();
+    } else if (_selectedFilter == 'weak') {
+      list = list.where((l) => l.profile.classification == StudentClassification.weak).toList();
     } else if (_selectedFilter == 'outside') {
       list = list.where((l) => !l.profile.isMatrouhResident).toList();
     }
@@ -681,9 +685,13 @@ class _StudentsMapOverviewScreenState extends ConsumerState<StudentsMapOverviewS
                                 children: [
                                   _buildFilterChip('all', 'الكل (${_allLocations.length})'),
                                   const SizedBox(width: 6),
-                                  _buildFilterChip('groupA', 'المجموعة A'),
+                                  _buildFilterChip('unassigned', 'بدون جروب'),
                                   const SizedBox(width: 6),
-                                  _buildFilterChip('groupB', 'المجموعة B'),
+                                  _buildFilterChip('practical', '🩺 شاطر عملي'),
+                                  const SizedBox(width: 6),
+                                  _buildFilterChip('theoretical', '📚 دحيح نظري'),
+                                  const SizedBox(width: 6),
+                                  _buildFilterChip('weak', '⚠️ ضعيف'),
                                   const SizedBox(width: 6),
                                   _buildFilterChip('outside', 'المغتربين ($outsideCount)'),
                                 ],

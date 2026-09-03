@@ -619,7 +619,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
             'university_code': profile.universityCode,
             'phone_number': profile.phoneNumber,
             'national_id': profile.nationalId,
-            'gpa': profile.gpa,
             'gender': profile.gender,
             'marital_status': profile.maritalStatus,
             'children_count': profile.childrenCount,
@@ -629,7 +628,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
             'latitude': profile.latitude,
             'longitude': profile.longitude,
             'role': profile.role.toDbString(),
-            'student_group': profile.studentGroup.code,
+            'previous_work_experience': profile.previousWorkExperience,
+            'previous_workplace': profile.previousWorkplace,
+            'previous_work_department': profile.previousWorkDepartment,
+            'previous_work_experience_details': profile.previousWorkExperienceDetails,
             'registration_status': 'pending',
             'is_approved': false,
           },
@@ -640,7 +642,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
             ..['id'] = res.user!.id
             ..['email'] = profile.email
             ..['is_approved'] = false
-            ..['registration_status'] = 'pending';
+            ..['registration_status'] = 'pending'
+            ..['previous_work_experience'] = profile.previousWorkExperience
+            ..['previous_workplace'] = profile.previousWorkplace
+            ..['previous_work_department'] = profile.previousWorkDepartment
+            ..['previous_work_experience_details'] = profile.previousWorkExperienceDetails;
 
           try {
             await SupabaseService.client.from('profiles').upsert(newProfileMap);
@@ -898,31 +904,24 @@ class GroupCapacityInfo {
   final int groupBFemaleCount;
 
   const GroupCapacityInfo({
-    this.maxMale = 20,
-    this.maxFemale = 35,
+    this.maxMale = 99999,
+    this.maxFemale = 99999,
     this.groupAMaleCount = 0,
     this.groupAFemaleCount = 0,
     this.groupBMaleCount = 0,
     this.groupBFemaleCount = 0,
   });
 
-  int get remainingGroupAMale => (maxMale - groupAMaleCount).clamp(0, maxMale);
-  int get remainingGroupAFemale => (maxFemale - groupAFemaleCount).clamp(0, maxFemale);
-  int get remainingGroupBMale => (maxMale - groupBMaleCount).clamp(0, maxMale);
-  int get remainingGroupBFemale => (maxFemale - groupBFemaleCount).clamp(0, maxFemale);
+  int get remainingGroupAMale => 99999;
+  int get remainingGroupAFemale => 99999;
+  int get remainingGroupBMale => 99999;
+  int get remainingGroupBFemale => 99999;
 
-  int getRemaining(StudentGroup group, String gender) {
-    final isMale = gender == 'male';
-    if (group == StudentGroup.groupA) {
-      return isMale ? remainingGroupAMale : remainingGroupAFemale;
-    } else {
-      return isMale ? remainingGroupBMale : remainingGroupBFemale;
-    }
-  }
+  int getRemaining(StudentGroup group, String gender) => 99999;
 
-  int getMax(String gender) => gender == 'male' ? maxMale : maxFemale;
+  int getMax(String gender) => 99999;
 
-  bool isAvailable(StudentGroup group, String gender) => getRemaining(group, gender) > 0;
+  bool isAvailable(StudentGroup group, String gender) => true;
 }
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {

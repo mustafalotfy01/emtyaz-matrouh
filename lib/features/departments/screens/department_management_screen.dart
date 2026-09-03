@@ -357,24 +357,32 @@ class _DepartmentManagementScreenState
 
           const SizedBox(height: 14),
 
-          // Capacity & Occupancy Matrix
+          // Open Capacity & Enrolled Students
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: AppDesignTokens.surfaceMuted(context),
               borderRadius: BorderRadius.circular(AppDesignTokens.radiusSm),
             ),
-            child: Column(
+            child: Row(
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildStatCol(context, 'المطلوب', '👨 ${dept.maleCapacity} ذكور', '👩 ${dept.femaleCapacity} إناث', '👥 ${dept.totalCapacity} إجمالي', AppDesignTokens.primary),
-                    Container(height: 50, width: 1, color: AppDesignTokens.border(context)),
-                    _buildStatCol(context, 'الحالي', '👨 ${dept.currentMale} / ${dept.maleCapacity}', '👩 ${dept.currentFemale} / ${dept.femaleCapacity}', '👥 ${dept.currentTotal} / ${dept.totalCapacity}', AppDesignTokens.info),
-                    Container(height: 50, width: 1, color: AppDesignTokens.border(context)),
-                    _buildStatCol(context, 'المتبقي', '👨 ${dept.remainingMale} شاغر', '👩 ${dept.remainingFemale} شاغر', '👥 ${dept.remainingTotal} شاغر', dept.remainingTotal > 0 ? AppDesignTokens.success : AppDesignTokens.danger),
-                  ],
+                const Icon(Icons.all_inclusive_rounded, size: 20, color: AppDesignTokens.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'السعة الاستيعابية: مفتوحة بالكامل (بدون قيود)',
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppDesignTokens.textPrimary(context)),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppDesignTokens.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${dept.currentTotal} طالب',
+                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: AppDesignTokens.primary),
+                  ),
                 ),
               ],
             ),

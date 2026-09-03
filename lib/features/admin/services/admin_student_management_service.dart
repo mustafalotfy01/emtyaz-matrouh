@@ -102,6 +102,9 @@ class AdminStudentManagementService {
       final devInfo = ver?['device_info']?.toString() ?? '';
       final repAt = DateTime.tryParse(ver?['last_reported_at']?.toString() ?? '');
 
+      final rawClass = p['student_classification'] ?? p['classification'];
+      final parsedClass = StudentClassification.fromString(rawClass?.toString());
+
       result.add(AdminStudentOverviewModel(
         studentId: id,
         fullName: p['full_name']?.toString() ?? 'طالب امتياز',
@@ -109,7 +112,14 @@ class AdminStudentManagementService {
         email: p['email']?.toString() ?? '',
         phoneNumber: p['phone_number']?.toString() ?? '',
         gpa: (p['gpa'] as num?)?.toDouble(),
-        studentGroup: p['student_group']?.toString() ?? 'A',
+        studentGroup: p['group_name']?.toString() ?? p['student_group']?.toString() ?? 'بدون جروب',
+        studentGroupId: p['student_group_id']?.toString(),
+        classification: parsedClass,
+        departmentName: p['department_name']?.toString(),
+        supervisorDoctorName: p['supervisor_doctor_name']?.toString(),
+        previousWorkExperience: p['previous_work_experience'] == true,
+        previousWorkplace: p['previous_workplace']?.toString(),
+        previousWorkDepartment: p['previous_work_department']?.toString(),
         registrationStatus: p['registration_status']?.toString() ?? 'approved',
         isApproved: p['is_approved'] == true,
         avatarUrl: p['avatar_url']?.toString() ?? '',
@@ -192,6 +202,28 @@ class AdminStudentManagementService {
 
       if (profileRes != null) {
         final serverNow = AppTimezoneHelper.serverNowUtc;
+        // Look up group name if student has a group
+        String groupName = 'بدون جروب';
+        String? deptName;
+        String? docName;
+        final grpId = profileRes['student_group_id']?.toString();
+        if (grpId != null && grpId.isNotEmpty) {
+          try {
+            final grpRes = await SupabaseService.client
+                .from('student_groups')
+                .select('name, departments(name_ar), profiles:supervisor_doctor_id(full_name)')
+                .eq('id', grpId)
+                .maybeSingle();
+            if (grpRes != null) {
+              groupName = grpRes['name']?.toString() ?? 'بدون جروب';
+              final d = grpRes['departments'] as Map<String, dynamic>?;
+              deptName = d?['name_ar']?.toString();
+              final p = grpRes['profiles'] as Map<String, dynamic>?;
+              docName = p?['full_name']?.toString();
+            }
+          } catch (_) {}
+        }
+
         return {
           'student_id': profileRes['id'],
           'full_name': profileRes['full_name'],
@@ -199,7 +231,16 @@ class AdminStudentManagementService {
           'email': profileRes['email'],
           'phone_number': profileRes['phone_number'],
           'gpa': profileRes['gpa'],
-          'student_group': profileRes['student_group'] ?? 'A',
+          'student_group': groupName,
+          'student_group_id': grpId,
+          'group_name': groupName,
+          'department_name': deptName,
+          'supervisor_doctor_name': docName,
+          'student_classification': profileRes['student_classification'],
+          'previous_work_experience': profileRes['previous_work_experience'] == true,
+          'previous_workplace': profileRes['previous_workplace'],
+          'previous_work_department': profileRes['previous_work_department'],
+          'previous_work_experience_details': profileRes['previous_work_experience_details'],
           'registration_status': profileRes['registration_status'] ?? 'approved',
           'is_approved': profileRes['is_approved'] ?? true,
           'avatar_url': profileRes['avatar_url'],
@@ -316,6 +357,74 @@ class AdminStudentManagementService {
     } catch (e) {
       if (kDebugMode) print('⚠️ deleteStudent error: $e');
       return false;
+    }
+  }
+
+  /// Securely updates a student's GPA via PostgreSQL RPC (Super Admin only)
+  Future<bool> updateStudentGpa({
+    required String studentId,
+    required double newGpa,
+  }) async {
+    if (newGpa < 0.0 || newGpa > 4.0) {
+      throw Exception('يجب أن يكون المعدل التراكمي بين 0.00 و 4.00');
+    }
+
+    try {
+      // 1. Try secure RPC
+      try {
+        final res = await SupabaseService.client.rpc('update_student_gpa', params: {
+          'p_student_id': studentId,
+          'p_new_gpa': newGpa,
+        });
+        if (res is Map && res['success'] == true) return true;
+      } catch (e) {
+        if (kDebugMode) print('update_student_gpa RPC fallback: $e');
+        if (e.toString().contains('Unauthorized') || e.toString().contains('Invalid GPA')) {
+          rethrow;
+        }
+      }
+
+      // 2. Direct update fallback (enforced by RLS)
+      await SupabaseService.client.from('profiles').update({
+        'gpa': double.parse(newGpa.toStringAsFixed(2)),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', studentId);
+
+      return true;
+    } catch (e) {
+      if (kDebugMode) print('⚠️ updateStudentGpa error: $e');
+      rethrow;
+    }
+  }
+
+  /// Securely updates a student's classification via PostgreSQL RPC (Super Admin only)
+  Future<bool> updateStudentClassification({
+    required String studentId,
+    required StudentClassification classification,
+  }) async {
+    try {
+      // 1. Try secure RPC
+      try {
+        final res = await SupabaseService.client.rpc('update_student_classification', params: {
+          'p_student_id': studentId,
+          'p_classification': classification.code,
+        });
+        if (res is Map && res['success'] == true) return true;
+      } catch (e) {
+        if (kDebugMode) print('update_student_classification RPC fallback: $e');
+        if (e.toString().contains('Unauthorized')) rethrow;
+      }
+
+      // 2. Direct update fallback (enforced by RLS)
+      await SupabaseService.client.from('profiles').update({
+        'student_classification': classification.code,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', studentId);
+
+      return true;
+    } catch (e) {
+      if (kDebugMode) print('⚠️ updateStudentClassification error: $e');
+      rethrow;
     }
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/models/user_app_version_model.dart';
 import '../../../core/utils/timezone_helper.dart';
+import '../../auth/models/user_profile.dart';
 
 @immutable
 class AdminStudentOverviewModel {
@@ -11,6 +12,13 @@ class AdminStudentOverviewModel {
   final String phoneNumber;
   final double? gpa;
   final String studentGroup;
+  final String? studentGroupId;
+  final StudentClassification? classification;
+  final String? departmentName;
+  final String? supervisorDoctorName;
+  final bool previousWorkExperience;
+  final String? previousWorkplace;
+  final String? previousWorkDepartment;
   final String registrationStatus;
   final bool isApproved;
   final String avatarUrl;
@@ -37,6 +45,13 @@ class AdminStudentOverviewModel {
     required this.phoneNumber,
     this.gpa,
     required this.studentGroup,
+    this.studentGroupId,
+    this.classification,
+    this.departmentName,
+    this.supervisorDoctorName,
+    this.previousWorkExperience = false,
+    this.previousWorkplace,
+    this.previousWorkDepartment,
     required this.registrationStatus,
     required this.isApproved,
     required this.avatarUrl,
@@ -55,14 +70,24 @@ class AdminStudentOverviewModel {
   });
 
   factory AdminStudentOverviewModel.fromJson(Map<String, dynamic> json) {
+    final rawClass = json['student_classification'] ?? json['classification'];
+    final parsedClass = StudentClassification.fromString(rawClass?.toString());
+
     return AdminStudentOverviewModel(
-      studentId: json['student_id']?.toString() ?? '',
+      studentId: json['student_id']?.toString() ?? json['id']?.toString() ?? '',
       fullName: json['full_name']?.toString() ?? 'طالب امتياز',
       universityCode: json['university_code']?.toString() ?? '',
       email: json['email']?.toString() ?? '',
       phoneNumber: json['phone_number']?.toString() ?? '',
       gpa: (json['gpa'] as num?)?.toDouble(),
-      studentGroup: json['student_group']?.toString() ?? 'A',
+      studentGroup: json['group_name']?.toString() ?? json['student_group']?.toString() ?? 'بدون جروب',
+      studentGroupId: json['student_group_id']?.toString(),
+      classification: parsedClass,
+      departmentName: json['department_name']?.toString(),
+      supervisorDoctorName: json['supervisor_doctor_name']?.toString(),
+      previousWorkExperience: json['previous_work_experience'] == true,
+      previousWorkplace: json['previous_workplace']?.toString(),
+      previousWorkDepartment: json['previous_work_department']?.toString(),
       registrationStatus: json['registration_status']?.toString() ?? 'approved',
       isApproved: json['is_approved'] == true,
       avatarUrl: json['avatar_url']?.toString() ?? '',
@@ -113,6 +138,70 @@ class AdminStudentOverviewModel {
     return '$plat • غير معروف';
   }
 
+  AdminStudentOverviewModel copyWith({
+    String? studentId,
+    String? fullName,
+    String? universityCode,
+    String? email,
+    String? phoneNumber,
+    double? gpa,
+    String? studentGroup,
+    String? studentGroupId,
+    StudentClassification? classification,
+    String? departmentName,
+    String? supervisorDoctorName,
+    bool? previousWorkExperience,
+    String? previousWorkplace,
+    String? previousWorkDepartment,
+    String? registrationStatus,
+    bool? isApproved,
+    String? avatarUrl,
+    bool? isOnline,
+    bool? effectiveIsOnline,
+    DateTime? lastSeenAt,
+    String? appPlatform,
+    String? installedVersionName,
+    int? installedVersionCode,
+    String? deviceInfo,
+    DateTime? versionReportedAt,
+    String? latestPlatformVersionName,
+    int? latestPlatformVersionCode,
+    AppUpdateStatus? updateStatus,
+    DateTime? serverNow,
+  }) {
+    return AdminStudentOverviewModel(
+      studentId: studentId ?? this.studentId,
+      fullName: fullName ?? this.fullName,
+      universityCode: universityCode ?? this.universityCode,
+      email: email ?? this.email,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
+      gpa: gpa ?? this.gpa,
+      studentGroup: studentGroup ?? this.studentGroup,
+      studentGroupId: studentGroupId ?? this.studentGroupId,
+      classification: classification ?? this.classification,
+      departmentName: departmentName ?? this.departmentName,
+      supervisorDoctorName: supervisorDoctorName ?? this.supervisorDoctorName,
+      previousWorkExperience: previousWorkExperience ?? this.previousWorkExperience,
+      previousWorkplace: previousWorkplace ?? this.previousWorkplace,
+      previousWorkDepartment: previousWorkDepartment ?? this.previousWorkDepartment,
+      registrationStatus: registrationStatus ?? this.registrationStatus,
+      isApproved: isApproved ?? this.isApproved,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      isOnline: isOnline ?? this.isOnline,
+      effectiveIsOnline: effectiveIsOnline ?? this.effectiveIsOnline,
+      lastSeenAt: lastSeenAt ?? this.lastSeenAt,
+      appPlatform: appPlatform ?? this.appPlatform,
+      installedVersionName: installedVersionName ?? this.installedVersionName,
+      installedVersionCode: installedVersionCode ?? this.installedVersionCode,
+      deviceInfo: deviceInfo ?? this.deviceInfo,
+      versionReportedAt: versionReportedAt ?? this.versionReportedAt,
+      latestPlatformVersionName: latestPlatformVersionName ?? this.latestPlatformVersionName,
+      latestPlatformVersionCode: latestPlatformVersionCode ?? this.latestPlatformVersionCode,
+      updateStatus: updateStatus ?? this.updateStatus,
+      serverNow: serverNow ?? this.serverNow,
+    );
+  }
+
   AdminStudentOverviewModel copyWithPresence({
     bool? isOnline,
     bool? effectiveIsOnline,
@@ -126,6 +215,13 @@ class AdminStudentOverviewModel {
       phoneNumber: phoneNumber,
       gpa: gpa,
       studentGroup: studentGroup,
+      studentGroupId: studentGroupId,
+      classification: classification,
+      departmentName: departmentName,
+      supervisorDoctorName: supervisorDoctorName,
+      previousWorkExperience: previousWorkExperience,
+      previousWorkplace: previousWorkplace,
+      previousWorkDepartment: previousWorkDepartment,
       registrationStatus: registrationStatus,
       isApproved: isApproved,
       avatarUrl: avatarUrl,
@@ -160,6 +256,13 @@ class AdminStudentOverviewModel {
       phoneNumber: phoneNumber,
       gpa: gpa,
       studentGroup: studentGroup,
+      studentGroupId: studentGroupId,
+      classification: classification,
+      departmentName: departmentName,
+      supervisorDoctorName: supervisorDoctorName,
+      previousWorkExperience: previousWorkExperience,
+      previousWorkplace: previousWorkplace,
+      previousWorkDepartment: previousWorkDepartment,
       registrationStatus: registrationStatus,
       isApproved: isApproved,
       avatarUrl: avatarUrl,
