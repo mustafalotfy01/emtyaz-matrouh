@@ -54,8 +54,8 @@ class AppVersionTrackerService with WidgetsBindingObserver {
         platform = 'ios';
       }
 
-      String versionName = '1.4.0';
-      int versionCode = 5;
+      String versionName = '1.5.8';
+      int versionCode = 6;
 
       try {
         final pkg = await PackageInfo.fromPlatform();

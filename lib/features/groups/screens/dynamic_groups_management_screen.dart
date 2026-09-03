@@ -234,22 +234,31 @@ class _DynamicGroupsManagementScreenState extends ConsumerState<DynamicGroupsMan
                       ),
                       const SizedBox(height: 6),
                       docsAsync.when(
-                        data: (doctors) => DropdownButtonFormField<String?>(
-                          value: selectedDoctorId,
-                          decoration: const InputDecoration(
-                            hintText: 'اختر الطبيب المشرف',
-                            prefixIcon: Icon(Icons.medical_services_outlined),
-                            border: OutlineInputBorder(),
-                          ),
-                          items: [
-                            const DropdownMenuItem(value: null, child: Text('بدون طبيب مشرف')),
-                            ...doctors.map((doc) => DropdownMenuItem(
-                                  value: doc.id,
-                                  child: Text('د. ${doc.fullName} (${doc.universityCode})'),
-                                )),
-                          ],
-                          onChanged: (val) => setDialogState(() => selectedDoctorId = val),
-                        ),
+                        data: (doctors) {
+                          final uniqueDocs = <String, UserProfile>{};
+                          for (final d in doctors) {
+                            uniqueDocs[d.id] = d;
+                          }
+                          final docList = uniqueDocs.values.toList();
+                          final isValidValue = selectedDoctorId != null && docList.any((d) => d.id == selectedDoctorId);
+
+                          return DropdownButtonFormField<String?>(
+                            value: isValidValue ? selectedDoctorId : null,
+                            decoration: const InputDecoration(
+                              hintText: 'اختر الطبيب المشرف',
+                              prefixIcon: Icon(Icons.medical_services_outlined),
+                              border: OutlineInputBorder(),
+                            ),
+                            items: [
+                              const DropdownMenuItem(value: null, child: Text('بدون طبيب مشرف')),
+                              ...docList.map((doc) => DropdownMenuItem(
+                                    value: doc.id,
+                                    child: Text('د. ${doc.fullName} (${doc.universityCode})'),
+                                  )),
+                            ],
+                            onChanged: (val) => setDialogState(() => selectedDoctorId = val),
+                          );
+                        },
                         loading: () => const LinearProgressIndicator(),
                         error: (_, __) => const Text('تعذر تحميل الأطباء المشرفين', style: TextStyle(color: Colors.red)),
                       ),
@@ -263,6 +272,7 @@ class _DynamicGroupsManagementScreenState extends ConsumerState<DynamicGroupsMan
                 ),
               ),
             ),
+            actionsAlignment: MainAxisAlignment.spaceBetween,
             actions: [
               TextButton.icon(
                 style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -273,51 +283,56 @@ class _DynamicGroupsManagementScreenState extends ConsumerState<DynamicGroupsMan
                   _confirmDeleteGroup(grp);
                 },
               ),
-              const Spacer(),
-              TextButton(
-                onPressed: isSaving ? null : () => Navigator.pop(dialogCtx),
-                child: const Text('إلغاء'),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppDesignTokens.primary,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: isSaving
-                    ? null
-                    : () async {
-                        if (!formKey.currentState!.validate()) return;
-                        setDialogState(() => isSaving = true);
-                        final notifier = ref.read(studentGroupsProvider.notifier);
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton(
+                    onPressed: isSaving ? null : () => Navigator.pop(dialogCtx),
+                    child: const Text('إلغاء'),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppDesignTokens.primary,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: isSaving
+                        ? null
+                        : () async {
+                            if (!formKey.currentState!.validate()) return;
+                            setDialogState(() => isSaving = true);
+                            final notifier = ref.read(studentGroupsProvider.notifier);
 
-                        // Update basic info
-                        await notifier.updateGroup(
-                          groupId: grp.id,
-                          name: nameController.text.trim(),
-                          description: descController.text.trim().isNotEmpty ? descController.text.trim() : null,
-                        );
+                            // Update basic info
+                            await notifier.updateGroup(
+                              groupId: grp.id,
+                              name: nameController.text.trim(),
+                              description: descController.text.trim().isNotEmpty ? descController.text.trim() : null,
+                            );
 
-                        // Update doctor if changed
-                        if (selectedDoctorId != grp.supervisorDoctorId) {
-                          await notifier.assignDoctor(
-                            groupId: grp.id,
-                            doctorId: selectedDoctorId,
-                          );
-                        }
+                            // Update doctor if changed
+                            if (selectedDoctorId != grp.supervisorDoctorId) {
+                              await notifier.assignDoctor(
+                                groupId: grp.id,
+                                doctorId: selectedDoctorId,
+                              );
+                            }
 
-                        if (dialogCtx.mounted) Navigator.pop(dialogCtx);
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              backgroundColor: AppDesignTokens.success,
-                              content: Text('تم تحديث بيانات الجروب بنجاح ✓'),
-                            ),
-                          );
-                        }
-                      },
-                child: isSaving
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('حفظ التعديلات'),
+                            if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  backgroundColor: AppDesignTokens.success,
+                                  content: Text('تم تحديث بيانات الجروب بنجاح ✓'),
+                                ),
+                              );
+                            }
+                          },
+                    child: isSaving
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Text('حفظ التعديلات'),
+                  ),
+                ],
               ),
             ],
           );

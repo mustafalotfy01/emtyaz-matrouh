@@ -392,13 +392,13 @@ class StudentGroupsRepository {
     }
   }
 
-  /// Fetch evaluating doctors only (Role = evaluating_doctor)
+  /// Fetch evaluating doctors only (Role = evaluating_doctor or doctor)
   Future<List<UserProfile>> fetchEvaluatingDoctors() async {
     try {
       final res = await _client
           .from('profiles')
           .select()
-          .eq('role', 'evaluating_doctor')
+          .inFilter('role', ['evaluating_doctor', 'doctor'])
           .order('full_name', ascending: true);
 
       return (res as List).map((json) => UserProfile.fromJson(json as Map<String, dynamic>)).toList();
