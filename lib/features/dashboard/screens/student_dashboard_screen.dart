@@ -14,6 +14,7 @@ import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/app_section_header.dart';
 import '../../attendance/providers/attendance_provider.dart';
+import '../../auth/models/user_profile.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../fingerprint/models/fingerprint_request.dart';
 import '../../fingerprint/providers/fingerprint_provider.dart';
@@ -23,6 +24,7 @@ import '../../leaderboard/screens/clinical_leaderboard_screen.dart';
 import '../../quizzes/screens/quiz_list_screen.dart';
 import '../../roster/models/roster_entry.dart';
 import '../../roster/providers/final_roster_provider.dart';
+import '../../groups/screens/student_my_group_screen.dart';
 
 class StudentDashboardScreen extends ConsumerWidget {
   final Function(int) onNavigateTab;
@@ -85,6 +87,11 @@ class StudentDashboardScreen extends ConsumerWidget {
 
               // ── 1.1 Restrained Gold Leaderboard Banner ─────────────────────
               _buildLeaderboardBanner(context),
+
+              const SizedBox(height: 12),
+
+              // ── 1.2 Student Dynamic Group Banner ──────────────────────────
+              _buildStudentGroupBanner(context, user),
 
               const SizedBox(height: 16),
 
@@ -586,6 +593,18 @@ class StudentDashboardScreen extends ConsumerWidget {
         onTap: () => onNavigateTab(1), // Roster tab
       ),
       _QuickActionItem(
+        title: 'الجروبات',
+        subtitle: 'جروبي والزملاء',
+        icon: Icons.group_work_rounded,
+        color: Colors.indigo,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const StudentMyGroupScreen()),
+          );
+        },
+      ),
+      _QuickActionItem(
         title: 'تسليم واستلام',
         subtitle: 'محاضر الشيفتات',
         icon: Icons.assignment_turned_in_rounded,
@@ -966,6 +985,93 @@ class StudentDashboardScreen extends ConsumerWidget {
               Icons.arrow_forward_ios_rounded,
               size: 14,
               color: Color(0xFFB45309),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStudentGroupBanner(BuildContext context, UserProfile? user) {
+    final grpName = user?.studentGroupName ?? 'بدون جروب';
+    final hasGroup = user?.studentGroupId != null && user!.studentGroupId!.isNotEmpty;
+    final deptName = user?.departmentName ?? 'غير مخصص';
+    final docName = user?.supervisorDoctorName ?? 'غير مخصص';
+
+    return InkWell(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const StudentMyGroupScreen()),
+        );
+      },
+      borderRadius: BorderRadius.circular(AppDesignTokens.radiusMd),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppDesignTokens.surface(context),
+          borderRadius: BorderRadius.circular(AppDesignTokens.radiusMd),
+          border: Border.all(
+            color: hasGroup ? AppDesignTokens.primary.withOpacity(0.35) : AppDesignTokens.border(context),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: AppDesignTokens.primary.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.group_work_rounded,
+                color: AppDesignTokens.primary,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        '👥 الجروب التدريبي: $grpName',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 8),
+                      AppBadge(
+                        label: hasGroup ? 'مفعل ✓' : 'غير مسكن',
+                        variant: hasGroup ? AppBadgeVariant.primary : AppBadgeVariant.neutral,
+                        size: AppBadgeSize.small,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    hasGroup
+                        ? 'طبيب الجروب: $docName • قسم الشهر: $deptName'
+                        : 'اضغط هنا للاطلاع على تفاصيل الجروب والزملاء',
+                    style: TextStyle(fontSize: 11.5, color: AppDesignTokens.textSecondary(context)),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 14,
+              color: AppDesignTokens.primary,
             ),
           ],
         ),

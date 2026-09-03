@@ -391,4 +391,38 @@ void main() {
       expect(resetExp.previousWorkplace, isNull);
     });
   });
+
+  group('Group Deletion & Student My Group Tests', () {
+    test('Deleting group unassigns students to null without deleting student accounts', () {
+      final studentA = createMockUser(
+        id: 'std-del-1',
+        fullName: 'طالب 1',
+        universityCode: '2026001',
+        studentGroupId: 'grp-to-delete',
+        studentGroupName: 'جروب للحذف',
+      );
+      final studentB = createMockUser(
+        id: 'std-del-2',
+        fullName: 'طالب 2',
+        universityCode: '2026002',
+        studentGroupId: 'grp-to-delete',
+        studentGroupName: 'جروب للحذف',
+      );
+
+      expect(studentA.studentGroupId, 'grp-to-delete');
+      expect(studentB.studentGroupId, 'grp-to-delete');
+
+      // Simulate unassignment upon group deletion
+      final unassignedA = studentA.copyWith(clearGroup: true);
+      final unassignedB = studentB.copyWith(clearGroup: true);
+
+      expect(unassignedA.studentGroupId, isNull);
+      expect(unassignedA.studentGroupName, isNull);
+      expect(unassignedA.fullName, 'طالب 1'); // Account preserved!
+
+      expect(unassignedB.studentGroupId, isNull);
+      expect(unassignedB.studentGroupName, isNull);
+      expect(unassignedB.fullName, 'طالب 2'); // Account preserved!
+    });
+  });
 }

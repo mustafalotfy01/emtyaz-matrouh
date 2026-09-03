@@ -22,6 +22,7 @@ import '../../core/services/app_update_service.dart';
 import 'widgets/app_update_dialog.dart';
 import '../auth/models/user_profile.dart';
 import '../auth/providers/auth_provider.dart';
+import '../groups/screens/student_my_group_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -949,6 +950,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         _buildInfoRow(context, Icons.stars_rounded, 'التصنيف الأكاديمي',
                             user.classification!.displayNameAr),
                       ],
+                      const SizedBox(height: 10),
+                      AppButton(
+                        text: 'عرض تفاصيل الجروب والزملاء 👥',
+                        icon: Icons.group_work_rounded,
+                        variant: AppButtonVariant.primary,
+                        size: AppButtonSize.small,
+                        width: double.infinity,
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const StudentMyGroupScreen()),
+                          );
+                        },
+                      ),
                     ],
                   ),
                 ),

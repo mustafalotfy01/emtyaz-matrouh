@@ -272,6 +272,40 @@ class StudentGroupsRepository {
     }
   }
 
+  /// Delete dynamic student group safely:
+  /// Unassigns students (setting student_group_id to null), deletes monthly assignments, and removes group
+  Future<bool> deleteGroup(String groupId) async {
+    try {
+      // 1. Try RPC first
+      try {
+        final rpcRes = await _client.rpc('delete_student_group', params: {
+          'p_group_id': groupId,
+        });
+        if (rpcRes is Map && rpcRes['success'] == true) return true;
+      } catch (e) {
+        if (kDebugMode) print('delete_student_group RPC fallback: $e');
+      }
+
+      // 2. Direct client fallback
+      // Unassign students
+      await _client.from('profiles').update({
+        'student_group_id': null,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('student_group_id', groupId);
+
+      // Delete monthly timeline
+      await _client.from('group_monthly_departments').delete().eq('group_id', groupId);
+
+      // Delete group
+      await _client.from('student_groups').delete().eq('id', groupId);
+
+      return true;
+    } catch (e) {
+      if (kDebugMode) print('[StudentGroupsRepository] deleteGroup error: $e');
+      return false;
+    }
+  }
+
   /// Assign a student to a dynamic group
   Future<bool> assignStudentToGroup({
     required String studentId,

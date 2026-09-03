@@ -394,6 +394,7 @@ class UserProfile {
     String? previousWorkplace,
     String? previousWorkDepartment,
     String? previousWorkExperienceDetails,
+    bool clearGroup = false,
   }) {
     return UserProfile(
       id: id ?? this.id,
@@ -420,8 +421,8 @@ class UserProfile {
       reviewedAt: reviewedAt ?? this.reviewedAt,
       createdAt: createdAt ?? this.createdAt,
       classification: classification ?? this.classification,
-      studentGroupId: studentGroupId ?? this.studentGroupId,
-      studentGroupName: studentGroupName ?? this.studentGroupName,
+      studentGroupId: clearGroup ? null : (studentGroupId ?? this.studentGroupId),
+      studentGroupName: clearGroup ? null : (studentGroupName ?? this.studentGroupName),
       departmentName: departmentName ?? this.departmentName,
       supervisorDoctorName: supervisorDoctorName ?? this.supervisorDoctorName,
       previousWorkExperience: previousWorkExperience ?? this.previousWorkExperience,

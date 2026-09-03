@@ -146,6 +146,20 @@ class StudentGroupsNotifier extends StateNotifier<StudentGroupsState> {
     }
   }
 
+  Future<bool> deleteGroup(String groupId) async {
+    try {
+      final success = await _repository.deleteGroup(groupId);
+      if (success) {
+        await loadGroups();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+      return false;
+    }
+  }
+
   Future<bool> assignStudent({
     required String studentId,
     required String groupId,

@@ -264,6 +264,16 @@ class _DynamicGroupsManagementScreenState extends ConsumerState<DynamicGroupsMan
               ),
             ),
             actions: [
+              TextButton.icon(
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                label: const Text('حذف الجروب'),
+                onPressed: isSaving ? null : () {
+                  Navigator.pop(dialogCtx);
+                  _confirmDeleteGroup(grp);
+                },
+              ),
+              const Spacer(),
               TextButton(
                 onPressed: isSaving ? null : () => Navigator.pop(dialogCtx),
                 child: const Text('إلغاء'),
@@ -312,6 +322,105 @@ class _DynamicGroupsManagementScreenState extends ConsumerState<DynamicGroupsMan
             ],
           );
         },
+      ),
+    );
+  }
+
+  /// 2.1 CONFIRM DELETE GROUP
+  void _confirmDeleteGroup(StudentGroupModel grp) {
+    final count = grp.studentCount;
+    bool isDeleting = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.warning_amber_rounded, color: Colors.red),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('حذف ${grp.name}؟', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red)),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'هل أنت متأكد من رغبتك في حذف "${grp.name}" نهائياً؟',
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+              if (count > 0)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.amber.shade700),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.amber.shade900, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'تنبيه: يوجد $count طالب مسجل في هذا الجروب. سيتم إلغاء تسكينهم ليصبحوا "بدون جروب" حتى تعيد توزيعهم.',
+                          style: TextStyle(fontSize: 12, color: Colors.amber.shade900, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Text(
+                  'الجروب فارغ حالياً (0 طالب). سيتم حذف الجروب وجدول دوران الأقسام الخاص به نهائياً.',
+                  style: TextStyle(fontSize: 12, color: AppDesignTokens.textMuted(context)),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isDeleting ? null : () => Navigator.pop(dialogCtx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: isDeleting
+                  ? null
+                  : () async {
+                      setDialogState(() => isDeleting = true);
+                      final ok = await ref.read(studentGroupsProvider.notifier).deleteGroup(grp.id);
+                      if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            backgroundColor: ok ? AppDesignTokens.success : AppDesignTokens.danger,
+                            content: Text(ok ? 'تم حذف الجروب بنجاح ✓' : 'تعذر حذف الجروب. يرجى المحاولة لاحقاً.'),
+                          ),
+                        );
+                      }
+                    },
+              icon: isDeleting
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.delete_forever_rounded, size: 18),
+              label: const Text('تأكيد الحذف'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -538,6 +647,12 @@ class _DynamicGroupsManagementScreenState extends ConsumerState<DynamicGroupsMan
                   label: grp.isActive ? 'مفعل ✓' : 'معطل',
                   variant: grp.isActive ? AppBadgeVariant.success : AppBadgeVariant.neutral,
                   size: AppBadgeSize.small,
+                ),
+                const SizedBox(width: 6),
+                IconButton(
+                  tooltip: 'حذف الجروب',
+                  icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
+                  onPressed: () => _confirmDeleteGroup(grp),
                 ),
               ],
             ),

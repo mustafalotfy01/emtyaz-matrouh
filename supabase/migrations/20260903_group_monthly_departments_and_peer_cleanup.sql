@@ -559,7 +559,58 @@ END;
 $$;
 
 -- ------------------------------------------------------------------------------
--- 12. GRANT RPC EXECUTION PERMISSIONS
+-- 12. DELETE STUDENT GROUP RPC (SAFE UNASSIGNMENT & CASCADE)
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.delete_student_group(
+    p_group_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_caller_role TEXT;
+    v_group_name TEXT;
+    v_unassigned_count INT;
+BEGIN
+    SELECT role INTO v_caller_role FROM public.profiles WHERE id = auth.uid();
+    IF v_caller_role IS NULL OR v_caller_role NOT IN ('super_admin', 'leader') THEN
+        RAISE EXCEPTION 'Unauthorized: Only Super Admin and Leader can delete student groups';
+    END IF;
+
+    SELECT name INTO v_group_name FROM public.student_groups WHERE id = p_group_id;
+    IF v_group_name IS NULL THEN
+        RAISE EXCEPTION 'Group not found: %', p_group_id;
+    END IF;
+
+    -- 1. Unassign all students in this group
+    WITH updated_students AS (
+        UPDATE public.profiles
+        SET student_group_id = NULL,
+            updated_at = NOW()
+        WHERE student_group_id = p_group_id
+        RETURNING id
+    )
+    SELECT count(*) INTO v_unassigned_count FROM updated_students;
+
+    -- 2. Delete monthly department timeline
+    DELETE FROM public.group_monthly_departments WHERE group_id = p_group_id;
+
+    -- 3. Delete the group entity
+    DELETE FROM public.student_groups WHERE id = p_group_id;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'group_id', p_group_id,
+        'group_name', v_group_name,
+        'unassigned_students', v_unassigned_count
+    );
+END;
+$$;
+
+-- ------------------------------------------------------------------------------
+-- 13. GRANT RPC EXECUTION PERMISSIONS
 -- ------------------------------------------------------------------------------
 GRANT EXECUTE ON FUNCTION public.create_student_group(TEXT, TEXT) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.assign_doctor_to_group(UUID, UUID) TO authenticated, service_role;
@@ -568,3 +619,5 @@ GRANT EXECUTE ON FUNCTION public.get_group_monthly_timeline(UUID) TO authenticat
 GRANT EXECUTE ON FUNCTION public.get_student_groups_summary(INT, INT) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.get_admin_students_overview() TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.update_student_experience(BOOLEAN, TEXT, TEXT, TEXT) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.delete_student_group(UUID) TO authenticated, service_role;
+
