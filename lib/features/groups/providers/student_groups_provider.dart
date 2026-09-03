@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/models/user_profile.dart';
 import '../../departments/models/department.dart';
+import '../models/group_monthly_department.dart';
 import '../models/student_group.dart';
 import '../repositories/student_groups_repository.dart';
 
@@ -39,28 +40,25 @@ class StudentGroupsNotifier extends StateNotifier<StudentGroupsState> {
     loadGroups();
   }
 
-  Future<void> loadGroups() async {
+  Future<void> loadGroups({int? year, int? month}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final list = await _repository.fetchGroups();
+      final list = await _repository.fetchGroups(year: year, month: month);
       state = state.copyWith(groups: list, isLoading: false);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
+  /// Create group with name and description only
   Future<bool> createGroup({
     required String name,
     String? description,
-    String? departmentId,
-    String? supervisorDoctorId,
   }) async {
     try {
       final created = await _repository.createGroup(
         name: name,
         description: description,
-        departmentId: departmentId,
-        supervisorDoctorId: supervisorDoctorId,
       );
       if (created != null) {
         await loadGroups();
@@ -73,12 +71,61 @@ class StudentGroupsNotifier extends StateNotifier<StudentGroupsState> {
     }
   }
 
+  /// Assign evaluating doctor directly to group
+  Future<bool> assignDoctor({
+    required String groupId,
+    required String? doctorId,
+  }) async {
+    try {
+      final success = await _repository.assignDoctorToGroup(
+        groupId: groupId,
+        doctorId: doctorId,
+      );
+      if (success) {
+        await loadGroups();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+      return false;
+    }
+  }
+
+  /// Assign monthly department to group
+  Future<bool> setMonthlyDepartment({
+    required String groupId,
+    required String departmentId,
+    required int year,
+    required int month,
+  }) async {
+    try {
+      final success = await _repository.setGroupMonthlyDepartment(
+        groupId: groupId,
+        departmentId: departmentId,
+        year: year,
+        month: month,
+      );
+      if (success) {
+        await loadGroups();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+      return false;
+    }
+  }
+
+  /// Fetch monthly timeline for a group
+  Future<List<GroupMonthlyDepartmentModel>> fetchTimeline(String groupId) async {
+    return _repository.fetchGroupMonthlyTimeline(groupId);
+  }
+
   Future<bool> updateGroup({
     required String groupId,
     required String name,
     String? description,
-    String? departmentId,
-    String? supervisorDoctorId,
     bool? isActive,
   }) async {
     try {
@@ -86,8 +133,6 @@ class StudentGroupsNotifier extends StateNotifier<StudentGroupsState> {
         groupId: groupId,
         name: name,
         description: description,
-        departmentId: departmentId,
-        supervisorDoctorId: supervisorDoctorId,
         isActive: isActive,
       );
       if (success) {

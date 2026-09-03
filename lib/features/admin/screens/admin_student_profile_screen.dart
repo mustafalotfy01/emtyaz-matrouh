@@ -11,6 +11,7 @@ import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/app_empty_state.dart';
 import '../../auth/models/user_profile.dart';
+import '../../groups/repositories/student_groups_repository.dart';
 import '../services/admin_student_management_service.dart';
 
 class AdminStudentProfileScreen extends StatefulWidget {
@@ -351,6 +352,98 @@ class _AdminStudentProfileScreenState extends State<AdminStudentProfileScreen> w
     );
   }
 
+  Future<void> _showChangeGroupDialog() async {
+    final groups = await StudentGroupsRepository().fetchGroups();
+    String? currentGroupId = _profileData?['student_group_id']?.toString();
+    String? selectedGroupId = currentGroupId;
+    bool isSaving = false;
+
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.indigo.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.group_work_rounded, color: Colors.indigo),
+              ),
+              const SizedBox(width: 10),
+              const Text('تغيير جروب الطالب', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'اختر الجروب التدريبي الجديد. سيرث الطالب تلقائياً الطبيب المشرف وقسم الشهر الحالي المرتبط بالجروب.',
+                style: TextStyle(fontSize: 12, color: AppDesignTokens.textSecondary(context)),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String?>(
+                value: selectedGroupId,
+                decoration: const InputDecoration(
+                  labelText: 'الجروب التدريبي',
+                  prefixIcon: Icon(Icons.groups_rounded),
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('بدون جروب (إلغاء التنسيب)')),
+                  ...groups.map((g) => DropdownMenuItem(
+                        value: g.id,
+                        child: Text('${g.name} (${g.supervisorDoctorName != null ? "د. " + g.supervisorDoctorName! : "بدون طبيب"})'),
+                      )),
+                ],
+                onChanged: (v) => setDialogState(() => selectedGroupId = v),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(dialogCtx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppDesignTokens.primary, foregroundColor: Colors.white),
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      setDialogState(() => isSaving = true);
+                      final repo = StudentGroupsRepository();
+                      if (selectedGroupId != null) {
+                        await repo.assignStudentToGroup(studentId: widget.studentId, groupId: selectedGroupId!);
+                      } else {
+                        await repo.removeStudentFromGroup(widget.studentId);
+                      }
+                      if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                      await _loadProfile();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            backgroundColor: AppDesignTokens.success,
+                            content: Text('تم تحديث جروب الطالب بنجاح ✓'),
+                          ),
+                        );
+                      }
+                    },
+              child: isSaving
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('حفظ'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -606,26 +699,30 @@ class _AdminStudentProfileScreenState extends State<AdminStudentProfileScreen> w
                                   );
                                 }),
 
-                                // Dynamic Group Badge
+                                // Dynamic Group Badge (Clickable to change group)
                                 Builder(builder: (context) {
                                   final grpName = _profileData?['group_name'] ?? _profileData?['student_group'] ?? 'بدون جروب';
-                                  return Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: Colors.indigo.withOpacity(0.12),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(color: Colors.indigo.withOpacity(0.4)),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(Icons.group_work_outlined, size: 14, color: Colors.indigo),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          'الجروب: $grpName',
-                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.indigo),
-                                        ),
-                                      ],
+                                  return InkWell(
+                                    onTap: _showChangeGroupDialog,
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.indigo.withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: Colors.indigo.withOpacity(0.4)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.group_work_outlined, size: 14, color: Colors.indigo),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            'الجروب: $grpName ✏️',
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.indigo),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   );
                                 }),
@@ -728,7 +825,29 @@ class _AdminStudentProfileScreenState extends State<AdminStudentProfileScreen> w
         AppCard(
           child: Column(
             children: [
-              _buildInfoRow('الجروب التدريبي', group),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.group_work_rounded, size: 18, color: Colors.indigo),
+                        const SizedBox(width: 8),
+                        Text('الجروب التدريبي: ', style: TextStyle(fontSize: 13, color: AppDesignTokens.textSecondary(context))),
+                        Text(group, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    TextButton.icon(
+                      style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                      icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+                      label: const Text('تغيير الجروب', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      onPressed: _showChangeGroupDialog,
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 8),
               _buildInfoRow('القسم السريري الحالي', deptName),
               _buildInfoRow('الطبيب المشرف', docName),
             ],

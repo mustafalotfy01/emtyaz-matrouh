@@ -18,7 +18,6 @@ import '../../auth/providers/auth_provider.dart';
 import '../../fingerprint/models/fingerprint_request.dart';
 import '../../fingerprint/providers/fingerprint_provider.dart';
 import '../../disciplinary/screens/student_discipline_history_screen.dart';
-import '../../groups/screens/group_selection_screen.dart';
 import '../../handover/screens/shift_handover_screen.dart';
 import '../../leaderboard/screens/clinical_leaderboard_screen.dart';
 import '../../quizzes/screens/quiz_list_screen.dart';
@@ -595,18 +594,6 @@ class StudentDashboardScreen extends ConsumerWidget {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const ShiftHandoverScreen()),
-          );
-        },
-      ),
-      _QuickActionItem(
-        title: 'تفضيلات المجموعة',
-        subtitle: 'اقتراح الزملاء',
-        icon: Icons.group_add_rounded,
-        color: AppDesignTokens.warning,
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const GroupSelectionScreen()),
           );
         },
       ),

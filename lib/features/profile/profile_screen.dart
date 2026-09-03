@@ -580,10 +580,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         if (user.role == UserRole.student) ...[
                           const SizedBox(width: 8),
                           AppBadge(
-                            label: user.studentGroup.displayNameAr,
-                            variant: AppBadgeVariant.neutral,
+                            label: user.studentGroupName ?? 'بدون جروب',
+                            variant: user.studentGroupId != null ? AppBadgeVariant.primary : AppBadgeVariant.neutral,
                             size: AppBadgeSize.medium,
                           ),
+                          if (user.classification != null) ...[
+                            const SizedBox(width: 8),
+                            AppBadge(
+                              label: user.classification!.displayNameAr,
+                              variant: AppBadgeVariant.info,
+                              size: AppBadgeSize.medium,
+                            ),
+                          ],
                         ],
                       ],
                     ),
@@ -610,7 +618,69 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
               const SizedBox(height: 20),
 
-              // ── 2. Official Academic & Contact Data ────────────────────────
+              // ── 2. Clinical & Group Assignment Data (Read-Only for Student) ───
+              if (user.role == UserRole.student) ...[
+                AppSectionHeader(title: 'التوزيع السريري والجروب'),
+                const SizedBox(height: 6),
+                AppCard(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
+                  child: Column(
+                    children: [
+                      _buildInfoRow(context, Icons.school_outlined, 'المعدل التراكمي (GPA)',
+                          user.gpa != null ? user.gpa!.toStringAsFixed(2) : 'غير مسجل'),
+                      Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
+                      _buildInfoRow(context, Icons.group_work_outlined, 'الجروب التدريبي',
+                          user.studentGroupName ?? 'بدون جروب'),
+                      Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
+                      _buildInfoRow(context, Icons.local_hospital_outlined, 'قسم الشهر الحالي',
+                          user.departmentName ?? 'غير مخصص لهذا الشهر'),
+                      Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
+                      _buildInfoRow(context, Icons.medical_services_outlined, 'الطبيب المشرف',
+                          user.supervisorDoctorName ?? 'غير مخصص'),
+                      if (user.classification != null) ...[
+                        Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
+                        _buildInfoRow(context, Icons.stars_rounded, 'التصنيف الأكاديمي',
+                            user.classification!.displayNameAr),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // ── 3. Previous Work Experience Card ───────────────────────────
+                AppSectionHeader(title: 'الخبرة السابقة'),
+                const SizedBox(height: 6),
+                AppCard(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
+                  child: Column(
+                    children: [
+                      _buildInfoRow(context, Icons.work_outline_rounded, 'اشتغلت قبل كده؟',
+                          user.previousWorkExperience ? 'أيوه' : 'لا'),
+                      if (user.previousWorkExperience) ...[
+                        Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
+                        _buildInfoRow(context, Icons.business_outlined, 'مكان العمل',
+                            user.previousWorkplace != null && user.previousWorkplace!.isNotEmpty
+                                ? user.previousWorkplace!
+                                : 'غير محدد'),
+                        Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
+                        _buildInfoRow(context, Icons.domain_outlined, 'القسم',
+                            user.previousWorkDepartment != null && user.previousWorkDepartment!.isNotEmpty
+                                ? user.previousWorkDepartment!
+                                : 'غير محدد'),
+                        if (user.previousWorkExperienceDetails != null &&
+                            user.previousWorkExperienceDetails!.isNotEmpty) ...[
+                          Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
+                          _buildInfoRow(context, Icons.description_outlined, 'الخبرة',
+                              user.previousWorkExperienceDetails!),
+                        ],
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+
+              // ── 4. Official Academic & Contact Data ────────────────────────
               AppSectionHeader(title: l10n.accountSection),
               const SizedBox(height: 6),
               AppCard(
@@ -620,10 +690,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     _buildInfoRow(context, Icons.email_outlined, l10n.emailLabel, user.email),
                     Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
                     _buildInfoRow(context, Icons.phone_outlined, l10n.phoneLabel, user.phoneNumber),
-                    if (user.gpa != null) ...[
-                      Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
-                      _buildInfoRow(context, Icons.school_outlined, 'المعدل التراكمي (GPA)', user.gpa!.toStringAsFixed(2)),
-                    ],
                     if (user.nationalId != null && user.nationalId!.isNotEmpty) ...[
                       Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
                       _buildInfoRow(context, Icons.credit_card_outlined, l10n.nationalIdLabel, user.nationalId!),

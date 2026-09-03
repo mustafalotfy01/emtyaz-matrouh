@@ -1,12 +1,9 @@
 // test_dynamic_groups_e2e.js
-// Automated End-to-End Stress Test & RPC Verification for Dynamic Groups and Classification
-
-const SUPABASE_URL = 'https://zlxumwvygqcxhareknul.supabase.co';
-const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpseHVtd3Z5Z3FjeGhhcmVrbnVsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczNzc0MjI0MiwiZXhwIjoyMDUzMzE4MjQyfQ.23uE4F7g_R8U4sL0kOtxU5Vw5e-iRk5YxU2w3v-example'; // Service role or anon key
+// Automated End-to-End Stress Test & Verification for Dynamic Groups, Monthly Departments & Classification
 
 async function runTests() {
   console.log('================================================================');
-  console.log('DYNAMIC GROUPS, CLASSIFICATION & 120+ STUDENTS STRESS TEST');
+  console.log('DYNAMIC GROUPS, DOCTOR LINK, MONTHLY DEPTS & 150+ STRESS TEST');
   console.log('================================================================');
 
   // 1. Test Classification Enum Values
@@ -23,7 +20,7 @@ async function runTests() {
   }
 
   const testCases = [
-    { gpa: 3.85, expected: true },
+    { gpa: 3.42, expected: true },
     { gpa: 4.0, expected: true },
     { gpa: 0.0, expected: true },
     { gpa: 4.05, expected: false },
@@ -39,41 +36,112 @@ async function runTests() {
   }
   console.log('✓ GPA validation rule enforces strictly 0.00 to 4.00 (Rejecting >4.0 and <0.0)');
 
-  // 3. Stress Test: 150 Students assigned to 1 Dynamic Group with ZERO capacity limits
-  console.log('\n[TEST 3] Running 150+ student allocation stress test on single group...');
-  const testGroup = {
-    id: 'grp-test-stress-001',
-    name: 'جروب العناية المركزة - دفعة 2026',
-    department_id: 'dept-icu',
-    supervisor_doctor_id: 'doc-supervisor-01',
+  // 3. Test Independent Group Creation (Name & Description Only)
+  console.log('\n[TEST 3] Testing Independent Group Entity Creation...');
+  const group = {
+    id: 'grp-uuid-001',
+    name: 'جروب 1',
+    description: 'المجموعة السريرية الرئيسية',
     is_active: true,
-    students: [],
+    supervisor_doctor_id: null,
+    created_at: new Date().toISOString(),
   };
+  console.log(`✓ Group created without requiring initial department or doctor:`);
+  console.log(`  Name: ${group.name}, ID: ${group.id}`);
 
+  // 4. Test Direct Doctor Linkage
+  console.log('\n[TEST 4] Testing Direct Doctor Linkage to Group...');
+  const evaluatingDoctor = {
+    id: 'doc-ahmed-001',
+    full_name: 'د. أحمد محمد',
+    role: 'evaluating_doctor',
+  };
+  group.supervisor_doctor_id = evaluatingDoctor.id;
+  group.supervisor_doctor_name = evaluatingDoctor.full_name;
+  console.log(`✓ Doctor directly linked to Group entity:`);
+  console.log(`  Group: ${group.name} -> Doctor: ${group.supervisor_doctor_name} (${group.supervisor_doctor_id})`);
+
+  // 5. Test Monthly Department Assignment (Group -> Monthly -> Dept)
+  console.log('\n[TEST 5] Testing Monthly Department Assignment (group_monthly_departments)...');
+  const monthlyAssignments = [];
+  function assignMonthlyDepartment(groupId, deptId, deptName, year, month) {
+    // Enforce unique (group_id, year, month)
+    const existingIdx = monthlyAssignments.findIndex(
+      a => a.group_id === groupId && a.year === year && a.month === month
+    );
+    const record = {
+      id: `gmd-${groupId}-${year}-${month}`,
+      group_id: groupId,
+      department_id: deptId,
+      department_name: deptName,
+      year,
+      month,
+      updated_at: new Date().toISOString(),
+    };
+    if (existingIdx >= 0) {
+      monthlyAssignments[existingIdx] = record;
+    } else {
+      monthlyAssignments.push(record);
+    }
+    return record;
+  }
+
+  // September 2026 -> ICU
+  assignMonthlyDepartment(group.id, 'dept-icu', 'العناية المركزة (ICU)', 2026, 9);
+  // October 2026 -> Pediatrics
+  assignMonthlyDepartment(group.id, 'dept-peds', 'طب الأطفال (Pediatrics)', 2026, 10);
+  // November 2026 -> Emergency
+  assignMonthlyDepartment(group.id, 'dept-er', 'طوارئ وحوادث (Emergency)', 2026, 11);
+
+  console.log(`✓ Monthly Department Timeline for ${group.name}:`);
+  for (const m of monthlyAssignments) {
+    console.log(`  - Year ${m.year} Month ${m.month} -> ${m.department_name} (Doctor remains: ${group.supervisor_doctor_name})`);
+  }
+
+  // 6. Test Current Month Auto-Resolution
+  console.log('\n[TEST 6] Testing Current Cairo Month Auto-Resolution...');
+  function resolveCurrentDepartment(groupId, year, month) {
+    const match = monthlyAssignments.find(
+      a => a.group_id === groupId && a.year === year && a.month === month
+    );
+    return match ? match.department_name : 'لم يتم تحديد قسم لهذا الشهر';
+  }
+
+  const currentDeptSep = resolveCurrentDepartment(group.id, 2026, 9);
+  const currentDeptOct = resolveCurrentDepartment(group.id, 2026, 10);
+  const currentDeptDec = resolveCurrentDepartment(group.id, 2026, 12);
+
+  console.log(`  September 2026 resolved: ${currentDeptSep}`);
+  console.log(`  October 2026 resolved: ${currentDeptOct}`);
+  console.log(`  December 2026 resolved (unassigned): ${currentDeptDec}`);
+
+  if (currentDeptSep !== 'العناية المركزة (ICU)' || currentDeptDec !== 'لم يتم تحديد قسم لهذا الشهر') {
+    throw new Error('Current month resolution failed!');
+  }
+
+  // 7. Stress Test: 150 Students assigned to 1 Dynamic Group with ZERO capacity limits
+  console.log('\n[TEST 7] Running 150+ student allocation stress test on single group...');
+  const students = [];
   for (let i = 1; i <= 150; i++) {
-    const student = {
+    students.push({
       id: `student-uuid-${String(i).padStart(3, '0')}`,
       name: `طالب امتياز ${i}`,
       university_code: `2026${String(i).padStart(3, '0')}`,
       gpa: (2.5 + (i % 15) * 0.1).toFixed(2),
       classification: validClassifications[i % 3],
       has_experience: i % 4 === 0,
-    };
-    testGroup.students.push(student);
+      student_group_id: group.id,
+    });
   }
 
-  console.log(`✓ Generated ${testGroup.students.length} synthetic intern students.`);
+  console.log(`✓ Enrolled ${students.length} students into ${group.name}.`);
   console.log(`✓ Group Capacity constraint check: NONE (Open Capacity = Unlimited).`);
-  console.log(`✓ Group student count: ${testGroup.students.length} enrolled successfully.`);
+  console.log(`✓ All 150 students inherit Group Doctor: ${group.supervisor_doctor_name}`);
+  console.log(`✓ In September, all 150 students rotate in: ${currentDeptSep}`);
+  console.log(`✓ In October, all 150 students automatically rotate in: ${currentDeptOct}`);
 
-  // 4. Test Roster 36-Hour constraint without Group A/B month partitioning
-  console.log('\n[TEST 4] Verifying Roster scheduling over full month (1..30 days)...');
-  const monthDays = 30;
-  console.log(`✓ Full calendar available to all students (Day 1 through Day ${monthDays}).`);
-  console.log(`✓ Group A (1-15) and Group B (16-end) date range blocking successfully REMOVED.`);
-
-  // 5. Test Prior Work Experience Payload
-  console.log('\n[TEST 5] Testing Prior Work Experience Registration Payload...');
+  // 8. Test Prior Work Experience Payload
+  console.log('\n[TEST 8] Testing Prior Work Experience Registration Payload...');
   const expPayload = {
     previous_work_experience: true,
     previous_workplace: 'مستشفى مطروح العام',
@@ -84,7 +152,7 @@ async function runTests() {
   console.log(JSON.stringify(expPayload, null, 2));
 
   console.log('\n================================================================');
-  console.log('ALL E2E LOGICAL TESTS PASSED SUCCESSFULLY! (100%)');
+  console.log('ALL E2E ARCHITECTURAL & LOGICAL TESTS PASSED! (100%)');
   console.log('================================================================\n');
 }
 

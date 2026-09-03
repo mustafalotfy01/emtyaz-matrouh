@@ -319,6 +319,129 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
     );
   }
 
+  Future<void> _showEditGpaDialog(AdminStudentOverviewModel student) async {
+    final currentGpa = student.gpa ?? 0.0;
+    final controller = TextEditingController(text: currentGpa > 0 ? currentGpa.toStringAsFixed(2) : '');
+    final formKey = GlobalKey<FormState>();
+    bool isSaving = false;
+
+    await showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.school_rounded, color: Colors.amber),
+              ),
+              const SizedBox(width: 10),
+              const Text('تعديل المعدل التراكمي (GPA)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'الطالب: ${student.fullName} (${student.universityCode})',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'المعدل الحالي: ${currentGpa > 0 ? currentGpa.toStringAsFixed(2) : "غير مسجل"}',
+                  style: TextStyle(fontSize: 12, color: AppDesignTokens.textSecondary(context)),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: controller,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'المعدل التراكمي الجديد (0.00 - 4.00) *',
+                    hintText: '3.42',
+                    prefixIcon: Icon(Icons.grade_outlined),
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (val) {
+                    if (val == null || val.trim().isEmpty) return 'يرجى إدخال المعدل التراكمي';
+                    final parsed = double.tryParse(val.trim());
+                    if (parsed == null) return 'قيمة غير صالحة';
+                    if (parsed.isNaN || parsed.isInfinite) return 'قيمة غير صالحة';
+                    if (parsed < 0.0 || parsed > 4.0) return 'يجب أن يكون المعدل بين 0.00 و 4.00';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'ملاحظة: هذا التعديل خاص بـ Super Admin فقط ويتم تدقيقه في قاعدة البيانات.',
+                  style: TextStyle(fontSize: 11, color: AppDesignTokens.textMuted(context)),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(dialogCtx),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppDesignTokens.primary,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      if (!formKey.currentState!.validate()) return;
+                      final newGpa = double.parse(controller.text.trim());
+                      setDialogState(() => isSaving = true);
+                      try {
+                        final success = await AdminStudentManagementService.instance.updateStudentGpa(
+                          studentId: student.studentId,
+                          newGpa: newGpa,
+                        );
+                        if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                        if (success) {
+                          _loadStudents();
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('تم تحديث المعدل التراكمي لـ ${student.fullName} إلى: ${newGpa.toStringAsFixed(2)}'),
+                                backgroundColor: AppDesignTokens.success,
+                              ),
+                            );
+                          }
+                        }
+                      } catch (e) {
+                        setDialogState(() => isSaving = false);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('خطأ أثناء تحديث GPA: $e'),
+                              backgroundColor: AppDesignTokens.danger,
+                            ),
+                          );
+                        }
+                      }
+                    },
+              child: isSaving
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('حفظ التعديل'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDesktop = MediaQuery.of(context).size.width >= 900;
@@ -741,7 +864,31 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
                 DataCell(Text(s.universityCode, style: const TextStyle(fontFamily: 'monospace', fontSize: 12))),
 
                 // GPA
-                DataCell(Text(s.gpa != null ? s.gpa!.toStringAsFixed(2) : '-', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5))),
+                DataCell(
+                  InkWell(
+                    onTap: () => _showEditGpaDialog(s),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.amber.withOpacity(0.4)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            s.gpa != null ? s.gpa!.toStringAsFixed(2) : '-',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: Colors.brown),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.edit_outlined, size: 12, color: Colors.brown),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
 
                 // الجروب
                 DataCell(
@@ -872,8 +1019,35 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
                       children: [
                         Text(s.fullName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                         const SizedBox(height: 2),
-                        Text('كود: ${s.universityCode} • GPA: ${s.gpa != null ? s.gpa!.toStringAsFixed(2) : "-"} • ${s.studentGroup}',
-                            style: TextStyle(fontSize: 11.5, color: AppDesignTokens.textSecondary(context))),
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 6,
+                          children: [
+                            Text('كود: ${s.universityCode}', style: TextStyle(fontSize: 11.5, color: AppDesignTokens.textSecondary(context))),
+                            InkWell(
+                              onTap: () => _showEditGpaDialog(s),
+                              borderRadius: BorderRadius.circular(4),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text('GPA: ${s.gpa != null ? s.gpa!.toStringAsFixed(2) : "-"}',
+                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.brown)),
+                                    const SizedBox(width: 3),
+                                    const Icon(Icons.edit_outlined, size: 10, color: Colors.brown),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            Text('• ${s.studentGroup}', style: TextStyle(fontSize: 11.5, color: AppDesignTokens.textSecondary(context))),
+                          ],
+                        ),
                         if (s.classification != null || s.previousWorkExperience) ...[
                           const SizedBox(height: 4),
                           Wrap(
