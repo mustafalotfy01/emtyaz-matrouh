@@ -12,6 +12,7 @@ import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/app_empty_state.dart';
 import '../../auth/models/user_profile.dart';
 import '../../groups/repositories/student_groups_repository.dart';
+import '../models/admin_student_overview_model.dart';
 import '../services/admin_student_management_service.dart';
 
 class AdminStudentProfileScreen extends StatefulWidget {
@@ -19,6 +20,7 @@ class AdminStudentProfileScreen extends StatefulWidget {
   final String initialName;
   final String? initialAvatarUrl;
   final String? initialCode;
+  final AdminStudentOverviewModel? initialOverview;
 
   const AdminStudentProfileScreen({
     super.key,
@@ -26,6 +28,7 @@ class AdminStudentProfileScreen extends StatefulWidget {
     required this.initialName,
     this.initialAvatarUrl,
     this.initialCode,
+    this.initialOverview,
   });
 
   static Future<void> show(
@@ -34,6 +37,7 @@ class AdminStudentProfileScreen extends StatefulWidget {
     required String initialName,
     String? initialAvatarUrl,
     String? initialCode,
+    AdminStudentOverviewModel? initialOverview,
   }) {
     final isDesktop = MediaQuery.of(context).size.width >= 900;
     if (isDesktop) {
@@ -51,6 +55,7 @@ class AdminStudentProfileScreen extends StatefulWidget {
                 initialName: initialName,
                 initialAvatarUrl: initialAvatarUrl,
                 initialCode: initialCode,
+                initialOverview: initialOverview,
               ),
             ),
           ),
@@ -66,6 +71,7 @@ class AdminStudentProfileScreen extends StatefulWidget {
           initialName: initialName,
           initialAvatarUrl: initialAvatarUrl,
           initialCode: initialCode,
+          initialOverview: initialOverview,
         ),
       ),
     );
@@ -98,6 +104,48 @@ class _AdminStudentProfileScreenState extends State<AdminStudentProfileScreen> w
   void initState() {
     super.initState();
     _tabController = TabController(length: _tabs.length, vsync: this);
+
+    // Immediately pre-seed from initialOverview to avoid blank/unknown states
+    if (widget.initialOverview != null) {
+      final o = widget.initialOverview!;
+      _profileData = {
+        'student_id': o.studentId,
+        'full_name': o.fullName,
+        'university_code': o.universityCode,
+        'email': o.email,
+        'phone_number': o.phoneNumber,
+        'gpa': o.gpa,
+        'student_group': o.studentGroup,
+        'student_group_id': o.studentGroupId,
+        'group_name': o.studentGroup,
+        'department_name': o.departmentName,
+        'supervisor_doctor_name': o.supervisorDoctorName,
+        'student_classification': o.classification?.name,
+        'previous_work_experience': o.previousWorkExperience,
+        'previous_workplace': o.previousWorkplace,
+        'previous_work_department': o.previousWorkDepartment,
+        'registration_status': o.registrationStatus,
+        'is_approved': o.isApproved,
+        'avatar_url': o.avatarUrl,
+        'presence': {
+          'is_online': o.isOnline,
+          'effective_is_online': o.effectiveIsOnline,
+          'last_seen_at': o.lastSeenAt.toIso8601String(),
+        },
+        'app_version': {
+          'platform': o.appPlatform,
+          'version_name': o.installedVersionName.isNotEmpty ? o.installedVersionName : 'غير معروف',
+          'version_code': o.installedVersionCode,
+          'device_info': o.deviceInfo,
+          'last_reported_at': o.versionReportedAt?.toIso8601String(),
+          'latest_version_name': o.latestPlatformVersionName,
+          'latest_version_code': o.latestPlatformVersionCode,
+          'update_status': o.updateStatus.name,
+        },
+      };
+      _isLoading = false;
+    }
+
     _loadProfile();
     _startUiTicker();
     _subscribeToLivePresence();
@@ -138,7 +186,27 @@ class _AdminStudentProfileScreenState extends State<AdminStudentProfileScreen> w
     final data = await AdminStudentManagementService.instance.fetchStudentFullProfile(widget.studentId);
     if (mounted) {
       setState(() {
-        _profileData = data;
+        if (data != null) {
+          // If loaded data has no version but initialOverview had it, preserve it
+          if (widget.initialOverview != null) {
+            final o = widget.initialOverview!;
+            final loadedVer = data['app_version'] as Map<String, dynamic>?;
+            final vCode = (loadedVer?['version_code'] as num?)?.toInt() ?? 0;
+            if (vCode == 0 && o.installedVersionCode > 0) {
+              data['app_version'] = {
+                'platform': o.appPlatform,
+                'version_name': o.installedVersionName,
+                'version_code': o.installedVersionCode,
+                'device_info': o.deviceInfo,
+                'last_reported_at': o.versionReportedAt?.toIso8601String(),
+                'latest_version_name': o.latestPlatformVersionName,
+                'latest_version_code': o.latestPlatformVersionCode,
+                'update_status': o.updateStatus.name,
+              };
+            }
+          }
+          _profileData = data;
+        }
         _isLoading = false;
       });
     }
@@ -299,9 +367,7 @@ class _AdminStudentProfileScreenState extends State<AdminStudentProfileScreen> w
                 final isSelected = current == cls;
                 return ListTile(
                   leading: Text(
-                    cls == StudentClassification.practicalStrong
-                        ? '🩺'
-                        : (cls == StudentClassification.theoreticalStrong ? '📚' : '⚠️'),
+                    cls.emoji,
                     style: const TextStyle(fontSize: 22),
                   ),
                   title: Text(

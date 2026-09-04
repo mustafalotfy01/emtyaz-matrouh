@@ -63,6 +63,7 @@ enum UserRole {
 enum StudentClassification {
   practicalStrong,
   theoreticalStrong,
+  average,
   weak;
 
   String get displayNameAr {
@@ -71,8 +72,23 @@ enum StudentClassification {
         return 'شاطر عملي 🩺';
       case StudentClassification.theoreticalStrong:
         return 'دحيح نظري 📚';
+      case StudentClassification.average:
+        return 'نص ونص ⚖️';
       case StudentClassification.weak:
         return 'ضعيف ⚠️';
+    }
+  }
+
+  String get emoji {
+    switch (this) {
+      case StudentClassification.practicalStrong:
+        return '🩺';
+      case StudentClassification.theoreticalStrong:
+        return '📚';
+      case StudentClassification.average:
+        return '⚖️';
+      case StudentClassification.weak:
+        return '⚠️';
     }
   }
 
@@ -82,6 +98,8 @@ enum StudentClassification {
         return 'practical_strong';
       case StudentClassification.theoreticalStrong:
         return 'theoretical_strong';
+      case StudentClassification.average:
+        return 'average';
       case StudentClassification.weak:
         return 'weak';
     }
@@ -95,6 +113,9 @@ enum StudentClassification {
     }
     if (cleaned == 'theoretical_strong' || cleaned == 'theoreticalstrong') {
       return StudentClassification.theoreticalStrong;
+    }
+    if (cleaned == 'average' || cleaned == 'moderate' || cleaned == 'medium' || cleaned == 'نص ونص') {
+      return StudentClassification.average;
     }
     if (cleaned == 'weak') {
       return StudentClassification.weak;

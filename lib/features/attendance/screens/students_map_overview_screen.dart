@@ -133,6 +133,8 @@ class _StudentsMapOverviewScreenState extends ConsumerState<StudentsMapOverviewS
       list = list.where((l) => l.profile.classification == StudentClassification.practicalStrong).toList();
     } else if (_selectedFilter == 'theoretical') {
       list = list.where((l) => l.profile.classification == StudentClassification.theoreticalStrong).toList();
+    } else if (_selectedFilter == 'average') {
+      list = list.where((l) => l.profile.classification == StudentClassification.average).toList();
     } else if (_selectedFilter == 'weak') {
       list = list.where((l) => l.profile.classification == StudentClassification.weak).toList();
     } else if (_selectedFilter == 'outside') {
@@ -689,6 +691,8 @@ class _StudentsMapOverviewScreenState extends ConsumerState<StudentsMapOverviewS
                                   _buildFilterChip('practical', '🩺 شاطر عملي'),
                                   const SizedBox(width: 6),
                                   _buildFilterChip('theoretical', '📚 دحيح نظري'),
+                                  const SizedBox(width: 6),
+                                  _buildFilterChip('average', '⚖️ نص ونص'),
                                   const SizedBox(width: 6),
                                   _buildFilterChip('weak', '⚠️ ضعيف'),
                                   const SizedBox(width: 6),

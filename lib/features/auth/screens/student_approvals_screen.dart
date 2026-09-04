@@ -452,6 +452,7 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
     final unassignedCount = _allStudents.where((s) => s.studentGroupId == null || s.studentGroup == 'بدون جروب').length;
     final practicalCount = _allStudents.where((s) => s.classification == StudentClassification.practicalStrong).length;
     final theoreticalCount = _allStudents.where((s) => s.classification == StudentClassification.theoreticalStrong).length;
+    final averageCount = _allStudents.where((s) => s.classification == StudentClassification.average).length;
     final weakCount = _allStudents.where((s) => s.classification == StudentClassification.weak).length;
     final withExpCount = _allStudents.where((s) => s.previousWorkExperience).length;
     final onlineCount = _allStudents.where((s) => s.isEffectivelyOnlineAt(serverNow)).length;
@@ -500,6 +501,7 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
                   unassigned: unassignedCount,
                   practicalStrong: practicalCount,
                   theoreticalStrong: theoreticalCount,
+                  average: averageCount,
                   weak: weakCount,
                   withExperience: withExpCount,
                   online: onlineCount,
@@ -593,6 +595,7 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
     required int unassigned,
     required int practicalStrong,
     required int theoreticalStrong,
+    required int average,
     required int weak,
     required int withExperience,
     required int online,
@@ -605,6 +608,7 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
           _buildKpiCard('بدون جروب', '$unassigned', Icons.group_off_rounded, unassigned > 0 ? Colors.orange : Colors.grey),
           _buildKpiCard('🩺 شاطر عملي', '$practicalStrong', Icons.medical_services_rounded, Colors.teal),
           _buildKpiCard('📚 دحيح نظري', '$theoreticalStrong', Icons.menu_book_rounded, Colors.indigo),
+          _buildKpiCard('⚖️ نص ونص', '$average', Icons.balance_rounded, Colors.amber.shade800),
           _buildKpiCard('⚠️ ضعيف', '$weak', Icons.warning_amber_rounded, weak > 0 ? Colors.deepOrange : Colors.grey),
           _buildKpiCard('💼 لديه خبرة', '$withExperience', Icons.work_outline_rounded, Colors.blueGrey),
           _buildKpiCard('متصل الآن', '$online', Icons.circle_rounded, AppDesignTokens.success),
@@ -613,7 +617,7 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
 
         final itemWidth = constraints.maxWidth < 600
             ? (constraints.maxWidth - 12) / 2
-            : (constraints.maxWidth < 1100 ? (constraints.maxWidth - 24) / 4 : (constraints.maxWidth - 36) / 8);
+            : (constraints.maxWidth < 1100 ? (constraints.maxWidth - 24) / 4 : (constraints.maxWidth - 40) / 9);
 
         return Wrap(
           spacing: 6,
@@ -842,6 +846,7 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
                       initialName: s.fullName,
                       initialAvatarUrl: s.avatarUrl,
                       initialCode: s.universityCode,
+                      initialOverview: s,
                     ),
                     child: Row(
                       children: [
@@ -950,6 +955,7 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
                           initialName: s.fullName,
                           initialAvatarUrl: s.avatarUrl,
                           initialCode: s.universityCode,
+                          initialOverview: s,
                         ),
                       ),
 
@@ -1005,6 +1011,7 @@ class _StudentApprovalsScreenState extends ConsumerState<StudentApprovalsScreen>
             initialName: s.fullName,
             initialAvatarUrl: s.avatarUrl,
             initialCode: s.universityCode,
+            initialOverview: s,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

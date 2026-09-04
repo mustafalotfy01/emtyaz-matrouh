@@ -69,14 +69,39 @@ class AdminStudentManagementService {
       }
     } catch (_) {}
 
-    // Optional app version lookup map
+    // Optional app version lookup map (latest reported version per user)
     final Map<String, Map<String, dynamic>> versionMap = {};
     try {
-      final verRes = await SupabaseService.client.from('user_app_versions').select();
+      final verRes = await SupabaseService.client
+          .from('user_app_versions')
+          .select()
+          .order('last_reported_at', ascending: false);
       if (verRes is List) {
         for (final v in verRes) {
           final uid = v['user_id']?.toString();
-          if (uid != null) versionMap[uid] = Map<String, dynamic>.from(v);
+          if (uid != null && !versionMap.containsKey(uid)) {
+            versionMap[uid] = Map<String, dynamic>.from(v);
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Dynamic active platform versions from app_versions table
+    final Map<String, int> latestCodes = {};
+    final Map<String, String> latestNames = {};
+    try {
+      final avRes = await SupabaseService.client
+          .from('app_versions')
+          .select('platform, version_name, version_code')
+          .eq('is_active', true)
+          .order('version_code', ascending: false);
+      if (avRes is List) {
+        for (final av in avRes) {
+          final plat = (av['platform']?.toString() ?? 'android').toLowerCase();
+          if (!latestCodes.containsKey(plat)) {
+            latestCodes[plat] = (av['version_code'] as num?)?.toInt() ?? 0;
+            latestNames[plat] = av['version_name']?.toString() ?? '';
+          }
         }
       }
     } catch (_) {}
@@ -101,6 +126,19 @@ class AdminStudentManagementService {
       final vCode = (ver?['version_code'] as num?)?.toInt() ?? 0;
       final devInfo = ver?['device_info']?.toString() ?? '';
       final repAt = DateTime.tryParse(ver?['last_reported_at']?.toString() ?? '');
+
+      final platKey = platform.toLowerCase();
+      final lCode = latestCodes[platKey] ?? latestCodes['android'] ?? 6;
+      final lName = latestNames[platKey] ?? latestNames['android'] ?? '1.5.8';
+
+      final AppUpdateStatus updateStatus;
+      if (vCode <= 0) {
+        updateStatus = AppUpdateStatus.unknown;
+      } else if (vCode >= lCode) {
+        updateStatus = AppUpdateStatus.upToDate;
+      } else {
+        updateStatus = AppUpdateStatus.outdated;
+      }
 
       final rawClass = p['student_classification'] ?? p['classification'];
       final parsedClass = StudentClassification.fromString(rawClass?.toString());
@@ -131,9 +169,9 @@ class AdminStudentManagementService {
         installedVersionCode: vCode,
         deviceInfo: devInfo,
         versionReportedAt: repAt,
-        latestPlatformVersionName: '1.3.0',
-        latestPlatformVersionCode: 4,
-        updateStatus: vCode > 0 ? (vCode >= 4 ? AppUpdateStatus.upToDate : AppUpdateStatus.outdated) : AppUpdateStatus.unknown,
+        latestPlatformVersionName: lName,
+        latestPlatformVersionCode: lCode,
+        updateStatus: updateStatus,
         serverNow: serverNow,
       ));
     }
@@ -224,7 +262,7 @@ class AdminStudentManagementService {
           } catch (_) {}
         }
 
-        return {
+        final outputMap = <String, dynamic>{
           'student_id': profileRes['id'],
           'full_name': profileRes['full_name'],
           'university_code': profileRes['university_code'],
@@ -248,34 +286,112 @@ class AdminStudentManagementService {
           'residence_address': profileRes['residence_address'] ?? 'محافظة مطروح',
           'emergency_contact': profileRes['emergency_contact'],
           'created_at': profileRes['created_at'],
-          'presence': {
-            'is_online': false,
-            'effective_is_online': false,
-            'last_seen_at': profileRes['updated_at'] ?? serverNow.toIso8601String(),
-          },
-          'app_version': {
-            'platform': 'android',
-            'version_name': 'غير معروف',
-            'version_code': 0,
-            'device_info': '',
-            'latest_version_name': '1.3.0',
-            'latest_version_code': 4,
-            'update_status': 'unknown',
-          },
-          'today_shift': {'status': 'off', 'label': 'راحة'},
-          'attendance_stats': {
-            'total': 0,
-            'present': 0,
-            'late': 0,
-            'absent': 0,
-            'attendance_percentage': 100.0,
-          },
-          'rewards': [],
-          'penalties': [],
-          'evaluations': [],
-          'quizzes': [],
-          'server_now': serverNow.toIso8601String(),
         };
+
+        // 1. Fetch real presence from user_presence table
+        bool isOnline = false;
+        DateTime lastSeenAt = DateTime.tryParse(profileRes['updated_at']?.toString() ?? '') ??
+            DateTime.tryParse(profileRes['created_at']?.toString() ?? '') ??
+            serverNow.subtract(const Duration(days: 1));
+        try {
+          final presRes = await SupabaseService.client
+              .from('user_presence')
+              .select()
+              .eq('user_id', studentId)
+              .maybeSingle();
+          if (presRes != null) {
+            isOnline = presRes['is_online'] == true;
+            final parsed = DateTime.tryParse(presRes['last_seen_at']?.toString() ?? '');
+            if (parsed != null) lastSeenAt = parsed;
+          }
+        } catch (_) {}
+
+        final diffSec = serverNow.difference(lastSeenAt.toUtc()).inSeconds;
+        final effectiveIsOnline = isOnline && diffSec <= 120;
+
+        // 2. Fetch real app version from user_app_versions table
+        String appPlatform = 'android';
+        String versionName = '';
+        int versionCode = 0;
+        String deviceInfo = '';
+        DateTime? versionReportedAt;
+
+        try {
+          final verRes = await SupabaseService.client
+              .from('user_app_versions')
+              .select()
+              .eq('user_id', studentId)
+              .order('last_reported_at', ascending: false)
+              .limit(1)
+              .maybeSingle();
+          if (verRes != null) {
+            appPlatform = verRes['platform']?.toString() ?? 'android';
+            versionName = verRes['version_name']?.toString() ?? '';
+            versionCode = (verRes['version_code'] as num?)?.toInt() ?? 0;
+            deviceInfo = verRes['device_info']?.toString() ?? '';
+            versionReportedAt = DateTime.tryParse(verRes['last_reported_at']?.toString() ?? '');
+          }
+        } catch (_) {}
+
+        // 3. Fetch latest active platform version from app_versions table
+        int latestCode = 6;
+        String latestName = '1.5.8';
+        try {
+          final avRes = await SupabaseService.client
+              .from('app_versions')
+              .select('version_name, version_code')
+              .eq('platform', appPlatform.toLowerCase())
+              .eq('is_active', true)
+              .order('version_code', ascending: false)
+              .limit(1)
+              .maybeSingle();
+          if (avRes != null) {
+            latestCode = (avRes['version_code'] as num?)?.toInt() ?? 6;
+            latestName = avRes['version_name']?.toString() ?? '1.5.8';
+          }
+        } catch (_) {}
+
+        final String updateStatus;
+        if (versionCode <= 0) {
+          updateStatus = 'unknown';
+        } else if (versionCode >= latestCode) {
+          updateStatus = 'up_to_date';
+        } else {
+          updateStatus = 'outdated';
+        }
+
+        outputMap['presence'] = {
+          'is_online': isOnline,
+          'effective_is_online': effectiveIsOnline,
+          'last_seen_at': lastSeenAt.toIso8601String(),
+        };
+
+        outputMap['app_version'] = {
+          'platform': appPlatform,
+          'version_name': versionName.isNotEmpty ? versionName : 'غير معروف',
+          'version_code': versionCode,
+          'device_info': deviceInfo,
+          'last_reported_at': versionReportedAt?.toIso8601String(),
+          'latest_version_name': latestName,
+          'latest_version_code': latestCode,
+          'update_status': updateStatus,
+        };
+
+        outputMap['today_shift'] = {'status': 'off', 'label': 'راحة'};
+        outputMap['attendance_stats'] = {
+          'total': 0,
+          'present': 0,
+          'late': 0,
+          'absent': 0,
+          'attendance_percentage': 100.0,
+        };
+        outputMap['rewards'] = [];
+        outputMap['penalties'] = [];
+        outputMap['evaluations'] = [];
+        outputMap['quizzes'] = [];
+        outputMap['server_now'] = serverNow.toIso8601String();
+
+        return outputMap;
       }
     } catch (e) {
       if (kDebugMode) print('⚠️ fetchStudentFullProfile fallback error: $e');

@@ -7,20 +7,24 @@ import 'package:nurse_matrouh/features/departments/models/department.dart';
 
 void main() {
   group('Student Classification Enum Tests', () {
-    test('StudentClassification has all 3 defined values', () {
-      expect(StudentClassification.values.length, 3);
+    test('StudentClassification has all 4 defined values', () {
+      expect(StudentClassification.values.length, 4);
       expect(StudentClassification.values, contains(StudentClassification.practicalStrong));
       expect(StudentClassification.values, contains(StudentClassification.theoreticalStrong));
+      expect(StudentClassification.values, contains(StudentClassification.average));
       expect(StudentClassification.values, contains(StudentClassification.weak));
     });
 
     test('StudentClassification string serialization and parsing', () {
       expect(StudentClassification.practicalStrong.toDbString(), 'practical_strong');
       expect(StudentClassification.theoreticalStrong.toDbString(), 'theoretical_strong');
+      expect(StudentClassification.average.toDbString(), 'average');
       expect(StudentClassification.weak.toDbString(), 'weak');
 
       expect(StudentClassification.fromString('practical_strong'), StudentClassification.practicalStrong);
       expect(StudentClassification.fromString('theoretical_strong'), StudentClassification.theoreticalStrong);
+      expect(StudentClassification.fromString('average'), StudentClassification.average);
+      expect(StudentClassification.fromString('نص ونص'), StudentClassification.average);
       expect(StudentClassification.fromString('weak'), StudentClassification.weak);
       expect(StudentClassification.fromString(null), isNull);
       expect(StudentClassification.fromString('unknown_val'), isNull);
@@ -29,6 +33,7 @@ void main() {
     test('StudentClassification Arabic display names', () {
       expect(StudentClassification.practicalStrong.displayNameAr, 'شاطر عملي 🩺');
       expect(StudentClassification.theoreticalStrong.displayNameAr, 'دحيح نظري 📚');
+      expect(StudentClassification.average.displayNameAr, 'نص ونص ⚖️');
       expect(StudentClassification.weak.displayNameAr, 'ضعيف ⚠️');
     });
   });

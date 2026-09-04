@@ -1255,6 +1255,7 @@ class _GroupStudentsSheetState extends ConsumerState<_GroupStudentsSheet> with S
                 DropdownMenuItem(value: null, child: Text('كل التصنيفات', style: TextStyle(fontSize: 12))),
                 DropdownMenuItem(value: StudentClassification.practicalStrong, child: Text('🩺 شاطر عملي', style: TextStyle(fontSize: 12))),
                 DropdownMenuItem(value: StudentClassification.theoreticalStrong, child: Text('📚 دحيح نظري', style: TextStyle(fontSize: 12))),
+                DropdownMenuItem(value: StudentClassification.average, child: Text('⚖️ نص ونص', style: TextStyle(fontSize: 12))),
                 DropdownMenuItem(value: StudentClassification.weak, child: Text('⚠️ ضعيف', style: TextStyle(fontSize: 12))),
               ],
               onChanged: (v) => setState(() => _filterClassification = v),
