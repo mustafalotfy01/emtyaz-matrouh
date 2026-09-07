@@ -516,14 +516,14 @@ class AdminStudentManagementService {
   /// Securely updates a student's classification via PostgreSQL RPC (Super Admin only)
   Future<bool> updateStudentClassification({
     required String studentId,
-    required StudentClassification classification,
+    required StudentClassification? classification,
   }) async {
     try {
       // 1. Try secure RPC
       try {
         final res = await SupabaseService.client.rpc('update_student_classification', params: {
           'p_student_id': studentId,
-          'p_classification': classification.code,
+          'p_classification': classification?.code,
         });
         if (res is Map && res['success'] == true) return true;
       } catch (e) {
@@ -533,7 +533,7 @@ class AdminStudentManagementService {
 
       // 2. Direct update fallback (enforced by RLS)
       await SupabaseService.client.from('profiles').update({
-        'student_classification': classification.code,
+        'student_classification': classification?.code,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       }).eq('id', studentId);
 

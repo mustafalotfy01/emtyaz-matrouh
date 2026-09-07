@@ -363,6 +363,43 @@ class _AdminStudentProfileScreenState extends State<AdminStudentProfileScreen> w
                 style: TextStyle(fontSize: 13, color: AppDesignTokens.textSecondary(context)),
               ),
               const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.remove_circle_outline_rounded, color: Colors.grey, size: 24),
+                title: const Text('بدون تصنيف (إلغاء التصنيف)'),
+                trailing: current == null ? const Icon(Icons.check_circle, color: AppDesignTokens.primary) : null,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                tileColor: current == null ? AppDesignTokens.primary.withOpacity(0.08) : null,
+                onTap: () async {
+                  Navigator.pop(sheetCtx);
+                  try {
+                    await AdminStudentManagementService.instance.updateStudentClassification(
+                      studentId: widget.studentId,
+                      classification: null,
+                    );
+                    if (mounted) {
+                      setState(() {
+                        _profileData?['student_classification'] = null;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('تم إلغاء تصنيف الطالب بنجاح'),
+                          backgroundColor: AppDesignTokens.success,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('خطأ في إلغاء التصنيف: $e'),
+                          backgroundColor: AppDesignTokens.danger,
+                        ),
+                      );
+                    }
+                  }
+                },
+              ),
+              const Divider(height: 16),
               ...StudentClassification.values.map((cls) {
                 final isSelected = current == cls;
                 return ListTile(
