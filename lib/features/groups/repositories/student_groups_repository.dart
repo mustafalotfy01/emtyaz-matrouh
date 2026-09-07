@@ -250,6 +250,17 @@ class StudentGroupsRepository {
     }
   }
 
+  /// Delete a specific group monthly department assignment
+  Future<bool> deleteGroupMonthlyDepartment(String id) async {
+    try {
+      await _client.from('group_monthly_departments').delete().eq('id', id);
+      return true;
+    } catch (e) {
+      if (kDebugMode) print('[StudentGroupsRepository] deleteGroupMonthlyDepartment error: $e');
+      return false;
+    }
+  }
+
   /// Update group basic details
   Future<bool> updateGroup({
     required String groupId,
@@ -322,8 +333,16 @@ class StudentGroupsRepository {
         if (kDebugMode) print('assign_student_to_group RPC fallback: $e');
       }
 
+      // Fetch group name to keep student_group column synced
+      String? groupName;
+      try {
+        final g = await _client.from('student_groups').select('name').eq('id', groupId).maybeSingle();
+        groupName = g?['name']?.toString();
+      } catch (_) {}
+
       await _client.from('profiles').update({
         'student_group_id': groupId,
+        if (groupName != null) 'student_group': groupName,
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', studentId);
 
@@ -348,6 +367,7 @@ class StudentGroupsRepository {
 
       await _client.from('profiles').update({
         'student_group_id': null,
+        'student_group': null,
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', studentId);
 
@@ -365,8 +385,27 @@ class StudentGroupsRepository {
   }) async {
     if (studentIds.isEmpty) return true;
     try {
+      // 1. Resolve target group name once for all
+      String? groupName;
+      try {
+        final g = await _client.from('student_groups').select('name').eq('id', groupId).maybeSingle();
+        groupName = g?['name']?.toString();
+      } catch (_) {}
+
       for (final sId in studentIds) {
-        await assignStudentToGroup(studentId: sId, groupId: groupId);
+        try {
+          final rpcRes = await _client.rpc('assign_student_to_group', params: {
+            'p_student_id': sId,
+            'p_group_id': groupId,
+          });
+          if (rpcRes is Map && rpcRes['success'] == true) continue;
+        } catch (_) {}
+
+        await _client.from('profiles').update({
+          'student_group_id': groupId,
+          if (groupName != null) 'student_group': groupName,
+          'updated_at': DateTime.now().toIso8601String(),
+        }).eq('id', sId);
       }
       return true;
     } catch (e) {

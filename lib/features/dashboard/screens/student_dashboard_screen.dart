@@ -42,7 +42,9 @@ class StudentDashboardScreen extends ConsumerWidget {
     final studentName = user?.fullName.isNotEmpty == true
         ? user!.fullName
         : 'طالب امتياز';
-    final groupName = 'طالب امتياز سريري';
+    final groupName = (user?.studentGroupName != null && user!.studentGroupName!.isNotEmpty)
+        ? user.studentGroupName!
+        : (user?.studentGroupId != null && user!.studentGroupId!.isNotEmpty ? 'مسكن في جروب' : 'طالب امتياز سريري');
     final universityCode = user?.universityCode.isNotEmpty == true
         ? user!.universityCode
         : (user != null ? 'NUR-${user.id.substring(0, 6)}' : 'دفعة 2026');
@@ -62,21 +64,26 @@ class StudentDashboardScreen extends ConsumerWidget {
       backgroundColor: AppDesignTokens.bg(context),
       body: SafeArea(
         bottom: false,
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 100),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── 1. Clean Clinical Top Header ──────────────────────────────
-              _buildTopHeader(
-                context,
-                l10n: l10n,
-                studentName: studentName,
-                groupName: groupName,
-                universityCode: universityCode,
-                avatarUrl: user?.avatarUrl,
-              ),
+        child: RefreshIndicator(
+          onRefresh: () async {
+            await ref.read(authProvider.notifier).refreshProfile();
+            ref.invalidate(studentFinalApprovedRosterProvider);
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+            padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 100),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── 1. Clean Clinical Top Header ──────────────────────────────
+                _buildTopHeader(
+                  context,
+                  l10n: l10n,
+                  studentName: studentName,
+                  groupName: groupName,
+                  universityCode: universityCode,
+                  avatarUrl: user?.avatarUrl,
+                ),
 
               if (activeFingerprintReq != null) ...[
                 const SizedBox(height: 12),
@@ -147,8 +154,9 @@ class StudentDashboardScreen extends ConsumerWidget {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   // ── Top Header ─────────────────────────────────────────────────────────────
   Widget _buildTopHeader(
@@ -993,8 +1001,10 @@ class StudentDashboardScreen extends ConsumerWidget {
   }
 
   Widget _buildStudentGroupBanner(BuildContext context, UserProfile? user) {
-    final grpName = user?.studentGroupName ?? 'بدون جروب';
     final hasGroup = user?.studentGroupId != null && user!.studentGroupId!.isNotEmpty;
+    final grpName = (user?.studentGroupName != null && user!.studentGroupName!.isNotEmpty)
+        ? user.studentGroupName!
+        : (hasGroup ? 'جروب تدريبي مسكن' : 'بدون جروب');
     final deptName = user?.departmentName ?? 'غير مخصص';
     final docName = user?.supervisorDoctorName ?? 'غير مخصص';
 

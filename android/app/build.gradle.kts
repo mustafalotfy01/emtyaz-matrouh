@@ -7,13 +7,6 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// ── Securely read MAPS_API_KEY from local.properties ─────────────────────────
-val localPropsFile = rootProject.file("local.properties")
-val localProps = Properties().apply {
-    if (localPropsFile.exists()) localPropsFile.inputStream().use { load(it) }
-}
-val mapsApiKey: String = localProps.getProperty("MAPS_API_KEY") ?: ""
-
 android {
     namespace = "com.matrouh.nurse.nurse_matrouh"
     compileSdk = flutter.compileSdkVersion
@@ -37,8 +30,6 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        // Inject Maps API key into AndroidManifest.xml safely
-        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     buildTypes {

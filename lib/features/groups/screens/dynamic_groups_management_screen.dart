@@ -908,6 +908,17 @@ class _MonthlyDepartmentSheetState extends ConsumerState<_MonthlyDepartmentSheet
               ),
             ),
             actions: [
+              if (existing != null)
+                TextButton.icon(
+                  icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.red),
+                  label: const Text('حذف', style: TextStyle(color: Colors.red)),
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          Navigator.pop(dialogCtx);
+                          await _confirmDeleteMonth(existing);
+                        },
+                ),
               TextButton(
                 onPressed: isSaving ? null : () => Navigator.pop(dialogCtx),
                 child: const Text('إلغاء'),
@@ -940,6 +951,52 @@ class _MonthlyDepartmentSheetState extends ConsumerState<_MonthlyDepartmentSheet
         },
       ),
     );
+  }
+
+  Future<void> _confirmDeleteMonth(GroupMonthlyDepartmentModel item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red),
+            SizedBox(width: 8),
+            Text('حذف توزيع الشهر', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text('هل أنت متأكد من إلغاء وحذف توزيع ${item.formattedMonthYearAr} (${item.departmentName}) لهذا الجروب؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      setState(() => _isLoading = true);
+      final ok = await ref.read(studentGroupsProvider.notifier).deleteMonthlyDepartment(item.id);
+      if (mounted) {
+        if (ok) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تم حذف توزيع القسم للشهر بنجاح'), backgroundColor: Colors.teal),
+          );
+          _loadTimeline();
+        } else {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تعذر حذف توزيع الشهر'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
   }
 
   @override
@@ -1031,10 +1088,20 @@ class _MonthlyDepartmentSheetState extends ConsumerState<_MonthlyDepartmentSheet
                               ],
                             ),
                             subtitle: Text('القسم: ${item.departmentName}', style: const TextStyle(fontSize: 12.5)),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.edit_outlined, size: 18),
-                              tooltip: 'تعديل قسم الشهر',
-                              onPressed: () => _showSetMonthDialog(item),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit_outlined, size: 18),
+                                  tooltip: 'تعديل قسم الشهر',
+                                  onPressed: () => _showSetMonthDialog(item),
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red.shade400),
+                                  tooltip: 'حذف توزيع هذا الشهر',
+                                  onPressed: () => _confirmDeleteMonth(item),
+                                ),
+                              ],
                             ),
                           );
                         },

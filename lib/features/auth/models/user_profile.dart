@@ -290,7 +290,9 @@ class UserProfile {
       classification: parsedClass,
       studentGroupId: json['student_group_id']?.toString(),
       studentGroupName: () {
-        final raw = json['group_name']?.toString() ?? json['student_group_name']?.toString();
+        final raw = json['group_name']?.toString() ??
+            json['student_group_name']?.toString() ??
+            (json['student_groups'] is Map ? json['student_groups']['name']?.toString() : null);
         if (raw != null && raw.trim().isNotEmpty && raw != 'A' && raw != 'B' && raw != 'group_a' && raw != 'group_b' && raw != 'Group A' && raw != 'Group B' && raw != 'المجموعة A' && raw != 'المجموعة B') {
           return raw.trim();
         }
@@ -300,8 +302,14 @@ class UserProfile {
         }
         return null;
       }(),
-      departmentName: json['department_name']?.toString(),
-      supervisorDoctorName: json['supervisor_doctor_name']?.toString(),
+      departmentName: json['department_name']?.toString() ??
+          (json['student_groups'] is Map && json['student_groups']['departments'] is Map
+              ? json['student_groups']['departments']['name_ar']?.toString()
+              : null),
+      supervisorDoctorName: json['supervisor_doctor_name']?.toString() ??
+          (json['student_groups'] is Map && json['student_groups']['profiles'] is Map
+              ? json['student_groups']['profiles']['full_name']?.toString()
+              : null),
       previousWorkExperience: prevExp,
       previousWorkplace: json['previous_workplace']?.toString() ??
           (json['raw_user_meta_data'] is Map ? json['raw_user_meta_data']['previous_workplace']?.toString() : null),

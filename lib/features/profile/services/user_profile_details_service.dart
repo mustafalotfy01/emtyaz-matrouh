@@ -6,6 +6,7 @@ import '../../../core/services/presence_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/utils/timezone_helper.dart';
 import '../../auth/models/user_profile.dart';
+import '../../leaderboard/services/leaderboard_service.dart';
 
 @immutable
 class UserProfileDetailsData {
@@ -194,18 +195,41 @@ serverNow=${presence?.serverNow}
 
         // Fetch Leaderboard score if available
         try {
+          int total = 0;
           final evalRes = await client
-              .from('clinical_evaluations')
+              .from('evaluations')
               .select('score')
               .eq('student_id', targetUserId);
 
-          if (evalRes is List && evalRes.isNotEmpty) {
-            int total = 0;
-            for (final r in evalRes) {
-              total += (r['score'] as num?)?.toInt() ?? 0;
-            }
-            leaderboardPoints = total;
+          for (final r in evalRes) {
+            total += (r['score'] as num?)?.toInt() ?? 0;
           }
+
+          // Factor in approved rewards/deductions
+          final dispRes = await client
+              .from('disciplinary_actions')
+              .select('action_type, deduction_value')
+              .eq('student_id', targetUserId)
+              .eq('status', 'approved');
+
+          for (final d in dispRes) {
+            final aType = d['action_type']?.toString();
+            final val = (d['deduction_value'] as num?)?.toInt() ?? 0;
+            if (aType == 'reward') {
+              total += val;
+            } else {
+              total -= val;
+            }
+          }
+
+          // If no evaluations in DB, provide simulated score matching leaderboard
+          if (evalRes.isEmpty) {
+            final parsedGpa = (profileRes['gpa'] as num?)?.toDouble();
+            final name = profileRes['full_name']?.toString() ?? '';
+            total += LeaderboardService.getSimulatedScore(targetUserId, name, parsedGpa).toInt();
+          }
+
+          leaderboardPoints = total;
         } catch (_) {}
       } else if (role == UserRole.evaluatingDoctor) {
         // Fetch Supervised Departments & Staffing Requirements

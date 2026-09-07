@@ -25,20 +25,6 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!--
-          Google Maps SDK for Android API Key.
-          Value injected from android/local.properties via build.gradle.kts.
-          DO NOT replace ${MAPS_API_KEY} with a real key here — use local.properties.
-          Restrict this key in Google Cloud Console:
-            - Application: Android apps
-            - Package: com.matrouh.nurse.nurse_matrouh
-            - SHA-1: your debug/release certificate fingerprint
-            - API: Maps SDK for Android ONLY
-        -->
-        <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="${MAPS_API_KEY}"/>
-
         <activity
             android:name=".MainActivity"
             android:exported="true"

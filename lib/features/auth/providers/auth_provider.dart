@@ -88,21 +88,6 @@ final List<UserProfile> _registeredStudentsRegistry = [
     residenceAddress: 'مطروح - كلية التمريض',
     registrationStatus: RegistrationStatus.approved,
   ),
-  UserProfile(
-    id: 'adm-004-omnia',
-    email: 'dr.omnia.mohamed@matrouh-nursing.edu.eg',
-    fullName: 'د. أمنية محمد',
-    universityCode: 'ADM-04',
-    phoneNumber: '01000000004',
-    role: UserRole.superAdmin,
-    gender: 'female',
-    maritalStatus: 'متزوج/متزوجة',
-    childrenCount: 0,
-    isMatrouhResident: true,
-    emergencyContact: '01000000000',
-    residenceAddress: 'مطروح - كلية التمريض',
-    registrationStatus: RegistrationStatus.approved,
-  ),
 
   // --- الدكاترة المقييمين (Evaluating Doctors) ---
   UserProfile(
@@ -163,6 +148,21 @@ final List<UserProfile> _registeredStudentsRegistry = [
     isMatrouhResident: true,
     emergencyContact: '01000000000',
     residenceAddress: 'مطروح - مستشفى مطروح العام',
+    registrationStatus: RegistrationStatus.approved,
+  ),
+  UserProfile(
+    id: '791bbd26-1c09-4f2d-bf79-de8b8cb69758',
+    email: 'dr.omnia.mohamed@matrouh-nursing.edu.eg',
+    fullName: 'د. أمنية محمد',
+    universityCode: 'DOC-05',
+    phoneNumber: '01000000004',
+    role: UserRole.evaluatingDoctor,
+    gender: 'female',
+    maritalStatus: 'متزوج/متزوجة',
+    childrenCount: 0,
+    isMatrouhResident: true,
+    emergencyContact: '01000000000',
+    residenceAddress: 'مطروح - كلية التمريض / مستشفى مطروح العام',
     registrationStatus: RegistrationStatus.approved,
   ),
 
@@ -301,16 +301,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       var session = SupabaseService.client.auth.currentSession;
       if (session != null) {
         await _fetchAndSetProfile(session.user.id);
-      } else if (state.user != null && state.user!.role != UserRole.student) {
-        try {
-          final res = await SupabaseService.client.auth.signInWithPassword(
-            email: state.user!.email,
-            password: 'Matrouh@2026!',
-          );
-          if (res.user != null) {
-            await _fetchAndSetProfile(res.user!.id);
-          }
-        } catch (_) {}
+      } else if (state.user != null) {
+        // Re-fetch latest data from Supabase for all users (including students) using cached user ID
+        await _fetchAndSetProfile(state.user!.id);
       }
     } catch (_) {}
   }
@@ -329,12 +322,29 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } catch (_) {}
   }
 
+  /// Public method to refresh the logged-in user profile from Supabase
+  Future<void> refreshProfile() async {
+    if (!SupabaseService.isInitialized) return;
+    final uid = SupabaseService.client.auth.currentUser?.id ?? state.user?.id;
+    if (uid != null && uid.isNotEmpty) {
+      await _fetchAndSetProfile(uid);
+    }
+  }
+
   Future<void> _fetchAndSetProfile(String userId) async {
     if (!SupabaseService.isInitialized) return;
     try {
       final profileData = await SupabaseService.client
           .from('profiles')
-          .select()
+          .select('''
+            *,
+            student_groups:student_group_id (
+              id,
+              name,
+              supervisor_doctor_id,
+              profiles:supervisor_doctor_id (full_name)
+            )
+          ''')
           .eq('id', userId)
           .maybeSingle();
       if (profileData != null) {
@@ -399,6 +409,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
     final localMatch = _registeredStudentsRegistry.where(
       (s) => s.universityCode?.trim().toLowerCase() == cleanInput ||
+             (cleanInput == 'adm-04' && s.email == 'dr.omnia.mohamed@matrouh-nursing.edu.eg') ||
              s.email.trim().toLowerCase() == cleanInput ||
              ((cleanInput.contains('hamoul') || cleanInput.contains('حامول')) && (s.email.contains('hamoul') || s.fullName.contains('حامول'))) ||
              s.fullName.trim() == input.trim() ||

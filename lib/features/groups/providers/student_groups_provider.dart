@@ -122,6 +122,21 @@ class StudentGroupsNotifier extends StateNotifier<StudentGroupsState> {
     return _repository.fetchGroupMonthlyTimeline(groupId);
   }
 
+  /// Delete a group monthly department assignment
+  Future<bool> deleteMonthlyDepartment(String id) async {
+    try {
+      final success = await _repository.deleteGroupMonthlyDepartment(id);
+      if (success) {
+        await loadGroups();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
+      return false;
+    }
+  }
+
   Future<bool> updateGroup({
     required String groupId,
     required String name,

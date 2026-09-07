@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart' as ll;
 import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/custom_button.dart';
 
@@ -39,12 +40,11 @@ class LocationPickerScreen extends StatefulWidget {
 
 class _LocationPickerScreenState extends State<LocationPickerScreen>
     with SingleTickerProviderStateMixin {
-  GoogleMapController? _mapController;
-  late LatLng _selectedLocation;
+  final MapController _mapController = MapController();
+  late ll.LatLng _selectedLocation;
   late double _selectedRadius;
   late TextEditingController _nameController;
   bool _isLoadingLocation = false;
-  bool _mapReady = false;
 
   // Radius bounds
   static const double _minRadius = 50.0;
@@ -53,22 +53,15 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
   @override
   void initState() {
     super.initState();
-    _selectedLocation = LatLng(widget.initialLat, widget.initialLng);
+    _selectedLocation = ll.LatLng(widget.initialLat, widget.initialLng);
     _selectedRadius = widget.initialRadius.clamp(_minRadius, _maxRadius);
-    _nameController =
-        TextEditingController(text: widget.initialHospitalName);
-    // Timeout to prevent infinite gray screen loading overlay
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted && !_mapReady) {
-        setState(() => _mapReady = true);
-      }
-    });
+    _nameController = TextEditingController(text: widget.initialHospitalName);
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _mapController?.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -92,11 +85,9 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
           desiredAccuracy: LocationAccuracy.high,
           timeLimit: const Duration(seconds: 10),
         );
-        final newLatLng = LatLng(pos.latitude, pos.longitude);
+        final newLatLng = ll.LatLng(pos.latitude, pos.longitude);
         setState(() => _selectedLocation = newLatLng);
-        _mapController?.animateCamera(
-          CameraUpdate.newLatLngZoom(newLatLng, 17),
-        );
+        _mapController.move(newLatLng, 16.5);
       } else {
         _showSnack('صلاحية الموقع مرفوضة');
       }
@@ -107,7 +98,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
     }
   }
 
-  void _onMapTap(LatLng tapped) {
+  void _onMapTap(ll.LatLng tapped) {
     setState(() => _selectedLocation = tapped);
   }
 
@@ -134,57 +125,47 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
       ),
       body: Stack(
         children: [
-          // ── Google Map ─────────────────────────────────────────────────
-          GoogleMap(
-            initialCameraPosition: CameraPosition(
-              target: _selectedLocation,
-              zoom: 16.5,
+          // ── Flutter Map (OpenStreetMap) ──────────────────────────────────
+          FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: _selectedLocation,
+              initialZoom: 16.5,
+              onTap: (tapPosition, point) => _onMapTap(point),
             ),
-            onMapCreated: (ctrl) {
-              _mapController = ctrl;
-              setState(() => _mapReady = true);
-            },
-            onTap: _onMapTap,
-            markers: {
-              Marker(
-                markerId: const MarkerId('zone_center'),
-                position: _selectedLocation,
-                draggable: true,
-                onDragEnd: (pos) => setState(() => _selectedLocation = pos),
-                infoWindow: InfoWindow(
-                  title: _nameController.text.isEmpty
-                      ? 'منطقة الحضور'
-                      : _nameController.text,
-                  snippet:
-                      'نطاق: ${_selectedRadius.toStringAsFixed(0)} متر',
-                ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.matrouh.nurse.nurse_matrouh',
               ),
-            },
-            circles: {
-              Circle(
-                circleId: const CircleId('geofence_circle'),
-                center: _selectedLocation,
-                radius: _selectedRadius,
-                fillColor: AppColors.primaryTeal.withValues(alpha: 0.18),
-                strokeColor: AppColors.primaryTeal,
-                strokeWidth: 2,
+              CircleLayer(
+                circles: [
+                  CircleMarker(
+                    point: _selectedLocation,
+                    radius: _selectedRadius,
+                    useRadiusInMeter: true,
+                    color: AppColors.primaryTeal.withValues(alpha: 0.18),
+                    borderColor: AppColors.primaryTeal,
+                    borderStrokeWidth: 2,
+                  ),
+                ],
               ),
-            },
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            compassEnabled: true,
-            mapToolbarEnabled: false,
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    point: _selectedLocation,
+                    width: 48,
+                    height: 48,
+                    child: const Icon(
+                      Icons.location_pin,
+                      color: Colors.redAccent,
+                      size: 46,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-
-          // ── Loading overlay ─────────────────────────────────────────────
-          if (!_mapReady)
-            Container(
-              color: AppColors.deepNavy,
-              child: const Center(
-                child: CircularProgressIndicator(color: Colors.white),
-              ),
-            ),
 
           // ── GPS FAB ─────────────────────────────────────────────────────
           Positioned(
@@ -218,14 +199,18 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
               children: [
                 _ZoomBtn(
                   icon: Icons.add,
-                  onTap: () => _mapController
-                      ?.animateCamera(CameraUpdate.zoomIn()),
+                  onTap: () {
+                    final zoom = _mapController.camera.zoom + 1.0;
+                    _mapController.move(_selectedLocation, zoom);
+                  },
                 ),
                 const SizedBox(height: 4),
                 _ZoomBtn(
                   icon: Icons.remove,
-                  onTap: () => _mapController
-                      ?.animateCamera(CameraUpdate.zoomOut()),
+                  onTap: () {
+                    final zoom = _mapController.camera.zoom - 1.0;
+                    _mapController.move(_selectedLocation, zoom);
+                  },
                 ),
               ],
             ),
@@ -303,7 +288,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
               const SizedBox(width: 6),
               Text(
                 'خط العرض: ${_selectedLocation.latitude.toStringAsFixed(6)}',
-                style: TextStyle(
+                style: const TextStyle(
                     fontSize: 12, color: AppColors.textSecondary),
               ),
               const SizedBox(width: 12),
@@ -312,7 +297,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
               const SizedBox(width: 6),
               Text(
                 'خط الطول: ${_selectedLocation.longitude.toStringAsFixed(6)}',
-                style: TextStyle(
+                style: const TextStyle(
                     fontSize: 12, color: AppColors.textSecondary),
               ),
             ],
@@ -369,10 +354,10 @@ class _LocationPickerScreenState extends State<LocationPickerScreen>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('${_minRadius.toStringAsFixed(0)}م',
-                  style: TextStyle(
+                  style: const TextStyle(
                       fontSize: 11, color: AppColors.textMuted)),
               Text('${_maxRadius.toStringAsFixed(0)}م',
-                  style: TextStyle(
+                  style: const TextStyle(
                       fontSize: 11, color: AppColors.textMuted)),
             ],
           ),

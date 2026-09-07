@@ -933,12 +933,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
                       _buildInfoRow(context, Icons.group_work_outlined, 'الجروب التدريبي',
                           (user.studentGroupName != null &&
+                                  user.studentGroupName!.isNotEmpty &&
                                   user.studentGroupName != 'A' &&
                                   user.studentGroupName != 'B' &&
                                   user.studentGroupName != 'group_a' &&
                                   user.studentGroupName != 'group_b')
                               ? user.studentGroupName!
-                              : 'بدون جروب'),
+                              : (user.studentGroupId != null && user.studentGroupId!.isNotEmpty
+                                  ? 'مسكن في جروب تدريبي'
+                                  : 'بدون جروب')),
                       Divider(height: 12, color: AppDesignTokens.borderSubtle(context)),
                       _buildInfoRow(context, Icons.local_hospital_outlined, 'قسم الشهر الحالي',
                           user.departmentName ?? 'غير مخصص لهذا الشهر'),
