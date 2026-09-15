@@ -4,7 +4,6 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/utils/timezone_helper.dart';
 import '../../auth/models/user_profile.dart';
 import '../../auth/providers/auth_provider.dart';
-import '../../auth/providers/student_approvals_provider.dart';
 import '../models/admin_student_overview_model.dart';
 
 class AdminStudentManagementService {
@@ -400,9 +399,23 @@ class AdminStudentManagementService {
     return null;
   }
 
-  /// Approves a student account
+  /// Approves a student account via secure PostgreSQL RPC (admin/leader only)
   Future<bool> approveStudent(String studentId) async {
     try {
+      if (SupabaseService.isInitialized) {
+        try {
+          final rpcRes = await SupabaseService.client.rpc('approve_student_registration', params: {
+            'p_student_id': studentId,
+          });
+          if (rpcRes == true) return true;
+        } catch (rpcErr) {
+          if (kDebugMode) print('approve_student_registration RPC error: $rpcErr');
+          if (rpcErr.toString().contains('42501') || rpcErr.toString().contains('Permission denied')) {
+            rethrow;
+          }
+        }
+      }
+
       await SupabaseService.client
           .from('profiles')
           .update({
@@ -419,9 +432,24 @@ class AdminStudentManagementService {
     }
   }
 
-  /// Rejects a student registration request with a reason
+  /// Rejects a student registration request with a reason via secure PostgreSQL RPC
   Future<bool> rejectStudent(String studentId, String reason) async {
     try {
+      if (SupabaseService.isInitialized) {
+        try {
+          final rpcRes = await SupabaseService.client.rpc('reject_student_registration', params: {
+            'p_student_id': studentId,
+            'p_reason': reason,
+          });
+          if (rpcRes == true) return true;
+        } catch (rpcErr) {
+          if (kDebugMode) print('reject_student_registration RPC error: $rpcErr');
+          if (rpcErr.toString().contains('42501') || rpcErr.toString().contains('Permission denied')) {
+            rethrow;
+          }
+        }
+      }
+
       await SupabaseService.client
           .from('profiles')
           .update({
@@ -438,9 +466,23 @@ class AdminStudentManagementService {
     }
   }
 
-  /// Returns student account to pending review
+  /// Returns student account to pending review via secure PostgreSQL RPC
   Future<bool> returnForReview(String studentId) async {
     try {
+      if (SupabaseService.isInitialized) {
+        try {
+          final rpcRes = await SupabaseService.client.rpc('return_student_to_pending', params: {
+            'p_student_id': studentId,
+          });
+          if (rpcRes == true) return true;
+        } catch (rpcErr) {
+          if (kDebugMode) print('return_student_to_pending RPC error: $rpcErr');
+          if (rpcErr.toString().contains('42501') || rpcErr.toString().contains('Permission denied')) {
+            rethrow;
+          }
+        }
+      }
+
       await SupabaseService.client
           .from('profiles')
           .update({
@@ -457,21 +499,16 @@ class AdminStudentManagementService {
     }
   }
 
-  /// Deletes or permanently purges a student account
+  /// Deletes or permanently purges a student account via secure atomic RPC
   Future<bool> deleteStudent(String studentId) async {
     try {
-      try { await SupabaseService.client.from('user_presence').delete().eq('user_id', studentId); } catch (_) {}
-      try { await SupabaseService.client.from('user_app_versions').delete().eq('user_id', studentId); } catch (_) {}
-      try { await SupabaseService.client.from('attendance').delete().eq('student_id', studentId); } catch (_) {}
-      try { await SupabaseService.client.from('disciplinary_actions').delete().eq('student_id', studentId); } catch (_) {}
-      try { await SupabaseService.client.from('evaluations').delete().eq('student_id', studentId); } catch (_) {}
-      try { await SupabaseService.client.from('quiz_attempts').delete().eq('student_id', studentId); } catch (_) {}
-      try { await SupabaseService.client.from('roster_entries').delete().eq('student_id', studentId); } catch (_) {}
-
-      await SupabaseService.client.from('profiles').delete().eq('id', studentId);
-      return true;
+      if (!SupabaseService.isInitialized) return false;
+      final res = await SupabaseService.client.rpc('delete_student_account', params: {
+        'p_student_id': studentId,
+      });
+      return res == true;
     } catch (e) {
-      if (kDebugMode) print('⚠️ deleteStudent error: $e');
+      if (kDebugMode) print('⚠️ deleteStudent RPC error: $e');
       return false;
     }
   }

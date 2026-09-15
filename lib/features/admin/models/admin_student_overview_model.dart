@@ -82,13 +82,18 @@ class AdminStudentOverviewModel {
       gpa: (json['gpa'] as num?)?.toDouble(),
       studentGroupId: json['student_group_id']?.toString(),
       studentGroup: () {
+        final hasDynamicId = json['student_group_id'] != null && json['student_group_id'].toString().trim().isNotEmpty;
         final raw = json['group_name']?.toString() ?? json['student_group_name']?.toString();
-        if (raw != null && raw.trim().isNotEmpty && raw != 'A' && raw != 'B' && raw != 'group_a' && raw != 'group_b' && raw != 'Group A' && raw != 'Group B' && raw != 'المجموعة A' && raw != 'المجموعة B') {
-          return raw.trim();
+        if (raw != null && raw.trim().isNotEmpty) {
+          if (hasDynamicId || (raw != 'A' && raw != 'B' && raw != 'group_a' && raw != 'group_b' && raw != 'Group A' && raw != 'Group B' && raw != 'المجموعة A' && raw != 'المجموعة B')) {
+            return raw.trim();
+          }
         }
         final leg = json['student_group']?.toString();
-        if (leg != null && leg.trim().isNotEmpty && leg != 'A' && leg != 'B' && leg != 'group_a' && leg != 'group_b' && leg != 'Group A' && leg != 'Group B' && leg != 'المجموعة A' && leg != 'المجموعة B') {
-          return leg.trim();
+        if (leg != null && leg.trim().isNotEmpty) {
+          if (hasDynamicId || (leg != 'A' && leg != 'B' && leg != 'group_a' && leg != 'group_b' && leg != 'Group A' && leg != 'Group B' && leg != 'المجموعة A' && leg != 'المجموعة B')) {
+            return leg.trim();
+          }
         }
         return 'بدون جروب';
       }(),

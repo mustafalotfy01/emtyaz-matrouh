@@ -1,7 +1,7 @@
 const https = require('https');
 
-const SUPABASE_URL = 'https://zlxumwvygqcxhareknul.supabase.co';
-const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpseHVtd3Z5Z3FjeGhhcmVrbnVsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4Njc3MjIyMSwiZXhwIjoyMTAyMzQ4MjIxfQ.kzcY871QMGYOKFougygGtHZnopmzkAxZWJlFtGxNC7E';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://zlxumwvygqcxhareknul.supabase.co';
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const STUDENT_ID = '0c4853fb-e818-4eb1-bcad-6fdbdaaebf0f';
 const LEADER_ID = '62e7d6a1-6606-4af6-bdb2-69105e942f7d';
 const ROSTER_ID = '00000000-0000-0000-0000-000000002026';

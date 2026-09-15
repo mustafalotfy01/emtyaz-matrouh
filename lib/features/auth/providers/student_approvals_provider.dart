@@ -122,6 +122,9 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
           if (rpcRes == true) updatedViaRpc = true;
         } catch (rpcErr) {
           if (kDebugMode) print('approve_student_registration RPC fallback: $rpcErr');
+          if (rpcErr.toString().contains('42501') || rpcErr.toString().contains('Permission denied') || rpcErr.toString().contains('Unauthorized')) {
+            return false;
+          }
         }
 
         if (!updatedViaRpc) {
@@ -210,6 +213,9 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
           if (rpcRes == true) updatedViaRpc = true;
         } catch (rpcErr) {
           if (kDebugMode) print('reject_student_registration RPC fallback: $rpcErr');
+          if (rpcErr.toString().contains('42501') || rpcErr.toString().contains('Permission denied') || rpcErr.toString().contains('Unauthorized')) {
+            return false;
+          }
         }
 
         if (!updatedViaRpc) {
@@ -297,6 +303,9 @@ class StudentApprovalsNotifier extends StateNotifier<AsyncValue<List<UserProfile
           if (rpcRes == true) updatedViaRpc = true;
         } catch (rpcErr) {
           if (kDebugMode) print('return_student_to_pending RPC fallback: $rpcErr');
+          if (rpcErr.toString().contains('42501') || rpcErr.toString().contains('Permission denied') || rpcErr.toString().contains('Unauthorized')) {
+            return false;
+          }
         }
 
         if (!updatedViaRpc) {

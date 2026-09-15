@@ -40,6 +40,11 @@ class _FingerprintLogScreenState extends ConsumerState<FingerprintLogScreen> {
         centerTitle: false,
         actions: [
           IconButton(
+            tooltip: 'مسح جميع الطلبات',
+            icon: const Icon(Icons.delete_sweep_rounded, color: AppDesignTokens.danger),
+            onPressed: () => _confirmDeleteAllRequests(),
+          ),
+          IconButton(
             tooltip: 'تحديث السجل',
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () => ref.read(fingerprintRequestsProvider.notifier).loadRequests(),
@@ -313,6 +318,14 @@ class _FingerprintLogScreenState extends ConsumerState<FingerprintLogScreen> {
                 variant: statusVariant,
                 size: AppBadgeSize.small,
               ),
+              const SizedBox(width: 4),
+              IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppDesignTokens.danger),
+                tooltip: 'حذف هذا الطلب',
+                onPressed: () => _confirmDeleteSingleRequest(req),
+              ),
             ],
           ),
 
@@ -358,6 +371,108 @@ class _FingerprintLogScreenState extends ConsumerState<FingerprintLogScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _confirmDeleteSingleRequest(FingerprintRequest req) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppDesignTokens.danger),
+            SizedBox(width: 8),
+            Text('حذف طلب البصمة'),
+          ],
+        ),
+        content: Text(
+          'هل أنت متأكد من حذف هذا الطلب؟\n("${req.title}")\n\nسيختفي فوراً من شاشات الطلاب ومن السجل.',
+          style: const TextStyle(fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppDesignTokens.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('حذف', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        await ref.read(fingerprintRequestsProvider.notifier).deleteRequest(req.id);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم حذف طلب البصمة بنجاح واختفى من شاشات الطلاب'),
+            backgroundColor: AppDesignTokens.success,
+          ),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('تعذر حذف الطلب: $e'),
+            backgroundColor: AppDesignTokens.danger,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _confirmDeleteAllRequests() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.delete_forever_rounded, color: AppDesignTokens.danger),
+            SizedBox(width: 8),
+            Text('مسح جميع البصمات المرسلة'),
+          ],
+        ),
+        content: const Text(
+          'هل تريد بالتأكيد مسح كافة طلبات البصمة المرسلة؟\n\nسيتم إخفاؤها فوراً من عند جميع الطلاب وتصفير السجل.',
+          style: TextStyle(fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppDesignTokens.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('مسح الكل الآن', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        await ref.read(fingerprintRequestsProvider.notifier).deleteAllRequests();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم مسح كافة طلبات البصمة بنجاح واختفت من عند جميع الطلاب'),
+            backgroundColor: AppDesignTokens.success,
+          ),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('تعذر مسح السجل: $e'),
+            backgroundColor: AppDesignTokens.danger,
+          ),
+        );
+      }
+    }
   }
 
   void _showImmediateRequestDialog(BuildContext context) {

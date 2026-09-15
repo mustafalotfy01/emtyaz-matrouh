@@ -403,48 +403,45 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return false;
     }
 
-    // 1. Check in-memory local registered accounts (Admins, Doctors, Leaders & Students)
-    final cleanInput = input.trim().toLowerCase();
-    final cleanPwd = pwd.trim();
+    // 1. Offline / Test Mode: ONLY when SupabaseService is NOT initialized
+    if (!SupabaseService.isInitialized) {
+      final cleanInput = input.trim().toLowerCase();
+      final cleanPwd = pwd.trim();
 
-    final localMatch = _registeredStudentsRegistry.where(
-      (s) => s.universityCode?.trim().toLowerCase() == cleanInput ||
-             (cleanInput == 'adm-04' && s.email == 'dr.omnia.mohamed@matrouh-nursing.edu.eg') ||
-             s.email.trim().toLowerCase() == cleanInput ||
-             ((cleanInput.contains('hamoul') || cleanInput.contains('حامول')) && (s.email.contains('hamoul') || s.fullName.contains('حامول'))) ||
-             s.fullName.trim() == input.trim() ||
-             s.phoneNumber.trim() == input.trim() ||
-             s.nationalId?.trim() == input.trim(),
-    ).firstOrNull;
+      final localMatch = _registeredStudentsRegistry.where(
+        (s) => s.universityCode.trim().toLowerCase() == cleanInput ||
+               (cleanInput == 'adm-04' && s.email == 'dr.omnia.mohamed@matrouh-nursing.edu.eg') ||
+               s.email.trim().toLowerCase() == cleanInput ||
+               ((cleanInput.contains('hamoul') || cleanInput.contains('حامول')) && (s.email.contains('hamoul') || s.fullName.contains('حامول'))) ||
+               s.fullName.trim() == input.trim() ||
+               s.phoneNumber.trim() == input.trim() ||
+               s.nationalId?.trim() == input.trim(),
+      ).firstOrNull;
 
-    if (localMatch != null) {
-      final savedPwd = (_userPasswordsRegistry[localMatch.universityCode ?? ''] ??
-                        _userPasswordsRegistry[localMatch.email] ??
-                        'Matrouh@2026!').trim();
-      final isValidPassword = (cleanPwd == savedPwd ||
-                               cleanPwd == 'Matrouh@2026!' ||
-                               cleanPwd == 'Matrouh@2026' ||
-                               cleanPwd.toLowerCase() == 'matrouh@2026!' ||
-                               cleanPwd == '123456');
+      if (localMatch != null) {
+        final savedPwd = _userPasswordsRegistry[localMatch.universityCode.trim().toLowerCase()] ??
+                         _userPasswordsRegistry[localMatch.email.trim().toLowerCase()] ??
+                         _userPasswordsRegistry[localMatch.universityCode] ??
+                         _userPasswordsRegistry[localMatch.email];
 
-      if (isValidPassword) {
-        // Auto-adapt if role mismatch between staff
-        if (expectedRole != null && localMatch.role != expectedRole) {
-          // Allow superAdmin to login under any tab, and leader under coordinator/admin
-          final isStaffCompatible = (localMatch.role == UserRole.superAdmin) ||
-              (localMatch.role == UserRole.leader && expectedRole == UserRole.leader) ||
-              (localMatch.role == UserRole.evaluatingDoctor && expectedRole == UserRole.evaluatingDoctor);
-          if (!isStaffCompatible && localMatch.role == UserRole.student && expectedRole != UserRole.student) {
-            state = state.copyWith(
-              isLoading: false,
-              error: 'هذا الحساب مسجل كـ (طالب امتياز). يرجى اختيار تبويب طالب امتياز.',
-            );
-            return false;
+        final isValidPassword = savedPwd != null && savedPwd.isNotEmpty && cleanPwd == savedPwd;
+
+        if (isValidPassword) {
+          // Auto-adapt if role mismatch between staff
+          if (expectedRole != null && localMatch.role != expectedRole) {
+            // Allow superAdmin to login under any tab, and leader under coordinator/admin
+            final isStaffCompatible = (localMatch.role == UserRole.superAdmin) ||
+                (localMatch.role == UserRole.leader && expectedRole == UserRole.leader) ||
+                (localMatch.role == UserRole.evaluatingDoctor && expectedRole == UserRole.evaluatingDoctor);
+            if (!isStaffCompatible && localMatch.role == UserRole.student && expectedRole != UserRole.student) {
+              state = state.copyWith(
+                isLoading: false,
+                error: 'هذا الحساب مسجل كـ (طالب امتياز). يرجى اختيار تبويب طالب امتياز.',
+              );
+              return false;
+            }
           }
-        }
-        if (localMatch.role == UserRole.student && !localMatch.isApproved) {
-          // If Supabase is connected, don't block here with outdated in-memory state; let Supabase verify latest approval status from DB!
-          if (!SupabaseService.isInitialized) {
+          if (localMatch.role == UserRole.student && !localMatch.isApproved) {
             String err = 'حسابك ما زال (قيد المراجعة والاعتماد) من قبل الليدر. يرجى الانتظار حتى اعتماده.';
             if (localMatch.registrationStatus == RegistrationStatus.rejected) {
               err = 'تم رفض طلب التسجيل من قبل الليدر. سبب الرفض: ${localMatch.rejectionReason ?? "غير محدد"}';
@@ -457,33 +454,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
             );
             return false;
           }
-        } else {
-          // If Supabase is connected, authenticate with Supabase Auth to establish a live JWT session
-          if (SupabaseService.isInitialized) {
-            try {
-              final res = await SupabaseService.client.auth.signInWithPassword(
-                email: localMatch.email,
-                password: cleanPwd.isNotEmpty ? cleanPwd : 'Matrouh@2026!',
-              );
-              if (res.user != null) {
-                await _fetchAndSetProfile(res.user!.id);
-                if (state.user != null) {
-                  return true;
-                }
-              }
-            } catch (e) {
-              if (kDebugMode) print('LocalMatch Supabase sync fallback: $e');
-            }
-          }
 
           state = state.copyWith(user: localMatch, isLoading: false, error: null);
           await _saveUserToCache(localMatch);
           return true;
         }
       }
+
+      state = state.copyWith(
+        isLoading: false,
+        error: 'بيانات الدخول غير صحيحة، أو أن الحساب لم يتم اعتماده بعد من الليدر.',
+      );
+      return false;
     }
 
-    // 2. Try Supabase Auth
+    // 2. Production: Authenticate exclusively via Supabase Auth
     if (SupabaseService.isInitialized) {
       try {
         String targetEmail = input;
@@ -532,17 +517,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
               }
             }
           } catch (rpcErr) {
-            if (kDebugMode) print('RPC get_user_login_info fallback: $rpcErr');
-            // Fallback direct query if RPC not yet created
-            final found = await SupabaseService.client
-                .from('profiles')
-                .select('email, registration_status, rejection_reason, role')
-                .or('university_code.eq.$targetEmail,national_id.eq.$targetEmail,phone_number.eq.$targetEmail')
-                .maybeSingle();
-
-            if (found != null && found['email'] != null) {
-              targetEmail = found['email'].toString();
-            }
+            if (kDebugMode) print('RPC get_user_login_info note: $rpcErr');
           }
         }
 
@@ -589,7 +564,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
         if (kDebugMode) print('AuthException: ${e.message}');
         String userFriendlyError = e.message;
         if (e.message.contains('Invalid login credentials')) {
-          userFriendlyError = 'بيانات الدخول غير صحيحة، أو الحساب لم يتم اعتماده بعد.';
+          userFriendlyError = input.contains('@')
+              ? 'بيانات الدخول غير صحيحة، أو الحساب لم يتم اعتماده بعد.'
+              : 'بيانات الدخول غير صحيحة. يرجى التأكد من كلمة المرور أو إدخال البريد الإلكتروني المسجل.';
         } else if (e.message.contains('Email not confirmed')) {
           userFriendlyError = 'حسابك بانتظار اعتماد وموافقة الليدر.';
         }
@@ -638,7 +615,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
             'residence_address': profile.residenceAddress,
             'latitude': profile.latitude,
             'longitude': profile.longitude,
-            'role': profile.role.toDbString(),
+            'role': 'student',
             'previous_work_experience': profile.previousWorkExperience,
             'previous_workplace': profile.previousWorkplace,
             'previous_work_department': profile.previousWorkDepartment,
@@ -1024,3 +1001,15 @@ void updateStudentApprovalInRegistry(String studentId, RegistrationStatus status
 void removeStudentFromRegistry(String studentId) {
   _registeredStudentsRegistry.removeWhere((s) => s.id == studentId || s.universityCode == studentId || s.email.toLowerCase() == studentId.toLowerCase());
 }
+
+@visibleForTesting
+void setTestUserPassword(String identifier, String password) {
+  _userPasswordsRegistry[identifier.trim().toLowerCase()] = password.trim();
+  _userPasswordsRegistry[identifier.trim()] = password.trim();
+}
+
+@visibleForTesting
+void clearTestUserPasswords() {
+  _userPasswordsRegistry.clear();
+}
+

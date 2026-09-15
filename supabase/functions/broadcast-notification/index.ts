@@ -189,11 +189,63 @@ serve(async (req) => {
     const payload: BroadcastPayload = await req.json();
     const { audience_type, audience_value, specific_student_ids, title, body, notification_type, target_route, metadata } = payload;
 
-    if (!title || !title.trim() || !body || !body.trim()) {
-      return new Response(JSON.stringify({ error: "Title and body are required fields." }), {
+    // 6. Role-Based Audience Restriction
+    if (callerProfile.role === "evaluating_doctor") {
+      if (audience_type === "ALL_STUDENTS" || audience_type === "GROUP_A" || audience_type === "GROUP_B") {
+        console.warn(`[EDGE_BROADCAST] Doctor role attempted restricted audience: ${audience_type}`);
+        return new Response(
+          JSON.stringify({ error: "Forbidden: Evaluating doctors may only broadcast to specific departments or assigned students." }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // 7. Input Validation & Boundaries
+    if (!title || !title.trim() || title.trim().length > 200) {
+      return new Response(JSON.stringify({ error: "Title must be between 1 and 200 characters." }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    if (!body || !body.trim() || body.trim().length > 2000) {
+      return new Response(JSON.stringify({ error: "Body must be between 1 and 2000 characters." }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // 8. Server-Side Rate Limiting & Cooldown Protection (5 broadcasts per 10m, 15s cooldown)
+    try {
+      const { data: rateLimitResult } = await adminClient.rpc("check_and_record_rate_limit", {
+        p_user_id: user.id,
+        p_action_type: "BROADCAST_NOTIFICATION",
+        p_max_requests: 5,
+        p_window_seconds: 600,
+        p_cooldown_seconds: 15,
+      });
+
+      if (rateLimitResult && rateLimitResult.allowed === false) {
+        const retryAfter = rateLimitResult.retry_after_seconds || 15;
+        console.warn(`[EDGE_BROADCAST] Rate limit exceeded for ${user.id}: ${rateLimitResult.reason}`);
+        return new Response(
+          JSON.stringify({
+            error: "Rate limit exceeded. Please wait before broadcasting another notification.",
+            reason: rateLimitResult.reason,
+            retry_after_seconds: retryAfter,
+          }),
+          {
+            status: 429,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json",
+              "Retry-After": String(retryAfter),
+            },
+          }
+        );
+      }
+    } catch (rlErr) {
+      console.warn("[EDGE_BROADCAST] Rate limit evaluation note:", rlErr);
     }
 
     // 6. Resolve Target Recipients

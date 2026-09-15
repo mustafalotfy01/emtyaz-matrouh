@@ -141,6 +141,7 @@ class StudentGroupsNotifier extends StateNotifier<StudentGroupsState> {
     required String groupId,
     required String name,
     String? description,
+    String? supervisorDoctorId,
     bool? isActive,
   }) async {
     try {
@@ -148,12 +149,28 @@ class StudentGroupsNotifier extends StateNotifier<StudentGroupsState> {
         groupId: groupId,
         name: name,
         description: description,
+        supervisorDoctorId: supervisorDoctorId,
         isActive: isActive,
       );
       if (success) {
+        // Optimistically update local state immediately
+        final updatedGroups = state.groups.map((g) {
+          if (g.id == groupId) {
+            return g.copyWith(
+              name: name.trim(),
+              description: description?.trim(),
+              supervisorDoctorId: supervisorDoctorId ?? g.supervisorDoctorId,
+              isActive: isActive ?? g.isActive,
+            );
+          }
+          return g;
+        }).toList();
+        state = state.copyWith(groups: updatedGroups, error: null);
+
         await loadGroups();
         return true;
       }
+      state = state.copyWith(error: 'فشل حفظ التعديلات في قاعدة البيانات (تحقق من الصلاحيات أو اتصال الشبكة)');
       return false;
     } catch (e) {
       state = state.copyWith(error: e.toString());

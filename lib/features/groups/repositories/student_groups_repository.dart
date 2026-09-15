@@ -266,15 +266,56 @@ class StudentGroupsRepository {
     required String groupId,
     required String name,
     String? description,
+    String? supervisorDoctorId,
     bool? isActive,
   }) async {
+    final trimmedName = name.trim();
+    final trimmedDesc = description?.trim();
+
     try {
-      await _client.from('student_groups').update({
-        'name': name.trim(),
-        'description': description?.trim(),
+      // 1. Try secure RPC first (bypasses table RLS and updates profiles.student_group)
+      try {
+        final rpcRes = await _client.rpc('update_student_group', params: {
+          'p_group_id': groupId,
+          'p_name': trimmedName,
+          'p_description': trimmedDesc,
+          if (supervisorDoctorId != null) 'p_supervisor_doctor_id': supervisorDoctorId,
+          if (isActive != null) 'p_is_active': isActive,
+        });
+        if (rpcRes is Map && rpcRes['success'] == true) return true;
+        if (rpcRes == true) return true;
+      } catch (e) {
+        if (kDebugMode) print('update_student_group RPC fallback: $e');
+      }
+
+      // 2. Direct client update fallback with .select() to verify at least 1 row changed
+      final updateData = <String, dynamic>{
+        'name': trimmedName,
+        'description': trimmedDesc,
+        if (supervisorDoctorId != null) 'supervisor_doctor_id': supervisorDoctorId,
         if (isActive != null) 'is_active': isActive,
         'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', groupId);
+      };
+
+      final res = await _client
+          .from('student_groups')
+          .update(updateData)
+          .eq('id', groupId)
+          .select('id, name');
+
+      final list = res as List;
+      if (list.isEmpty) {
+        if (kDebugMode) print('[StudentGroupsRepository] updateGroup failed: 0 rows modified (possible RLS restriction)');
+        return false;
+      }
+
+      // Also keep profiles.student_group string synced with the new group name
+      try {
+        await _client.from('profiles').update({
+          'student_group': trimmedName,
+          'updated_at': DateTime.now().toIso8601String(),
+        }).eq('student_group_id', groupId);
+      } catch (_) {}
 
       return true;
     } catch (e) {

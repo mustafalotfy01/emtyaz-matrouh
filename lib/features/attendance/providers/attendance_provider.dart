@@ -360,25 +360,62 @@ class AttendanceNotifier extends StateNotifier<AttendanceState> {
       status: AttendanceStatus.present,
     );
 
-    // Save to Supabase if connected
+    // Save to Supabase via authoritative RPC if connected
     if (SupabaseService.isInitialized && studentId.contains('-')) {
       try {
-        final inserted = await SupabaseService.client
-            .from('attendance')
-            .insert(newRecord.toSupabasePayload())
-            .select()
-            .single();
-
-        final dbRecord = AttendanceRecord.fromJson(inserted);
-        state = state.copyWith(
-          activeRecord: dbRecord,
-          history: [dbRecord, ...state.history],
-          step: CheckInStep.success,
-          clearError: true,
+        final rpcRes = await SupabaseService.client.rpc(
+          'record_attendance_check_in',
+          params: {
+            'p_latitude': loc.latitude!,
+            'p_longitude': loc.longitude!,
+            'p_gps_accuracy': loc.accuracyMeters,
+            'p_biometric_method': verifiedMethod,
+          },
         );
-        return;
+
+        if (rpcRes != null) {
+          final dbRecord = AttendanceRecord.fromJson(Map<String, dynamic>.from(rpcRes));
+          state = state.copyWith(
+            activeRecord: dbRecord,
+            history: [dbRecord, ...state.history],
+            step: CheckInStep.success,
+            clearError: true,
+          );
+          return;
+        }
       } catch (e) {
-        if (kDebugMode) print('[AttendanceNotifier] insert attendance error: $e');
+        if (kDebugMode) print('[AttendanceNotifier] secure check-in RPC error: $e');
+        // If RPC failed due to geofence or validation, surface error to student
+        final errStr = e.toString();
+        if (errStr.contains('Geofence violation') ||
+            errStr.contains('Duplicate check-in') ||
+            errStr.contains('Invalid')) {
+          state = state.copyWith(
+            step: CheckInStep.error,
+            errorMessage: errStr.contains('Geofence violation')
+                ? 'أنت خارج نطاق المستشفى المعتمد. لا يمكن تأكيد الحضور.'
+                : errStr,
+          );
+          return;
+        }
+
+        // Fallback for offline/local development
+        try {
+          final inserted = await SupabaseService.client
+              .from('attendance')
+              .insert(newRecord.toSupabasePayload())
+              .select()
+              .single();
+
+          final dbRecord = AttendanceRecord.fromJson(inserted);
+          state = state.copyWith(
+            activeRecord: dbRecord,
+            history: [dbRecord, ...state.history],
+            step: CheckInStep.success,
+            clearError: true,
+          );
+          return;
+        } catch (_) {}
       }
     }
 
@@ -399,22 +436,36 @@ class AttendanceNotifier extends StateNotifier<AttendanceState> {
         : const LocationResult(error: LocationError.unknown);
 
     final checkOutTime = DateTime.now();
-    final updatedRecord = state.activeRecord!.copyWith(
+    AttendanceRecord updatedRecord = state.activeRecord!.copyWith(
       checkOutTime: checkOutTime,
       checkOutLat: location.isSuccess ? location.latitude : null,
       checkOutLon: location.isSuccess ? location.longitude : null,
     );
 
-    // Update in Supabase
+    // Update in Supabase via secure RPC if connected
     if (SupabaseService.isInitialized && updatedRecord.id.contains('-')) {
       try {
-        await SupabaseService.client.from('attendance').update({
-          'check_out_time': checkOutTime.toIso8601String(),
-          'check_out_latitude': location.latitude,
-          'check_out_longitude': location.longitude,
-        }).eq('id', updatedRecord.id);
+        final rpcRes = await SupabaseService.client.rpc(
+          'record_attendance_check_out',
+          params: {
+            'p_attendance_id': updatedRecord.id,
+            'p_latitude': location.isSuccess ? location.latitude : null,
+            'p_longitude': location.isSuccess ? location.longitude : null,
+          },
+        );
+        if (rpcRes != null) {
+          updatedRecord = AttendanceRecord.fromJson(Map<String, dynamic>.from(rpcRes));
+        }
       } catch (e) {
-        if (kDebugMode) print('[AttendanceNotifier] checkout error: $e');
+        if (kDebugMode) print('[AttendanceNotifier] secure checkout RPC error: $e');
+        // Resilient direct update fallback
+        try {
+          await SupabaseService.client.from('attendance').update({
+            'check_out_time': checkOutTime.toIso8601String(),
+            'check_out_latitude': location.latitude,
+            'check_out_longitude': location.longitude,
+          }).eq('id', updatedRecord.id);
+        } catch (_) {}
       }
     }
 

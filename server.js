@@ -38,29 +38,57 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Google Drive PDF Proxy API
+  // Google Drive PDF Proxy API (Hardened with strict validation & SSRF protection)
   if (req.url.startsWith('/api/proxy-pdf')) {
     try {
       const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const fileId = parsedUrl.searchParams.get('fileId');
 
-      if (!fileId) {
-        res.writeHead(400, { 'Content-Type': 'text/plain' });
-        res.end('Missing fileId parameter');
+      // 1. Strict fileId validation (20-100 chars, alphanumeric, hyphen, underscore only)
+      if (!fileId || !/^[a-zA-Z0-9_-]{20,100}$/.test(fileId)) {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Invalid or missing fileId parameter');
         return;
       }
 
-      const initialUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`;
+      const initialUrl = `https://drive.usercontent.google.com/download?id=${encodeURIComponent(fileId)}&export=download&confirm=t`;
+
+      // Helper to validate whether a target URL is strictly a trusted Google domain over HTTPS
+      const isAllowedGoogleUrl = (urlString) => {
+        try {
+          const u = new URL(urlString);
+          if (u.protocol !== 'https:') return false;
+          const host = u.hostname.toLowerCase();
+          const allowedExactHosts = [
+            'drive.google.com',
+            'drive.usercontent.google.com',
+            'docs.google.com',
+            'googleusercontent.com',
+          ];
+          if (allowedExactHosts.includes(host)) return true;
+          if (host.endsWith('.google.com') || host.endsWith('.googleusercontent.com')) {
+            return true;
+          }
+          return false;
+        } catch (_) {
+          return false;
+        }
+      };
 
       const fetchTarget = (targetUrl, redirectLimit = 5) => {
         if (redirectLimit <= 0) {
-          res.writeHead(502, { 'Content-Type': 'text/plain' });
+          res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
           res.end('Too many redirects');
           return;
         }
 
-        const client = targetUrl.startsWith('https:') ? https : http;
-        const proxyReq = client.get(targetUrl, {
+        if (!isAllowedGoogleUrl(targetUrl)) {
+          res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('Redirect or target to disallowed host rejected (SSRF protection)');
+          return;
+        }
+
+        const proxyReq = https.get(targetUrl, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           }
@@ -83,10 +111,10 @@ const server = http.createServer((req, res) => {
         });
 
         proxyReq.on('error', (err) => {
-          console.error('[Proxy Error]', err);
+          console.error('[Proxy Error]', err.message);
           if (!res.headersSent) {
-            res.writeHead(500, { 'Content-Type': 'text/plain' });
-            res.end(`Proxy error: ${err.message}`);
+            res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.end('Failed to fetch document from Google Drive');
           }
         });
       };
@@ -94,8 +122,8 @@ const server = http.createServer((req, res) => {
       fetchTarget(initialUrl);
       return;
     } catch (e) {
-      res.writeHead(500, { 'Content-Type': 'text/plain' });
-      res.end(`Server Error: ${e.message}`);
+      res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Internal server error during PDF proxy request');
       return;
     }
   }

@@ -13,9 +13,19 @@ class GroupPreferencesService {
     }
 
     try {
+      // Preferred secure path: Sanitized RPC preventing PII exposure
+      final rpcRes = await SupabaseService.client.rpc('get_available_peers');
+      if (rpcRes is List && rpcRes.isNotEmpty) {
+        return rpcRes.map((json) => UserProfile.fromJson(Map<String, dynamic>.from(json))).toList();
+      }
+    } catch (e) {
+      if (kDebugMode) print('[GroupPreferencesService] get_available_peers RPC error, trying direct query: $e');
+    }
+
+    try {
       final res = await SupabaseService.client
           .from('profiles')
-          .select()
+          .select('id, full_name, university_code, avatar_url, gender, student_group_id')
           .eq('role', 'student')
           .or('is_approved.eq.true,registration_status.eq.approved')
           .neq('id', currentUserId)

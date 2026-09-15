@@ -62,19 +62,7 @@ class FcmSenderService {
       }
     }
 
-    var currentUser = SupabaseService.client.auth.currentUser ?? session?.user;
-    if ((currentUser == null || session == null) && metadata != null && metadata['sender_email'] != null) {
-      try {
-        final res = await SupabaseService.client.auth.signInWithPassword(
-          email: metadata['sender_email'].toString(),
-          password: 'Matrouh@2026!',
-        );
-        session = res.session;
-        currentUser = res.user;
-      } catch (e) {
-        debugPrint('[PROD_PUSH] Silent sign in retry error: $e');
-      }
-    }
+    final currentUser = SupabaseService.client.auth.currentUser ?? session?.user;
 
     if (currentUser == null || session == null) {
       return BroadcastExecutionResult(
@@ -143,6 +131,13 @@ class FcmSenderService {
           pushDeliveredCount: pushDeliveredCount,
           pushFailedCount: pushFailedCount,
         );
+      } else if (res.status == 429) {
+        final data = res.data is Map ? Map<String, dynamic>.from(res.data) : {};
+        final retryAfter = data['retry_after_seconds'] ?? 15;
+        return BroadcastExecutionResult(
+          success: false,
+          errorMessage: 'تم تجاوز الحد المسموح لإرسال الإشعارات. يرجى الانتظار $retryAfter ثانية قبل المحاولة مرة أخرى.',
+        );
       } else {
         final errorMsg = res.data?['error']?.toString() ?? 'Server error status: ${res.status}';
         debugPrint('[PROD_PUSH] ERROR_TYPE = HttpErrorStatus_${res.status}');
@@ -167,6 +162,8 @@ class FcmSenderService {
         readableMsg = 'ليس لديك صلاحية إرسال إشعارات كمسؤول أو قائد (403 Forbidden)';
       } else if (e.status == 404) {
         readableMsg = 'دالة الإشعارات غير موجودة على الخادم (404 Not Found)';
+      } else if (e.status == 429) {
+        readableMsg = 'تم تجاوز الحد المسموح لإرسال الإشعارات. يرجى الانتظار قليلاً قبل المحاولة مرة أخرى.';
       } else if (e.status == 500) {
         readableMsg = 'حدث خطأ داخلي في خادم الإشعارات (500 Internal Server Error): ${e.details ?? ""}';
       } else {

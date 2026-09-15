@@ -29,8 +29,9 @@ class _WebPdfIframeState extends State<WebPdfIframe> {
       ui_web.platformViewRegistry.registerViewFactory(
         _viewType,
         (int viewId) {
+          final safeId = Uri.encodeComponent(widget.fileId.trim());
           final iframe = web.document.createElement('iframe') as web.HTMLIFrameElement
-            ..src = 'https://drive.google.com/file/d/${widget.fileId}/preview'
+            ..src = 'https://drive.google.com/file/d/$safeId/preview'
             ..style.border = 'none'
             ..style.width = '100%'
             ..style.height = '100%'

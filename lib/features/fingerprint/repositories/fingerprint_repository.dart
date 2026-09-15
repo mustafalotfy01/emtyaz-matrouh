@@ -108,4 +108,25 @@ class FingerprintRepository {
       throw Exception('فشل في تأكيد البصمة: $e');
     }
   }
+
+  /// Delete a single fingerprint request
+  Future<void> deleteRequest(String requestId) async {
+    try {
+      await _client.from('confirmation_requests').delete().eq('id', requestId);
+    } catch (e) {
+      throw Exception('فشل في حذف طلب البصمة: $e');
+    }
+  }
+
+  /// Delete all fingerprint requests
+  Future<void> deleteAllRequests() async {
+    try {
+      await _client
+          .from('confirmation_requests')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000');
+    } catch (e) {
+      throw Exception('فشل في مسح سجل البصمات: $e');
+    }
+  }
 }

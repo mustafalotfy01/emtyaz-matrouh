@@ -1,6 +1,6 @@
 const { SUPABASE_URL, SERVICE_ROLE_KEY, adminRest, authAdmin } = require('./qa_test_helpers');
 
-const DEFAULT_PASSWORD = 'Matrouh@2026!';
+const DEFAULT_PASSWORD = process.env.INITIAL_ACCOUNT_PASSWORD || '';
 
 const ACCOUNTS = [
   // --- ADMNS (الإدارة العليا والمنسقين) ---

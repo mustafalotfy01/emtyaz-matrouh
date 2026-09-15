@@ -303,12 +303,29 @@ class _DynamicGroupsManagementScreenState extends ConsumerState<DynamicGroupsMan
                             setDialogState(() => isSaving = true);
                             final notifier = ref.read(studentGroupsProvider.notifier);
 
-                            // Update basic info
-                            await notifier.updateGroup(
+                            final newName = nameController.text.trim();
+                            final newDesc = descController.text.trim().isNotEmpty ? descController.text.trim() : null;
+
+                            // Update group info
+                            final success = await notifier.updateGroup(
                               groupId: grp.id,
-                              name: nameController.text.trim(),
-                              description: descController.text.trim().isNotEmpty ? descController.text.trim() : null,
+                              name: newName,
+                              description: newDesc,
+                              supervisorDoctorId: selectedDoctorId,
                             );
+
+                            if (!success) {
+                              if (dialogCtx.mounted) setDialogState(() => isSaving = false);
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    backgroundColor: AppDesignTokens.danger,
+                                    content: Text(notifier.state.error ?? 'تعذر حفظ تعديلات الجروب، يرجى التحقق من الاتصال والصلاحيات'),
+                                  ),
+                                );
+                              }
+                              return;
+                            }
 
                             // Update doctor if changed
                             if (selectedDoctorId != grp.supervisorDoctorId) {
@@ -323,7 +340,7 @@ class _DynamicGroupsManagementScreenState extends ConsumerState<DynamicGroupsMan
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   backgroundColor: AppDesignTokens.success,
-                                  content: Text('تم تحديث بيانات الجروب بنجاح ✓'),
+                                  content: Text('تم حفظ وتحديث بيانات الجروب بنجاح ✓'),
                                 ),
                               );
                             }

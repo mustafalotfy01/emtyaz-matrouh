@@ -86,6 +86,16 @@ class FingerprintRequestsNotifier
     );
     await loadRequests();
   }
+
+  Future<void> deleteRequest(String requestId) async {
+    await _repository.deleteRequest(requestId);
+    await loadRequests();
+  }
+
+  Future<void> deleteAllRequests() async {
+    await _repository.deleteAllRequests();
+    await loadRequests();
+  }
 }
 
 final fingerprintRequestsProvider = StateNotifierProvider<
@@ -101,7 +111,6 @@ final studentActiveFingerprintRequestProvider = Provider<FingerprintRequest?>((r
   final requestsAsync = ref.watch(fingerprintRequestsProvider);
   return requestsAsync.maybeWhen(
     data: (requests) {
-      final now = DateTime.now();
       for (final req in requests) {
         if (!req.isPending || req.isExpired) continue;
 

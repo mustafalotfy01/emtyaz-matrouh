@@ -1,0 +1,222 @@
+
+========================================
+TABLE: public.profiles
+========================================
+  POLICY "profiles_select_authenticated" [20260909_secure_rls_policies.sql:37]:
+    CREATE POLICY "profiles_select_authenticated" ON public.profiles FOR SELECT TO authenticated, service_role USING (true);
+  POLICY "profiles_insert_own" [20260909_secure_rls_policies.sql:43]:
+    CREATE POLICY "profiles_insert_own" ON public.profiles FOR INSERT TO authenticated, service_role WITH CHECK ( auth.uid() = id OR public.get_auth_role() = 'super_admin' );
+  POLICY "profiles_update_scoped" [20260909_secure_rls_policies.sql:52]:
+    CREATE POLICY "profiles_update_scoped" ON public.profiles FOR UPDATE TO authenticated, service_role USING ( auth.uid() = id OR public.get_auth_role() IN ('super_admin', 'leader') ) WITH CHECK ( auth.uid() = id OR public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "profiles_delete_admin_only" [20260909_secure_rls_policies.sql:65]:
+    CREATE POLICY "profiles_delete_admin_only" ON public.profiles FOR DELETE TO authenticated, service_role USING ( public.get_auth_role() = 'super_admin' );
+
+========================================
+TABLE: public.roster_entries
+========================================
+  POLICY "roster_entries_select" [20260909_secure_rls_policies.sql:160]:
+    CREATE POLICY "roster_entries_select" ON public.roster_entries FOR SELECT TO authenticated, service_role USING ( student_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') );
+  POLICY "roster_entries_manage" [20260909_secure_rls_policies.sql:168]:
+    CREATE POLICY "roster_entries_manage" ON public.roster_entries FOR ALL TO authenticated, service_role USING ( public.get_auth_role() IN ('super_admin', 'leader') ) WITH CHECK ( public.get_auth_role() IN ('super_admin', 'leader') );
+
+========================================
+TABLE: public.attendance
+========================================
+  POLICY "attendance_select" [20260909_secure_rls_policies.sql:190]:
+    CREATE POLICY "attendance_select" ON public.attendance FOR SELECT TO authenticated, service_role USING ( student_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') );
+  POLICY "attendance_insert" [20260909_secure_rls_policies.sql:198]:
+    CREATE POLICY "attendance_insert" ON public.attendance FOR INSERT TO authenticated, service_role WITH CHECK ( student_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "attendance_update" [20260909_secure_rls_policies.sql:206]:
+    CREATE POLICY "attendance_update" ON public.attendance FOR UPDATE TO authenticated, service_role USING ( student_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader') ) WITH CHECK ( student_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "attendance_delete" [20260909_secure_rls_policies.sql:218]:
+    CREATE POLICY "attendance_delete" ON public.attendance FOR DELETE TO authenticated, service_role USING ( public.get_auth_role() = 'super_admin' );
+
+========================================
+TABLE: public.evaluations
+========================================
+  POLICY "evaluations_select" [20260909_secure_rls_policies.sql:237]:
+    CREATE POLICY "evaluations_select" ON public.evaluations FOR SELECT TO authenticated, service_role USING ( student_id = auth.uid() OR evaluator_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') );
+  POLICY "evaluations_insert" [20260909_secure_rls_policies.sql:246]:
+    CREATE POLICY "evaluations_insert" ON public.evaluations FOR INSERT TO authenticated, service_role WITH CHECK ( public.get_auth_role() IN ('super_admin', 'evaluating_doctor', 'leader') );
+  POLICY "evaluations_update" [20260909_secure_rls_policies.sql:253]:
+    CREATE POLICY "evaluations_update" ON public.evaluations FOR UPDATE TO authenticated, service_role USING ( evaluator_id = auth.uid() OR public.get_auth_role() = 'super_admin' ) WITH CHECK ( evaluator_id = auth.uid() OR public.get_auth_role() = 'super_admin' );
+  POLICY "evaluations_delete" [20260909_secure_rls_policies.sql:265]:
+    CREATE POLICY "evaluations_delete" ON public.evaluations FOR DELETE TO authenticated, service_role USING ( public.get_auth_role() = 'super_admin' );
+
+========================================
+TABLE: public.disciplinary_actions
+========================================
+  POLICY "disciplinary_actions_select" [20260909_secure_rls_policies.sql:285]:
+    CREATE POLICY "disciplinary_actions_select" ON public.disciplinary_actions FOR SELECT TO authenticated, service_role USING ( student_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') );
+  POLICY "disciplinary_actions_insert" [20260909_secure_rls_policies.sql:293]:
+    CREATE POLICY "disciplinary_actions_insert" ON public.disciplinary_actions FOR INSERT TO authenticated, service_role WITH CHECK ( public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') );
+  POLICY "disciplinary_actions_update" [20260909_secure_rls_policies.sql:300]:
+    CREATE POLICY "disciplinary_actions_update" ON public.disciplinary_actions FOR UPDATE TO authenticated, service_role USING ( public.get_auth_role() IN ('super_admin', 'leader') ) WITH CHECK ( public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "disciplinary_actions_delete" [20260909_secure_rls_policies.sql:310]:
+    CREATE POLICY "disciplinary_actions_delete" ON public.disciplinary_actions FOR DELETE TO authenticated, service_role USING ( public.get_auth_role() = 'super_admin' );
+
+========================================
+TABLE: public.cases
+========================================
+  POLICY "cases_select" [20260909_secure_rls_policies.sql:328]:
+    CREATE POLICY "cases_select" ON public.cases FOR SELECT TO authenticated, service_role USING ( current_student_id = auth.uid() OR supervisor_doctor_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') );
+  POLICY "cases_manage" [20260909_secure_rls_policies.sql:337]:
+    CREATE POLICY "cases_manage" ON public.cases FOR ALL TO authenticated, service_role USING ( public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') ) WITH CHECK ( public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') );
+
+========================================
+TABLE: public.notifications
+========================================
+  POLICY "notifications_select" [20260909_secure_rls_policies.sql:402]:
+    CREATE POLICY "notifications_select" ON public.notifications FOR SELECT TO authenticated, service_role USING (user_id = auth.uid());
+  POLICY "notifications_insert" [20260909_secure_rls_policies.sql:407]:
+    CREATE POLICY "notifications_insert" ON public.notifications FOR INSERT TO authenticated, service_role WITH CHECK ( user_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') );
+  POLICY "notifications_update" [20260909_secure_rls_policies.sql:415]:
+    CREATE POLICY "notifications_update" ON public.notifications FOR UPDATE TO authenticated, service_role USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+  POLICY "notifications_delete" [20260909_secure_rls_policies.sql:421]:
+    CREATE POLICY "notifications_delete" ON public.notifications FOR DELETE TO authenticated, service_role USING ( user_id = auth.uid() OR public.get_auth_role() = 'super_admin' );
+
+========================================
+TABLE: public.community_posts
+========================================
+  POLICY "community_posts_select" [20260909_secure_rls_policies.sql:444]:
+    CREATE POLICY "community_posts_select" ON public.community_posts FOR SELECT TO authenticated, service_role USING (true);
+  POLICY "community_posts_insert" [20260909_secure_rls_policies.sql:449]:
+    CREATE POLICY "community_posts_insert" ON public.community_posts FOR INSERT TO authenticated, service_role WITH CHECK (auth.uid() = author_id);
+  POLICY "community_posts_update" [20260909_secure_rls_policies.sql:454]:
+    CREATE POLICY "community_posts_update" ON public.community_posts FOR UPDATE TO authenticated, service_role USING ( auth.uid() = author_id OR public.get_auth_role() IN ('super_admin', 'leader') ) WITH CHECK ( auth.uid() = author_id OR public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "community_posts_delete" [20260909_secure_rls_policies.sql:466]:
+    CREATE POLICY "community_posts_delete" ON public.community_posts FOR DELETE TO authenticated, service_role USING ( auth.uid() = author_id OR public.get_auth_role() IN ('super_admin', 'leader') );
+
+========================================
+TABLE: public.community_comments
+========================================
+  POLICY "community_comments_select" [20260909_secure_rls_policies.sql:481]:
+    CREATE POLICY "community_comments_select" ON public.community_comments FOR SELECT TO authenticated, service_role USING (true);
+  POLICY "community_comments_insert" [20260909_secure_rls_policies.sql:486]:
+    CREATE POLICY "community_comments_insert" ON public.community_comments FOR INSERT TO authenticated, service_role WITH CHECK (auth.uid() = author_id);
+  POLICY "community_comments_update" [20260909_secure_rls_policies.sql:491]:
+    CREATE POLICY "community_comments_update" ON public.community_comments FOR UPDATE TO authenticated, service_role USING ( auth.uid() = author_id OR public.get_auth_role() IN ('super_admin', 'leader') ) WITH CHECK ( auth.uid() = author_id OR public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "community_comments_delete" [20260909_secure_rls_policies.sql:503]:
+    CREATE POLICY "community_comments_delete" ON public.community_comments FOR DELETE TO authenticated, service_role USING ( auth.uid() = author_id OR public.get_auth_role() IN ('super_admin', 'leader') );
+
+========================================
+TABLE: public.confirmation_requests
+========================================
+  POLICY "conf_requests_select" [20260909_secure_rls_policies.sql:524]:
+    CREATE POLICY "conf_requests_select" ON public.confirmation_requests FOR SELECT TO authenticated, service_role USING ( target_student_id = auth.uid() OR sender_id = auth.uid() OR audience_type = 'ALL' OR public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "conf_requests_insert" [20260909_secure_rls_policies.sql:534]:
+    CREATE POLICY "conf_requests_insert" ON public.confirmation_requests FOR INSERT TO authenticated, service_role WITH CHECK ( sender_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "conf_requests_update" [20260909_secure_rls_policies.sql:542]:
+    CREATE POLICY "conf_requests_update" ON public.confirmation_requests FOR UPDATE TO authenticated, service_role USING ( target_student_id = auth.uid() OR sender_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader') ) WITH CHECK ( target_student_id = auth.uid() OR sender_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "conf_requests_delete" [20260909_secure_rls_policies.sql:556]:
+    CREATE POLICY "conf_requests_delete" ON public.confirmation_requests FOR DELETE TO authenticated, service_role USING ( public.get_auth_role() IN ('super_admin', 'leader') );
+
+========================================
+TABLE: public.quizzes
+========================================
+  POLICY "quizzes_select" [20260909_secure_rls_policies.sql:577]:
+    CREATE POLICY "quizzes_select" ON public.quizzes FOR SELECT TO authenticated, service_role USING ( is_active = true OR public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') );
+  POLICY "quizzes_manage" [20260909_secure_rls_policies.sql:585]:
+    CREATE POLICY "quizzes_manage" ON public.quizzes FOR ALL TO authenticated, service_role USING ( public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') ) WITH CHECK ( public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') );
+
+========================================
+TABLE: public.quiz_questions
+========================================
+  POLICY "quiz_questions_select" [20260909_secure_rls_policies.sql:599]:
+    CREATE POLICY "quiz_questions_select" ON public.quiz_questions FOR SELECT TO authenticated, service_role USING (true);
+  POLICY "quiz_questions_manage" [20260909_secure_rls_policies.sql:604]:
+    CREATE POLICY "quiz_questions_manage" ON public.quiz_questions FOR ALL TO authenticated, service_role USING ( public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') ) WITH CHECK ( public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') );
+
+========================================
+TABLE: public.quiz_options
+========================================
+  POLICY "quiz_options_select" [20260909_secure_rls_policies.sql:618]:
+    CREATE POLICY "quiz_options_select" ON public.quiz_options FOR SELECT TO authenticated, service_role USING (true);
+  POLICY "quiz_options_manage" [20260909_secure_rls_policies.sql:623]:
+    CREATE POLICY "quiz_options_manage" ON public.quiz_options FOR ALL TO authenticated, service_role USING ( public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') ) WITH CHECK ( public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') );
+
+========================================
+TABLE: public.quiz_attempts
+========================================
+  POLICY "quiz_attempts_select" [20260909_secure_rls_policies.sql:638]:
+    CREATE POLICY "quiz_attempts_select" ON public.quiz_attempts FOR SELECT TO authenticated, service_role USING ( student_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') );
+  POLICY "quiz_attempts_insert" [20260909_secure_rls_policies.sql:646]:
+    CREATE POLICY "quiz_attempts_insert" ON public.quiz_attempts FOR INSERT TO authenticated, service_role WITH CHECK ( student_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "quiz_attempts_update" [20260909_secure_rls_policies.sql:654]:
+    CREATE POLICY "quiz_attempts_update" ON public.quiz_attempts FOR UPDATE TO authenticated, service_role USING ( public.get_auth_role() IN ('super_admin', 'leader') ) WITH CHECK ( public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "quiz_attempts_delete" [20260909_secure_rls_policies.sql:664]:
+    CREATE POLICY "quiz_attempts_delete" ON public.quiz_attempts FOR DELETE TO authenticated, service_role USING ( public.get_auth_role() = 'super_admin' );
+
+========================================
+TABLE: public.quiz_answers
+========================================
+  POLICY "quiz_answers_select" [20260909_secure_rls_policies.sql:674]:
+    CREATE POLICY "quiz_answers_select" ON public.quiz_answers FOR SELECT TO authenticated, service_role USING ( attempt_id IN (SELECT id FROM public.quiz_attempts WHERE student_id = auth.uid()) OR public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') );
+  POLICY "quiz_answers_insert" [20260909_secure_rls_policies.sql:682]:
+    CREATE POLICY "quiz_answers_insert" ON public.quiz_answers FOR INSERT TO authenticated, service_role WITH CHECK ( attempt_id IN (SELECT id FROM public.quiz_attempts WHERE student_id = auth.uid()) OR public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "quiz_answers_delete" [20260909_secure_rls_policies.sql:690]:
+    CREATE POLICY "quiz_answers_delete" ON public.quiz_answers FOR DELETE TO authenticated, service_role USING ( public.get_auth_role() = 'super_admin' );
+
+========================================
+TABLE: public.roster_preferences
+========================================
+  POLICY "roster_preferences_select" [20260909_secure_rls_policies.sql:714]:
+    CREATE POLICY "roster_preferences_select" ON public.roster_preferences FOR SELECT TO authenticated, service_role USING ( student_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') );
+  POLICY "roster_preferences_insert" [20260909_secure_rls_policies.sql:722]:
+    CREATE POLICY "roster_preferences_insert" ON public.roster_preferences FOR INSERT TO authenticated, service_role WITH CHECK ( student_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "roster_preferences_update" [20260909_secure_rls_policies.sql:730]:
+    CREATE POLICY "roster_preferences_update" ON public.roster_preferences FOR UPDATE TO authenticated, service_role USING ( (student_id = auth.uid() AND status = 'draft') OR public.get_auth_role() IN ('super_admin', 'leader') ) WITH CHECK ( (student_id = auth.uid() AND status = 'draft') OR public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "roster_preferences_delete" [20260909_secure_rls_policies.sql:742]:
+    CREATE POLICY "roster_preferences_delete" ON public.roster_preferences FOR DELETE TO authenticated, service_role USING ( (student_id = auth.uid() AND status = 'draft') OR public.get_auth_role() IN ('super_admin', 'leader') );
+
+========================================
+TABLE: public.shift_requests
+========================================
+  POLICY "shift_requests_select" [20260909_secure_rls_policies.sql:757]:
+    CREATE POLICY "shift_requests_select" ON public.shift_requests FOR SELECT TO authenticated, service_role USING ( student_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "shift_requests_insert" [20260909_secure_rls_policies.sql:765]:
+    CREATE POLICY "shift_requests_insert" ON public.shift_requests FOR INSERT TO authenticated, service_role WITH CHECK ( student_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "shift_requests_update" [20260909_secure_rls_policies.sql:773]:
+    CREATE POLICY "shift_requests_update" ON public.shift_requests FOR UPDATE TO authenticated, service_role USING ( (student_id = auth.uid() AND status = 'pending') OR public.get_auth_role() IN ('super_admin', 'leader') ) WITH CHECK ( (student_id = auth.uid() AND status = 'pending') OR public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "shift_requests_delete" [20260909_secure_rls_policies.sql:785]:
+    CREATE POLICY "shift_requests_delete" ON public.shift_requests FOR DELETE TO authenticated, service_role USING ( (student_id = auth.uid() AND status = 'pending') OR public.get_auth_role() IN ('super_admin', 'leader') );
+
+========================================
+TABLE: public.case_handovers
+========================================
+  POLICY "case_handovers_select" [20260909_secure_rls_policies.sql:352]:
+    CREATE POLICY "case_handovers_select" ON public.case_handovers FOR SELECT TO authenticated, service_role USING ( from_student_id = auth.uid() OR to_student_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') );
+  POLICY "case_handovers_insert" [20260909_secure_rls_policies.sql:361]:
+    CREATE POLICY "case_handovers_insert" ON public.case_handovers FOR INSERT TO authenticated, service_role WITH CHECK ( from_student_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "case_handovers_update" [20260909_secure_rls_policies.sql:369]:
+    CREATE POLICY "case_handovers_update" ON public.case_handovers FOR UPDATE TO authenticated, service_role USING ( from_student_id = auth.uid() OR to_student_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') ) WITH CHECK ( from_student_id = auth.uid() OR to_student_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader', 'evaluating_doctor') );
+  POLICY "case_handovers_delete" [20260909_secure_rls_policies.sql:383]:
+    CREATE POLICY "case_handovers_delete" ON public.case_handovers FOR DELETE TO authenticated, service_role USING ( public.get_auth_role() IN ('super_admin', 'leader') );
+
+========================================
+TABLE: public.department_supervisors
+========================================
+  POLICY "dept_sup_admin" [20260821_dept_supervision_and_features.sql:135]:
+    CREATE POLICY "dept_sup_admin" ON public.department_supervisors FOR ALL USING (public.get_auth_role() = 'super_admin');
+  POLICY "dept_sup_leader_read" [20260821_dept_supervision_and_features.sql:139]:
+    CREATE POLICY "dept_sup_leader_read" ON public.department_supervisors FOR SELECT USING (public.get_auth_role() IN ('leader', 'super_admin'));
+  POLICY "dept_sup_doctor_read" [20260821_dept_supervision_and_features.sql:143]:
+    CREATE POLICY "dept_sup_doctor_read" ON public.department_supervisors FOR SELECT USING ( doctor_id = auth.uid() OR public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "dept_sup_select_all" [20260821_fix_all_reported_issues.sql:459]:
+    CREATE POLICY "dept_sup_select_all" ON public.department_supervisors FOR SELECT USING (true);
+  POLICY "dept_sup_read_all" [20260904_fix_departments_and_supervisors_rls.sql:58]:
+    CREATE POLICY "dept_sup_read_all" ON public.department_supervisors FOR SELECT USING (true);
+  POLICY "dept_sup_manage_all" [20260904_fix_departments_and_supervisors_rls.sql:63]:
+    CREATE POLICY "dept_sup_manage_all" ON public.department_supervisors FOR ALL USING ( public.get_auth_role() IN ('super_admin', 'leader') ) WITH CHECK ( public.get_auth_role() IN ('super_admin', 'leader') );
+
+========================================
+TABLE: public.departments
+========================================
+  POLICY "departments_read_all" [20260904_fix_departments_and_supervisors_rls.sql:23]:
+    CREATE POLICY "departments_read_all" ON public.departments FOR SELECT USING (true);
+  POLICY "departments_leader_admin_insert" [20260904_fix_departments_and_supervisors_rls.sql:28]:
+    CREATE POLICY "departments_leader_admin_insert" ON public.departments FOR INSERT WITH CHECK ( public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "departments_leader_admin_update" [20260904_fix_departments_and_supervisors_rls.sql:35]:
+    CREATE POLICY "departments_leader_admin_update" ON public.departments FOR UPDATE USING ( public.get_auth_role() IN ('super_admin', 'leader') ) WITH CHECK ( public.get_auth_role() IN ('super_admin', 'leader') );
+  POLICY "departments_leader_admin_delete" [20260904_fix_departments_and_supervisors_rls.sql:45]:
+    CREATE POLICY "departments_leader_admin_delete" ON public.departments FOR DELETE USING ( public.get_auth_role() IN ('super_admin', 'leader') );

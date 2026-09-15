@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
@@ -35,10 +34,16 @@ class GoogleDriveValidationResult {
 class GoogleDriveDocumentService {
   GoogleDriveDocumentService._();
 
-  static final RegExp _fileIdRegex1 = RegExp(r'/file/d/([a-zA-Z0-9_-]{20,})');
-  static final RegExp _fileIdRegex2 = RegExp(r'[?&]id=([a-zA-Z0-9_-]{20,})');
-  static final RegExp _fileIdRegex3 = RegExp(r'/d/([a-zA-Z0-9_-]{20,})');
-  static final RegExp _rawIdRegex = RegExp(r'^[a-zA-Z0-9_-]{25,}$');
+  static final RegExp _fileIdRegex1 = RegExp(r'/file/d/([a-zA-Z0-9_-]{20,100})');
+  static final RegExp _fileIdRegex2 = RegExp(r'[?&]id=([a-zA-Z0-9_-]{20,100})');
+  static final RegExp _fileIdRegex3 = RegExp(r'/d/([a-zA-Z0-9_-]{20,100})');
+  static final RegExp _rawIdRegex = RegExp(r'^[a-zA-Z0-9_-]{20,100}$');
+
+  /// Validates whether a given string is a safe, strictly-formatted Google Drive File ID
+  static bool isValidFileId(String? input) {
+    if (input == null) return false;
+    return _rawIdRegex.hasMatch(input.trim());
+  }
 
   /// Extracts Google Drive File ID from diverse URL patterns
   static String? extractFileId(String input) {
@@ -47,6 +52,19 @@ class GoogleDriveDocumentService {
 
     if (_rawIdRegex.hasMatch(trimmed)) {
       return trimmed;
+    }
+
+    // If input is a URL, ensure it belongs to trusted Google domains
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      final uri = Uri.tryParse(trimmed);
+      if (uri == null) return null;
+      final host = uri.host.toLowerCase();
+      final isGoogleHost = host == 'drive.google.com' ||
+          host == 'docs.google.com' ||
+          host.endsWith('.google.com');
+      if (!isGoogleHost) {
+        return null;
+      }
     }
 
     final match1 = _fileIdRegex1.firstMatch(trimmed);
@@ -69,12 +87,14 @@ class GoogleDriveDocumentService {
 
   /// Builds direct download URLs for Google Drive files
   static String getDirectDownloadUrl(String fileId) {
-    return 'https://drive.usercontent.google.com/download?id=$fileId&export=download&confirm=t';
+    final cleanId = extractFileId(fileId) ?? fileId.trim();
+    return 'https://drive.usercontent.google.com/download?id=${Uri.encodeComponent(cleanId)}&export=download&confirm=t';
   }
 
   /// Fallback direct URL format
   static String getFallbackDownloadUrl(String fileId) {
-    return 'https://docs.google.com/uc?export=download&id=$fileId&confirm=t';
+    final cleanId = extractFileId(fileId) ?? fileId.trim();
+    return 'https://docs.google.com/uc?export=download&id=${Uri.encodeComponent(cleanId)}&confirm=t';
   }
 
   /// Pre-flight validation check for Admin before publishing
@@ -200,7 +220,8 @@ class GoogleDriveDocumentService {
 
   /// Public share/view URL for Google Drive
   static String getDriveViewUrl(String fileId) {
-    return 'https://drive.google.com/file/d/$fileId/view?usp=sharing';
+    final cleanId = extractFileId(fileId) ?? fileId.trim();
+    return 'https://drive.google.com/file/d/${Uri.encodeComponent(cleanId)}/view?usp=sharing';
   }
 
   /// Download PDF Bytes in Chunks with Progress Callback & Multi-endpoint Fallback
@@ -209,19 +230,20 @@ class GoogleDriveDocumentService {
     void Function(int receivedBytes, int totalBytes)? onProgress,
     http.Client? client,
   }) async {
+    final validFileId = extractFileId(fileId);
+    if (validFileId == null) {
+      throw ArgumentError('معرّف ملف Google Drive غير صالح: $fileId');
+    }
+
     final httpClient = client ?? http.Client();
     final shouldCloseClient = client == null;
 
     final candidateUrls = <String>[
-      if (kIsWeb) ...[
-        '/api/proxy-pdf?fileId=$fileId',
-        'https://corsproxy.io/?url=${Uri.encodeComponent(getDirectDownloadUrl(fileId))}',
-        'https://api.allorigins.win/raw?url=${Uri.encodeComponent(getDirectDownloadUrl(fileId))}',
-      ],
-      getDirectDownloadUrl(fileId),
-      getFallbackDownloadUrl(fileId),
-      'https://drive.google.com/uc?export=download&id=$fileId&confirm=t',
-      'https://drive.google.com/uc?id=$fileId&export=download',
+      if (kIsWeb) '/api/proxy-pdf?fileId=$validFileId',
+      getDirectDownloadUrl(validFileId),
+      getFallbackDownloadUrl(validFileId),
+      'https://drive.google.com/uc?export=download&id=$validFileId&confirm=t',
+      'https://drive.google.com/uc?id=$validFileId&export=download',
     ];
 
     try {

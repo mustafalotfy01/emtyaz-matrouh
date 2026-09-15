@@ -127,9 +127,18 @@ class _QuizRunnerScreenState extends ConsumerState<QuizRunnerScreen> {
       userAnswers: _userAnswers,
     );
 
-    // Save to real database
+    // Save to real database & receive authoritative server grading
+    double finalScorePercentage = scorePercentage;
+    int finalCorrectCount = correctCount;
+    bool finalPassed = passed;
+
     try {
-      await ref.read(quizRepositoryProvider).submitAttempt(attemptResult, widget.quiz);
+      final verifiedResult = await ref.read(quizRepositoryProvider).submitAttempt(attemptResult, widget.quiz);
+      if (verifiedResult != null) {
+        finalScorePercentage = verifiedResult.scorePercentage;
+        finalCorrectCount = verifiedResult.correctCount;
+        finalPassed = verifiedResult.passed;
+      }
     } catch (_) {}
 
     if (!mounted) return;
@@ -145,9 +154,9 @@ class _QuizRunnerScreenState extends ConsumerState<QuizRunnerScreen> {
         builder: (_) => QuizResultScreen(
           quiz: widget.quiz,
           userAnswers: nonNullAnswers,
-          scorePercentage: scorePercentage,
-          correctAnswersCount: correctCount,
-          passed: passed,
+          scorePercentage: finalScorePercentage,
+          correctAnswersCount: finalCorrectCount,
+          passed: finalPassed,
         ),
       ),
     );

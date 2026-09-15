@@ -294,19 +294,6 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
       }
     }
 
-    // Auto-sign in staff to Supabase if session is null
-    if (session == null && userProfile != null && SupabaseService.isInitialized && (userProfile.role == UserRole.superAdmin || userProfile.role == UserRole.leader || userProfile.role == UserRole.evaluatingDoctor)) {
-      try {
-        final loginRes = await SupabaseService.client.auth.signInWithPassword(
-          email: userProfile.email,
-          password: 'Matrouh@2026!',
-        );
-        session = loginRes.session;
-      } catch (e) {
-        debugPrint('[REAL_BROADCAST] Silent staff sign-in note: $e');
-      }
-    }
-
     final currentAuthUser = SupabaseService.isInitialized
         ? (SupabaseService.client.auth.currentUser ?? session?.user)
         : null;
@@ -344,6 +331,11 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
     debugPrint('[REAL_BROADCAST] AUDIENCE: ${state.audienceType.toDbString()}');
     debugPrint('[REAL_BROADCAST] SELECTED_USERS_COUNT: ${state.selectedStudentIds.length}');
 
+    if (state.isSending) {
+      debugPrint('[REAL_BROADCAST] RETURN_REASON = ALREADY_SENDING');
+      return false;
+    }
+
     if (!isAuthenticated || userId == null || !isStaff) {
       debugPrint('[REAL_BROADCAST] RETURN_REASON = NOT_AUTHENTICATED');
       state = state.copyWith(errorMessage: 'يجب تسجيل الدخول بحساب مسؤول أو قائد لإرسال الإشعارات');
@@ -356,9 +348,19 @@ class SendNotificationNotifier extends StateNotifier<SendNotificationState> {
       return false;
     }
 
+    if (state.title.trim().length > 200) {
+      state = state.copyWith(errorMessage: 'عنوان الإشعار طويل جداً (الحد الأقصى 200 حرف)');
+      return false;
+    }
+
     if (state.body.trim().isEmpty) {
       debugPrint('[REAL_BROADCAST] RETURN_REASON = EMPTY_MESSAGE');
       state = state.copyWith(errorMessage: 'يرجى كتابة نص الرسالة');
+      return false;
+    }
+
+    if (state.body.trim().length > 2000) {
+      state = state.copyWith(errorMessage: 'نص الرسالة طويل جداً (الحد الأقصى 2000 حرف)');
       return false;
     }
 

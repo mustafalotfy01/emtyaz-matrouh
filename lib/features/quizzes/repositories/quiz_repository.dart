@@ -8,9 +8,20 @@ class QuizRepository {
   QuizRepository([SupabaseClient? client])
       : _client = client ?? SupabaseService.client;
 
-  /// Fetch all active quizzes with their questions
+  /// Fetch all active quizzes with their questions (sanitized for students, full for staff)
   Future<List<Quiz>> fetchQuizzes() async {
     try {
+      // 1. Try secure server-side sanitized RPC
+      try {
+        final rpcRes = await _client.rpc('get_active_quizzes');
+        if (rpcRes is List) {
+          return rpcRes
+              .map((json) => Quiz.fromJson(Map<String, dynamic>.from(json as Map)))
+              .toList();
+        }
+      } catch (_) {}
+
+      // 2. Direct fallback
       final res = await _client
           .from('quizzes')
           .select('''
@@ -104,9 +115,51 @@ class QuizRepository {
     }
   }
 
-  /// Submit student quiz attempt
-  Future<void> submitAttempt(QuizAttemptResult result, Quiz quiz) async {
+  /// Submit student quiz attempt (Authoritative Server-Side Grading via RPC with fallback)
+  Future<QuizAttemptResult?> submitAttempt(QuizAttemptResult result, Quiz quiz) async {
     try {
+      // 1. Try secure authoritative server-side grading RPC
+      try {
+        final answersPayload = <Map<String, dynamic>>[];
+        for (int i = 0; i < quiz.questions.length; i++) {
+          final q = quiz.questions[i];
+          final selectedIdx = result.userAnswers[i];
+          answersPayload.add({
+            'question_id': q.id.isNotEmpty ? q.id : null,
+            'order_index': i,
+            'selected_option_index': selectedIdx,
+          });
+        }
+
+        final rpcRes = await _client.rpc('submit_quiz_attempt', params: {
+          'p_quiz_id': result.quizId,
+          'p_answers': answersPayload,
+          'p_completion_time_seconds': result.completionTimeSeconds,
+        });
+
+        if (rpcRes is Map && rpcRes['success'] == true) {
+          final scorePct = (rpcRes['score_percentage'] as num?)?.toDouble() ?? result.scorePercentage;
+          final passed = rpcRes['passed'] == true;
+          final correct = (rpcRes['correct_count'] as num?)?.toInt() ?? result.correctCount;
+          final incorrect = (rpcRes['incorrect_count'] as num?)?.toInt() ?? result.incorrectCount;
+          final unanswered = (rpcRes['unanswered_count'] as num?)?.toInt() ?? result.unansweredCount;
+
+          return QuizAttemptResult(
+            quizId: result.quizId,
+            studentId: result.studentId,
+            totalQuestions: result.totalQuestions,
+            correctCount: correct,
+            incorrectCount: incorrect,
+            unansweredCount: unanswered,
+            scorePercentage: scorePct,
+            passed: passed,
+            completionTimeSeconds: result.completionTimeSeconds,
+            userAnswers: result.userAnswers,
+          );
+        }
+      } catch (_) {}
+
+      // 2. Direct insert fallback
       final attemptRes = await _client
           .from('quiz_attempts')
           .insert({
@@ -146,6 +199,8 @@ class QuizRepository {
           await _client.from('quiz_answers').insert(answersPayload);
         } catch (_) {}
       }
+
+      return result;
     } catch (e) {
       throw Exception('فشل في تسجيل نتيجة الاختبار: $e');
     }

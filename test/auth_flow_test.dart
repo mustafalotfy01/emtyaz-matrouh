@@ -12,10 +12,17 @@ void main() {
 
     setUp(() {
       container = ProviderContainer();
+      setTestUserPassword('mostafa.lotfy@matrouh-nursing.edu.eg', 'TestStaffPass@2026');
+      setTestUserPassword('dr.shereen.farag@matrouh-nursing.edu.eg', 'TestStaffPass@2026');
+      setTestUserPassword('dr.maysa.elbayaa@matrouh-nursing.edu.eg', 'TestStaffPass@2026');
     });
 
     tearDown(() {
       container.dispose();
+    });
+
+    tearDownAll(() {
+      clearTestUserPasswords();
     });
 
     test('1. Registration initializes with clean student profile without requiring Group A/B choice', () async {
@@ -82,7 +89,7 @@ void main() {
       final authNotifier = container.read(authProvider.notifier);
       final loginRes = await authNotifier.login(
         'mostafa.lotfy@matrouh-nursing.edu.eg',
-        'Matrouh@2026!',
+        'TestStaffPass@2026',
         expectedRole: UserRole.leader,
       );
 
@@ -95,7 +102,7 @@ void main() {
       final authNotifier = container.read(authProvider.notifier);
       final loginRes = await authNotifier.login(
         'dr.shereen.farag@matrouh-nursing.edu.eg',
-        'Matrouh@2026!',
+        'TestStaffPass@2026',
         expectedRole: UserRole.evaluatingDoctor,
       );
 
@@ -104,11 +111,22 @@ void main() {
       expect(container.read(authProvider).user!.fullName, equals('د. شيرين فرج'));
     });
 
-    test('6. SuperAdmin login succeeds', () async {
+    test('6. SuperAdmin login succeeds with set test password and fails with invalid/fallback password', () async {
       final authNotifier = container.read(authProvider.notifier);
+
+      // Verify fallback password (like 123456) is completely REJECTED
+      final wrongRes = await authNotifier.login(
+        'dr.maysa.elbayaa@matrouh-nursing.edu.eg',
+        '123456',
+        expectedRole: UserRole.superAdmin,
+      );
+      expect(wrongRes, isFalse);
+      expect(container.read(authProvider).user, isNull);
+
+      // Verify correct password succeeds
       final loginRes = await authNotifier.login(
         'dr.maysa.elbayaa@matrouh-nursing.edu.eg',
-        'Matrouh@2026!',
+        'TestStaffPass@2026',
         expectedRole: UserRole.superAdmin,
       );
 
