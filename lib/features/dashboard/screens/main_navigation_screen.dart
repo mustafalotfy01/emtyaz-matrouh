@@ -22,6 +22,10 @@ import '../../profile/profile_screen.dart';
 import '../../quizzes/screens/quiz_list_screen.dart';
 import '../../roster/screens/roster_calendar_screen.dart';
 import '../../roster/screens/roster_overview_screen.dart';
+import '../../../core/services/vibration_service.dart';
+import '../../fingerprint/models/fingerprint_request.dart';
+import '../../fingerprint/providers/fingerprint_provider.dart';
+import '../../fingerprint/widgets/urgent_fingerprint_dialog.dart';
 import 'admin_dashboard_screen.dart';
 import 'doctor_dashboard_screen.dart';
 import 'leader_dashboard_screen.dart';
@@ -38,6 +42,7 @@ class MainNavigationScreen extends ConsumerStatefulWidget {
 class _MainNavigationScreenState
     extends ConsumerState<MainNavigationScreen> {
   int _currentIndex = 0;
+  String? _lastAlertedFingerprintRequestId;
 
   @override
   void initState() {
@@ -284,6 +289,25 @@ class _MainNavigationScreenState
     ref.listen<AuthState>(authProvider, (previous, next) {
       if (next.user == null && mounted) {
         context.go('/login');
+      }
+    });
+
+    // Global listener for urgent fingerprint confirmation requests targeted at students
+    ref.listen<FingerprintRequest?>(studentActiveFingerprintRequestProvider, (previous, next) {
+      if (next != null &&
+          !next.isExpired &&
+          next.isPending &&
+          next.id != _lastAlertedFingerprintRequestId &&
+          mounted) {
+        _lastAlertedFingerprintRequestId = next.id;
+        // 1. Strong tactile vibration alert (هزة ملحوظة متكررة)
+        VibrationService.triggerUrgentVibration();
+        // 2. High-priority instant bottom-sheet dialog
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            showUrgentFingerprintDialog(context, ref, next);
+          }
+        });
       }
     });
 

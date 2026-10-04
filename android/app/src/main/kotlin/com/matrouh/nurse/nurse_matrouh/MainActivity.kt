@@ -21,6 +21,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        createNotificationChannel()
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -174,6 +175,23 @@ class MainActivity : FlutterActivity() {
 
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channelId = "urgent_channel"
+            val channelName = "Urgent Notifications"
+            val channelDescription = "Immediate fingerprint and high priority alerts"
+            val importance = android.app.NotificationManager.IMPORTANCE_HIGH
+            val channel = android.app.NotificationChannel(channelId, channelName, importance).apply {
+                description = channelDescription
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 500, 200, 500)
+                enableLights(true)
+            }
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            notificationManager.createNotificationChannel(channel)
         }
     }
 }

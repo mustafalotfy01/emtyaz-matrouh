@@ -252,7 +252,7 @@ serve(async (req) => {
     console.log("[EDGE_BROADCAST] TARGET_RESOLUTION_START");
     let targetStudentIds: string[] = [];
 
-    if (audience_type === "ALL_STUDENTS") {
+    if (audience_type === "ALL_STUDENTS" || audience_type === "ALL") {
       const { data: students } = await adminClient
         .from("profiles")
         .select("id")
@@ -278,7 +278,7 @@ serve(async (req) => {
         .or("is_approved.eq.true,registration_status.eq.approved");
       targetStudentIds = (students ?? []).map((s) => s.id);
 
-    } else if (audience_type === "DEPARTMENT") {
+    } else if (audience_type === "DEPARTMENT" || audience_type.startsWith("DEPARTMENT")) {
       const { data: students } = await adminClient
         .from("profiles")
         .select("id")
@@ -286,13 +286,26 @@ serve(async (req) => {
         .or("is_approved.eq.true,registration_status.eq.approved");
       targetStudentIds = (students ?? []).map((s) => s.id);
 
-    } else if (audience_type === "SPECIFIC_STUDENTS" && Array.isArray(specific_student_ids)) {
-      const { data: validStudents } = await adminClient
+    } else if (audience_type === "SPECIFIC_STUDENTS" || audience_type === "SPECIFIC_STUDENT") {
+      const ids = (Array.isArray(specific_student_ids) && specific_student_ids.length > 0)
+        ? specific_student_ids
+        : (audience_value ? [audience_value] : []);
+      if (ids.length > 0) {
+        const { data: validStudents } = await adminClient
+          .from("profiles")
+          .select("id")
+          .in("id", ids)
+          .eq("role", "student");
+        targetStudentIds = (validStudents ?? []).map((s) => s.id);
+      }
+    } else {
+      // General fallback for other shift/group filters
+      const { data: students } = await adminClient
         .from("profiles")
         .select("id")
-        .in("id", specific_student_ids)
-        .eq("role", "student");
-      targetStudentIds = (validStudents ?? []).map((s) => s.id);
+        .eq("role", "student")
+        .or("is_approved.eq.true,registration_status.eq.approved");
+      targetStudentIds = (students ?? []).map((s) => s.id);
     }
 
     console.log(`[EDGE_BROADCAST] TARGET_COUNT = ${targetStudentIds.length}`);
@@ -413,7 +426,21 @@ serve(async (req) => {
                 title: title.trim(),
                 body: body.trim(),
               },
+              android: {
+                priority: "high",
+                notification: {
+                  channel_id: "urgent_channel",
+                  sound: "default",
+                  default_sound: true,
+                  default_vibrate_timings: true,
+                  notification_priority: "PRIORITY_MAX",
+                  vibrate_timings: ["0.0s", "0.5s", "0.2s", "0.5s"],
+                },
+              },
               webpush: {
+                headers: {
+                  Urgency: "high",
+                },
                 notification: {
                   title: title.trim(),
                   body: body.trim(),
@@ -421,6 +448,7 @@ serve(async (req) => {
                   badge: "/icons/icon-192x192.png",
                   tag: "matrouh-notification",
                   renotify: true,
+                  vibrate: [500, 200, 500],
                 },
                 fcm_options: {
                   link: `https://emtaz-matrouh.vercel.app${target_route || "/"}`,

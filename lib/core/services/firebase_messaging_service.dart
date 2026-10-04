@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/firebase_options.dart';
 import 'push_notification_service.dart';
 import 'supabase_service.dart';
+import 'vibration_service.dart';
 
 class FirebaseMessagingService {
   FirebaseMessagingService._();
@@ -151,6 +152,15 @@ class FirebaseMessagingService {
         final title = message.notification?.title ?? message.data['title'] ?? 'MANU';
         final body = message.notification?.body ?? message.data['body'] ?? 'لديك تحديث جديد';
         final route = message.data['route'] ?? '/';
+        final notifType = message.data['notification_type'] ?? message.data['type'];
+        final isUrgent = notifType == 'FINGERPRINT' || notifType == 'fingerprint_request';
+
+        // Tactile vibration alert
+        if (isUrgent) {
+          VibrationService.triggerUrgentVibration();
+        } else {
+          VibrationService.triggerNotificationVibrate();
+        }
 
         PushNotificationService.instance.showBrowserNotification(
           title: title,

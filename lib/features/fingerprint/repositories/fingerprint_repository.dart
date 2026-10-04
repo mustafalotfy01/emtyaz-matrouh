@@ -72,13 +72,30 @@ class FingerprintRepository {
 
       // Trigger Push / FCM notification
       try {
+        String fcmAudience = 'ALL_STUDENTS';
+        if (audienceType == 'SPECIFIC_STUDENT' || targetStudentId != null) {
+          fcmAudience = 'SPECIFIC_STUDENTS';
+        } else if (audienceType == 'GROUP_A') {
+          fcmAudience = 'GROUP_A';
+        } else if (audienceType == 'GROUP_B') {
+          fcmAudience = 'GROUP_B';
+        } else if (audienceType.startsWith('DEPARTMENT')) {
+          fcmAudience = 'DEPARTMENT';
+        }
+
         await FcmSenderService.instance.broadcastServerNotification(
-          audienceType: audienceType,
+          audienceType: fcmAudience,
+          audienceValue: targetStudentId,
+          specificStudentIds: targetStudentId != null ? [targetStudentId] : null,
           title: '⚠️ $requestTitle',
           body: notes ?? 'يرجى فتح التطبيق وتأكيد البصمة الحيوية فوراً لإثبات التواجد بالقسم.',
           notificationType: 'FINGERPRINT',
           targetRoute: '/attendance',
-          metadata: {'type': 'fingerprint_request', 'request_id': res['id'].toString()},
+          metadata: {
+            'type': 'fingerprint_request',
+            'request_id': res['id'].toString(),
+            'urgent': 'true',
+          },
         );
       } catch (_) {}
 
