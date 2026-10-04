@@ -1329,10 +1329,12 @@ class StudentDashboardScreen extends ConsumerWidget {
                             final userLon = loc.longitude ?? 0.0;
 
                             // 4. Verify Hospital Geofence dynamically from HospitalConfig
+                            await ref.read(hospitalConfigProvider.notifier).loadConfig();
                             final hospitalCfg = ref.read(hospitalConfigProvider);
                             final hospitalLat = hospitalCfg.latitude;
                             final hospitalLon = hospitalCfg.longitude;
                             final allowedRadiusMeters = hospitalCfg.radiusMeters;
+                            final hospitalName = hospitalCfg.hospitalName;
                             final isInsideHospital = (loc.latitude != null && loc.longitude != null) &&
                                 DistanceCalculator.isWithinZone(
                                   userLat: userLat,
@@ -1362,7 +1364,7 @@ class StudentDashboardScreen extends ConsumerWidget {
                                     backgroundColor: AppDesignTokens.danger,
                                     duration: const Duration(seconds: 5),
                                     content: Text(
-                                      'أنت خارج نطاق مستشفى مطروح العام ($distText بعيداً). يجب التواجد داخل المستشفى لإثبات البصمة الفورية 📍🏥',
+                                      'أنت خارج نطاق $hospitalName ($distText بعيداً، النطاق المسموح: ${allowedRadiusMeters.round()} متر). يجب التواجد داخل المستشفى لإثبات البصمة الفورية 📍🏥',
                                     ),
                                   ),
                                 );

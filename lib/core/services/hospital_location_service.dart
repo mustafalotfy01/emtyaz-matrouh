@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'supabase_service.dart';
 
 class HospitalConfig {
@@ -66,35 +67,87 @@ class HospitalConfig {
 
 class HospitalLocationNotifier extends StateNotifier<HospitalConfig> {
   static const String _storageKey = 'hospital_geofence_config_v2';
+  RealtimeChannel? _subscription;
 
   HospitalLocationNotifier() : super(HospitalConfig.defaultMatrouhGeneral()) {
     loadConfig();
+    _subscribeRealtime();
+  }
+
+  void _subscribeRealtime() {
+    if (!SupabaseService.isInitialized) return;
+    try {
+      _subscription = SupabaseService.client
+          .channel('public:app_settings:hospital_geofence')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'app_settings',
+            callback: (payload) {
+              loadConfig();
+            },
+          )
+          .subscribe();
+    } catch (e) {
+      if (kDebugMode) print('[HospitalLocationNotifier] realtime subscription note: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _subscription?.unsubscribe();
+    super.dispose();
   }
 
   Future<void> loadConfig() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+
+      // 1. Instantly populate state from local cache so the UI has immediate data
       final savedStr = prefs.getString(_storageKey);
       if (savedStr != null && savedStr.isNotEmpty) {
         final decoded = jsonDecode(savedStr);
         if (decoded is Map<String, dynamic>) {
           state = HospitalConfig.fromJson(decoded);
-          return;
+          // Do NOT return here! Always fetch the latest configuration from Supabase.
         }
       }
 
-      // Try fetching from Supabase app_settings or profiles metadata if available
+      // 2. Fetch fresh dynamic configuration from Supabase app_settings
       if (SupabaseService.isInitialized) {
         final res = await SupabaseService.client
-            .from('system_settings')
-            .select('setting_value')
-            .eq('setting_key', 'hospital_geofence')
+            .from('app_settings')
+            .select('value')
+            .eq('key', 'hospital_geofence')
             .maybeSingle();
 
-        if (res != null && res['setting_value'] != null) {
-          final val = res['setting_value'];
+        if (res != null && res['value'] != null) {
+          final val = res['value'];
           final map = val is String ? jsonDecode(val) : Map<String, dynamic>.from(val);
           final loaded = HospitalConfig.fromJson(map);
+          state = loaded;
+          await prefs.setString(_storageKey, jsonEncode(loaded.toJson()));
+          return;
+        }
+
+        // 3. Fallback: Check attendance_zones table if app_settings hasn't been set yet
+        final zoneRes = await SupabaseService.client
+            .from('attendance_zones')
+            .select('*')
+            .eq('is_active', true)
+            .order('created_at', ascending: false)
+            .limit(1)
+            .maybeSingle();
+
+        if (zoneRes != null) {
+          final loaded = HospitalConfig(
+            hospitalName: zoneRes['hospital_name']?.toString() ?? 'مستشفى مطروح العام',
+            latitude: (zoneRes['latitude'] as num?)?.toDouble() ?? 31.3543,
+            longitude: (zoneRes['longitude'] as num?)?.toDouble() ?? 27.2373,
+            radiusMeters: (zoneRes['radius_meters'] as num?)?.toDouble() ?? 250.0,
+            address: 'مرسى مطروح',
+            updatedAt: DateTime.now(),
+          );
           state = loaded;
           await prefs.setString(_storageKey, jsonEncode(loaded.toJson()));
         }
@@ -126,15 +179,40 @@ class HospitalLocationNotifier extends StateNotifier<HospitalConfig> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_storageKey, jsonEncode(updated.toJson()));
 
-      // Try updating Supabase system_settings in background
       if (SupabaseService.isInitialized) {
-        try {
-          await SupabaseService.client.from('system_settings').upsert({
-            'setting_key': 'hospital_geofence',
-            'setting_value': updated.toJson(),
-            'updated_at': DateTime.now().toIso8601String(),
+        // 1. Update app_settings
+        await SupabaseService.client.from('app_settings').upsert({
+          'key': 'hospital_geofence',
+          'value': updated.toJson(),
+          'updated_at': DateTime.now().toIso8601String(),
+        });
+
+        // 2. Synchronize with public.attendance_zones so server-side RPC (record_attendance_check_in) checks against the exact same coordinates!
+        final existingZones = await SupabaseService.client
+            .from('attendance_zones')
+            .select('id')
+            .eq('is_active', true)
+            .limit(1);
+
+        if ((existingZones as List).isNotEmpty) {
+          await SupabaseService.client
+              .from('attendance_zones')
+              .update({
+                'hospital_name': updated.hospitalName,
+                'latitude': updated.latitude,
+                'longitude': updated.longitude,
+                'radius_meters': updated.radiusMeters,
+              })
+              .eq('is_active', true);
+        } else {
+          await SupabaseService.client.from('attendance_zones').insert({
+            'hospital_name': updated.hospitalName,
+            'latitude': updated.latitude,
+            'longitude': updated.longitude,
+            'radius_meters': updated.radiusMeters,
+            'is_active': true,
           });
-        } catch (_) {}
+        }
       }
       return true;
     } catch (e) {

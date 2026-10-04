@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/attendance_record.dart';
 import '../models/geofence_zone.dart';
 import '../../../core/models/location_result.dart';
+import '../../../core/services/hospital_location_service.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/platform_service.dart';
 import '../../../core/services/supabase_service.dart';
@@ -99,10 +100,40 @@ class AttendanceState {
 // ── Notifier ─────────────────────────────────────────────────────────────────
 
 class AttendanceNotifier extends StateNotifier<AttendanceState> {
-  AttendanceNotifier()
+  final Ref? _ref;
+
+  AttendanceNotifier([this._ref])
       : super(AttendanceState(
           history: [],
-        ));
+          activeZone: _ref != null
+              ? _zoneFromHospitalConfig(_ref.read(hospitalConfigProvider))
+              : GeofenceZone.matrouhGeneralHospitalEmergency(),
+        )) {
+    if (_ref != null) {
+      _ref.listen<HospitalConfig>(hospitalConfigProvider, (prev, next) {
+        syncWithHospitalConfig(next);
+      });
+    }
+  }
+
+  static GeofenceZone _zoneFromHospitalConfig(HospitalConfig cfg) {
+    return GeofenceZone(
+      id: 'dynamic-hospital-zone',
+      hospitalName: cfg.hospitalName,
+      departmentName: 'مستشفى مطروح العام',
+      latitude: cfg.latitude,
+      longitude: cfg.longitude,
+      radiusMeters: cfg.radiusMeters,
+    );
+  }
+
+  void syncWithHospitalConfig(HospitalConfig cfg) {
+    state = state.copyWith(
+      activeZone: _zoneFromHospitalConfig(cfg).copyWith(
+        departmentName: state.activeZone.departmentName,
+      ),
+    );
+  }
 
   // ── Load Real History from Supabase ─────────────────────────────────────────
   Future<void> loadAttendanceHistory(String studentId) async {
@@ -187,6 +218,11 @@ class AttendanceNotifier extends StateNotifier<AttendanceState> {
       clearError: true,
       clearLocation: true,
     );
+
+    // Refresh dynamic hospital configuration from server before checking geofence
+    if (_ref != null) {
+      await _ref.read(hospitalConfigProvider.notifier).loadConfig();
+    }
 
     // ── Step 1: GPS with progressive accuracy retry ────────────────────────
     final locResult = await LocationService.getCurrentLocation();
@@ -274,28 +310,50 @@ class AttendanceNotifier extends StateNotifier<AttendanceState> {
 
     state = state.copyWith(step: CheckInStep.checkingGeofence);
 
-    final zone = state.activeZone;
+    // Dynamic hospital config from provider if available, otherwise fallback to zone
+    final hospitalCfg = _ref?.read(hospitalConfigProvider);
+    final targetLat = hospitalCfg?.latitude ?? state.activeZone.latitude;
+    final targetLon = hospitalCfg?.longitude ?? state.activeZone.longitude;
+    final targetRadius = hospitalCfg?.radiusMeters ?? state.activeZone.radiusMeters;
+    final targetName = hospitalCfg?.hospitalName ?? state.activeZone.hospitalName;
+
     final distanceMeters = DistanceCalculator.calculateDistanceMeters(
       locResult.latitude!,
       locResult.longitude!,
-      zone.latitude,
-      zone.longitude,
+      targetLat,
+      targetLon,
     );
 
-    final isInside = distanceMeters <= zone.radiusMeters;
+    final isInside = distanceMeters <= targetRadius;
     final geofenceResult = GeofenceResult(
       isInside: isInside,
       distanceMeters: distanceMeters,
-      allowedRadiusMeters: zone.radiusMeters,
+      allowedRadiusMeters: targetRadius,
     );
 
-    state = state.copyWith(geofenceResult: geofenceResult);
+    final updatedZone = state.activeZone.copyWith(
+      hospitalName: targetName,
+      departmentName: departmentName,
+      latitude: targetLat,
+      longitude: targetLon,
+      radiusMeters: targetRadius,
+    );
+
+    state = state.copyWith(
+      activeZone: updatedZone,
+      geofenceResult: geofenceResult,
+    );
 
     if (!isInside) {
+      final distText = distanceMeters >= 1000
+          ? '${(distanceMeters / 1000).toStringAsFixed(1)} كم'
+          : '${distanceMeters.toStringAsFixed(0)} متر';
+      final allowedText = '${targetRadius.toStringAsFixed(0)} متر';
+
       state = state.copyWith(
         step: CheckInStep.outsideZone,
         errorMessage:
-            'أنت خارج نطاق المستشفى (${distanceMeters.toStringAsFixed(0)}م، المسموح: ${zone.radiusMeters.toStringAsFixed(0)}م).',
+            'أنت خارج نطاق $targetName ($distText بعيداً، النطاق المسموح: $allowedText).',
       );
       return;
     }
@@ -485,5 +543,5 @@ class AttendanceNotifier extends StateNotifier<AttendanceState> {
 
 final attendanceProvider =
     StateNotifierProvider<AttendanceNotifier, AttendanceState>((ref) {
-  return AttendanceNotifier();
+  return AttendanceNotifier(ref);
 });

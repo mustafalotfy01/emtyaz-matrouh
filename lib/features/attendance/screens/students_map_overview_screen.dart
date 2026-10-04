@@ -70,6 +70,7 @@ class _StudentsMapOverviewScreenState extends ConsumerState<StudentsMapOverviewS
       _errorMessage = null;
     });
 
+    await ref.read(hospitalConfigProvider.notifier).loadConfig();
     final hospitalConfig = ref.read(hospitalConfigProvider);
 
     try {

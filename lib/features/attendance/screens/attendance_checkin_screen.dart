@@ -12,6 +12,7 @@ import '../../../core/widgets/app_section_header.dart';
 import '../models/attendance_record.dart';
 import '../providers/attendance_provider.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../../core/services/hospital_location_service.dart';
 
 class AttendanceCheckinScreen extends ConsumerStatefulWidget {
   const AttendanceCheckinScreen({super.key});
@@ -29,6 +30,7 @@ class _AttendanceCheckinScreenState extends ConsumerState<AttendanceCheckinScree
       if (user != null) {
         ref.read(attendanceProvider.notifier).loadAttendanceHistory(user.id);
       }
+      ref.read(hospitalConfigProvider.notifier).loadConfig();
     });
   }
 
@@ -74,6 +76,7 @@ class _AttendanceCheckinScreenState extends ConsumerState<AttendanceCheckinScree
             if (user != null) {
               await notifier.loadAttendanceHistory(user.id);
             }
+            await ref.read(hospitalConfigProvider.notifier).loadConfig();
           },
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
