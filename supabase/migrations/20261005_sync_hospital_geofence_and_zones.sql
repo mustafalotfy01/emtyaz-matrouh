@@ -274,7 +274,72 @@ BEGIN
 END;
 $$;
 
--- 7. Secure execution grants
+-- 7. Authoritative Hospital Geofence Update RPC for Staff (super_admin & leader)
+CREATE OR REPLACE FUNCTION public.update_hospital_geofence(
+    p_hospital_name TEXT,
+    p_latitude DOUBLE PRECISION,
+    p_longitude DOUBLE PRECISION,
+    p_radius_meters DOUBLE PRECISION,
+    p_address TEXT DEFAULT 'مرسى مطروح'
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $$
+DECLARE
+    v_caller_id UUID;
+    v_role user_role;
+    v_config JSONB;
+BEGIN
+    v_caller_id := auth.uid();
+    IF v_caller_id IS NULL THEN
+        RAISE EXCEPTION 'Authentication required: Anonymous callers cannot update hospital geofence.';
+    END IF;
+
+    SELECT role INTO v_role FROM public.profiles WHERE id = v_caller_id;
+    IF v_role NOT IN ('super_admin', 'leader') THEN
+        RAISE EXCEPTION 'Unauthorized: Only super_admin or leader can update hospital geofence.';
+    END IF;
+
+    v_config := jsonb_build_object(
+        'hospital_name', COALESCE(NULLIF(TRIM(p_hospital_name), ''), 'مستشفى مطروح العام'),
+        'latitude', p_latitude,
+        'longitude', p_longitude,
+        'radius_meters', p_radius_meters,
+        'address', COALESCE(NULLIF(TRIM(p_address), ''), 'مرسى مطروح'),
+        'updated_at', NOW()
+    );
+
+    -- Update or insert app_settings
+    INSERT INTO public.app_settings (key, value, updated_at)
+    VALUES ('hospital_geofence', v_config, NOW())
+    ON CONFLICT (key) DO UPDATE
+    SET value = EXCLUDED.value, updated_at = NOW();
+
+    -- Update active zone in attendance_zones
+    UPDATE public.attendance_zones
+    SET hospital_name = COALESCE(NULLIF(TRIM(p_hospital_name), ''), 'مستشفى مطروح العام'),
+        latitude = p_latitude,
+        longitude = p_longitude,
+        radius_meters = p_radius_meters
+    WHERE is_active = true;
+
+    -- If no active zone exists in attendance_zones, insert one
+    IF NOT FOUND THEN
+        INSERT INTO public.attendance_zones (hospital_name, latitude, longitude, radius_meters, is_active)
+        VALUES (COALESCE(NULLIF(TRIM(p_hospital_name), ''), 'مستشفى مطروح العام'), p_latitude, p_longitude, p_radius_meters, true);
+    END IF;
+
+    RETURN jsonb_build_object('success', true, 'config', v_config);
+END;
+$$;
+
+-- 8. Secure execution grants
 REVOKE ALL ON FUNCTION public.record_attendance_check_in(DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, TEXT, UUID) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.record_attendance_check_in(DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, TEXT, UUID) FROM anon;
 GRANT EXECUTE ON FUNCTION public.record_attendance_check_in(DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, TEXT, UUID) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION public.update_hospital_geofence(TEXT, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.update_hospital_geofence(TEXT, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, TEXT) FROM anon;
+GRANT EXECUTE ON FUNCTION public.update_hospital_geofence(TEXT, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, TEXT) TO authenticated, service_role;

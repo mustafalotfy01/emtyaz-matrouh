@@ -232,10 +232,14 @@ class _StudentsMapOverviewScreenState extends ConsumerState<StudentsMapOverviewS
         );
         _fetchStudentsData();
       } else {
+        final err = ref.read(hospitalConfigProvider.notifier).lastError;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('فشل حفظ الإعدادات، يرجى المحاولة ثانية.'),
+          SnackBar(
+            content: Text(err != null && err.isNotEmpty
+                ? 'فشل حفظ الإعدادات: $err'
+                : 'فشل حفظ الإعدادات، يرجى تشغيل ملف المايجريشن في Supabase والمحاولة ثانية.'),
             backgroundColor: AppDesignTokens.danger,
+            duration: const Duration(seconds: 6),
           ),
         );
       }

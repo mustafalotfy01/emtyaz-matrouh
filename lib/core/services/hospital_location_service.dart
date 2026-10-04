@@ -157,6 +157,8 @@ class HospitalLocationNotifier extends StateNotifier<HospitalConfig> {
     }
   }
 
+  String? lastError;
+
   Future<bool> updateConfig({
     required String hospitalName,
     required double latitude,
@@ -164,6 +166,7 @@ class HospitalLocationNotifier extends StateNotifier<HospitalConfig> {
     required double radiusMeters,
     String? address,
   }) async {
+    lastError = null;
     final updated = HospitalConfig(
       hospitalName: hospitalName.trim(),
       latitude: latitude,
@@ -178,47 +181,55 @@ class HospitalLocationNotifier extends StateNotifier<HospitalConfig> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_storageKey, jsonEncode(updated.toJson()));
+    } catch (_) {}
 
-      if (SupabaseService.isInitialized) {
-        // 1. Update app_settings
-        await SupabaseService.client.from('app_settings').upsert({
-          'key': 'hospital_geofence',
-          'value': updated.toJson(),
-          'updated_at': DateTime.now().toIso8601String(),
-        });
+    if (SupabaseService.isInitialized) {
+      // 1. Try authoritative RPC first (bypasses RLS issues via SECURITY DEFINER)
+      try {
+        await SupabaseService.client.rpc(
+          'update_hospital_geofence',
+          params: {
+            'p_hospital_name': updated.hospitalName,
+            'p_latitude': updated.latitude,
+            'p_longitude': updated.longitude,
+            'p_radius_meters': updated.radiusMeters,
+            'p_address': updated.address,
+          },
+        );
+        return true;
+      } catch (rpcErr) {
+        if (kDebugMode) print('[HospitalLocationNotifier] RPC error, trying direct upsert: $rpcErr');
 
-        // 2. Synchronize with public.attendance_zones so server-side RPC (record_attendance_check_in) checks against the exact same coordinates!
-        final existingZones = await SupabaseService.client
-            .from('attendance_zones')
-            .select('id')
-            .eq('is_active', true)
-            .limit(1);
-
-        if ((existingZones as List).isNotEmpty) {
-          await SupabaseService.client
-              .from('attendance_zones')
-              .update({
-                'hospital_name': updated.hospitalName,
-                'latitude': updated.latitude,
-                'longitude': updated.longitude,
-                'radius_meters': updated.radiusMeters,
-              })
-              .eq('is_active', true);
-        } else {
-          await SupabaseService.client.from('attendance_zones').insert({
-            'hospital_name': updated.hospitalName,
-            'latitude': updated.latitude,
-            'longitude': updated.longitude,
-            'radius_meters': updated.radiusMeters,
-            'is_active': true,
+        // 2. Fallback to direct app_settings upsert
+        try {
+          await SupabaseService.client.from('app_settings').upsert({
+            'key': 'hospital_geofence',
+            'value': updated.toJson(),
+            'updated_at': DateTime.now().toIso8601String(),
           });
+
+          // Non-blocking sync with attendance_zones
+          try {
+            await SupabaseService.client
+                .from('attendance_zones')
+                .update({
+                  'hospital_name': updated.hospitalName,
+                  'latitude': updated.latitude,
+                  'longitude': updated.longitude,
+                  'radius_meters': updated.radiusMeters,
+                })
+                .eq('is_active', true);
+          } catch (_) {}
+
+          return true;
+        } catch (dbErr) {
+          lastError = dbErr.toString();
+          if (kDebugMode) print('HospitalLocationNotifier direct update error: $dbErr');
+          return false;
         }
       }
-      return true;
-    } catch (e) {
-      if (kDebugMode) print('HospitalLocationNotifier update error: $e');
-      return false;
     }
+    return true;
   }
 }
 
