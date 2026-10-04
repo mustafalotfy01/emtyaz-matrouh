@@ -31,14 +31,14 @@ CREATE POLICY "Allow staff to manage app settings"
     EXISTS (
       SELECT 1 FROM public.profiles
       WHERE profiles.id = auth.uid()
-      AND profiles.role IN ('super_admin', 'leader')
+      AND profiles.role::TEXT IN ('super_admin', 'leader')
     )
   )
   WITH CHECK (
     EXISTS (
       SELECT 1 FROM public.profiles
       WHERE profiles.id = auth.uid()
-      AND profiles.role IN ('super_admin', 'leader')
+      AND profiles.role::TEXT IN ('super_admin', 'leader')
     )
   );
 
@@ -59,14 +59,14 @@ CREATE POLICY "attendance_zones_manage" ON public.attendance_zones
         EXISTS (
             SELECT 1 FROM public.profiles
             WHERE profiles.id = auth.uid()
-            AND profiles.role IN ('super_admin', 'leader')
+            AND profiles.role::TEXT IN ('super_admin', 'leader')
         )
     )
     WITH CHECK (
         EXISTS (
             SELECT 1 FROM public.profiles
             WHERE profiles.id = auth.uid()
-            AND profiles.role IN ('super_admin', 'leader')
+            AND profiles.role::TEXT IN ('super_admin', 'leader')
         )
     );
 
@@ -298,7 +298,7 @@ BEGIN
     END IF;
 
     SELECT role INTO v_role FROM public.profiles WHERE id = v_caller_id;
-    IF v_role NOT IN ('super_admin', 'leader') THEN
+    IF v_role::TEXT NOT IN ('super_admin', 'leader') THEN
         RAISE EXCEPTION 'Unauthorized: Only super_admin or leader can update hospital geofence.';
     END IF;
 
