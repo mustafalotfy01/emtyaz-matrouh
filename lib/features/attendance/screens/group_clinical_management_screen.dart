@@ -1025,7 +1025,7 @@ class _GroupClinicalManagementScreenState
   // ════════════════════════════════════════════════════════════════════════════
 
   Widget _buildReportsTab(BuildContext context, GroupClinicalState state) {
-    final reportsAsync = ref.watch(groupReportsProvider((
+    final reportsAsync = ref.watch(groupReportsProvider(GroupReportQuery(
       groupId: widget.groupId,
       year: _reportYear,
       month: _reportMonth,

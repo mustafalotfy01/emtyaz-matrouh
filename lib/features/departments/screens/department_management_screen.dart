@@ -503,7 +503,7 @@ class _DepartmentManagementScreenState
                 textColor: Colors.white,
                 onPressed: () async {
                   await ref.read(departmentsProvider.notifier).toggleStatus(dept.id, false);
-                  if (context.mounted) {
+                  if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text('تم تعطيل القسم بنجاح وإخفاؤه من خيارات التوزيع.'),

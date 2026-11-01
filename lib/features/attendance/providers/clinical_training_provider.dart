@@ -404,9 +404,34 @@ final studentClinicalProfileProvider =
   return await repo.fetchStudentClinicalProfile(studentId);
 });
 
+/// Query parameter object for monthly group reports provider
+class GroupReportQuery {
+  final String groupId;
+  final int year;
+  final int month;
+
+  const GroupReportQuery({
+    required this.groupId,
+    required this.year,
+    required this.month,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GroupReportQuery &&
+          runtimeType == other.runtimeType &&
+          groupId == other.groupId &&
+          year == other.year &&
+          month == other.month;
+
+  @override
+  int get hashCode => groupId.hashCode ^ year.hashCode ^ month.hashCode;
+}
+
 /// Family provider for monthly group reports
 final groupReportsProvider =
-    FutureProvider.family<Map<String, dynamic>, ({String groupId, int year, int month})>(
+    FutureProvider.family<Map<String, dynamic>, GroupReportQuery>(
         (ref, param) async {
   final repo = ref.watch(clinicalTrainingRepositoryProvider);
   return await repo.fetchGroupMonthlyReports(
