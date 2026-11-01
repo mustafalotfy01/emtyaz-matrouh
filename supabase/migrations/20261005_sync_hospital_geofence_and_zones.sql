@@ -1,4 +1,4 @@
-﻿-- ==============================================================================
+-- ==============================================================================
 -- MIGRATION: Synchronize Hospital Geofence with App Settings & Attendance Zones
 -- Date: 2026-10-05
 -- File: 20261005_sync_hospital_geofence_and_zones.sql
@@ -71,7 +71,8 @@ CREATE POLICY "attendance_zones_manage" ON public.attendance_zones
     );
 
 -- 4. Backward compatibility view for legacy system_settings
-CREATE OR REPLACE VIEW public.system_settings AS
+CREATE OR REPLACE VIEW public.system_settings
+WITH (security_invoker = true) AS
   SELECT key AS setting_key, value AS setting_value, updated_at FROM public.app_settings;
 
 -- 5. Seed default hospital geofence if absent

@@ -9,6 +9,8 @@ import '../../features/groups/screens/dynamic_groups_management_screen.dart';
 import '../../features/notifications/screens/fcm_debug_screen.dart';
 import '../../features/notifications/screens/notification_center_screen.dart';
 import '../../features/notifications/screens/send_notification_screen.dart';
+import '../../features/attendance/screens/group_clinical_management_screen.dart';
+import '../../features/attendance/screens/student_clinical_profile_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/splash',
@@ -44,6 +46,30 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/groups',
       builder: (context, state) => const DynamicGroupsManagementScreen(),
+    ),
+    GoRoute(
+      path: '/clinical-group',
+      builder: (context, state) {
+        final extra = state.extra as Map<String, dynamic>?;
+        return GroupClinicalManagementScreen(
+          groupId: extra?['groupId'] ?? '',
+          groupName: extra?['groupName'] ?? 'جروب الامتياز',
+          initialDepartmentName: extra?['departmentName'],
+          initialDoctorName: extra?['doctorName'],
+        );
+      },
+    ),
+    GoRoute(
+      path: '/clinical-profile',
+      builder: (context, state) {
+        final extra = state.extra as Map<String, dynamic>?;
+        return StudentClinicalProfileScreen(
+          studentId: extra?['studentId'] ?? '',
+          studentName: extra?['studentName'] ?? 'طالب الامتياز',
+          universityCode: extra?['universityCode'] ?? '',
+          avatarUrl: extra?['avatarUrl'],
+        );
+      },
     ),
     GoRoute(
       path: '/fcm-debug',

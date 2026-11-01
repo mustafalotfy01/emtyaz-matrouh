@@ -51,8 +51,8 @@ class DepartmentsNotifier extends StateNotifier<AsyncValue<List<Department>>> {
     await loadDepartments();
   }
 
-  Future<void> deleteDepartment(String departmentId) async {
-    await _repository.deleteDepartment(departmentId);
+  Future<void> deleteDepartment(String departmentId, {bool forceCascade = false}) async {
+    await _repository.deleteDepartment(departmentId, forceCascade: forceCascade);
     await loadDepartments();
   }
 

@@ -53,6 +53,11 @@ class _DepartmentFormScreenState extends ConsumerState<DepartmentFormScreen> {
 
     final maleCap = int.tryParse(_maleCapController.text.trim()) ?? 0;
     final femaleCap = int.tryParse(_femaleCapController.text.trim()) ?? 0;
+    final nameAr = _nameArController.text.trim();
+    var nameEn = _nameEnController.text.trim();
+    if (nameEn.isEmpty) {
+      nameEn = nameAr;
+    }
 
     setState(() => _isSaving = true);
 
@@ -60,8 +65,8 @@ class _DepartmentFormScreenState extends ConsumerState<DepartmentFormScreen> {
       if (widget.department == null) {
         // Create
         await ref.read(departmentsProvider.notifier).createDepartment(
-              nameAr: _nameArController.text.trim(),
-              nameEn: _nameEnController.text.trim(),
+              nameAr: nameAr,
+              nameEn: nameEn,
               description: _descController.text.trim().isEmpty ? null : _descController.text.trim(),
               maleCapacity: maleCap,
               femaleCapacity: femaleCap,
@@ -69,8 +74,8 @@ class _DepartmentFormScreenState extends ConsumerState<DepartmentFormScreen> {
       } else {
         // Update
         final updated = widget.department!.copyWith(
-          nameAr: _nameArController.text.trim(),
-          nameEn: _nameEnController.text.trim(),
+          nameAr: nameAr,
+          nameEn: nameEn,
           description: _descController.text.trim().isEmpty ? null : _descController.text.trim(),
           maleCapacity: maleCap,
           femaleCapacity: femaleCap,
@@ -143,10 +148,9 @@ class _DepartmentFormScreenState extends ConsumerState<DepartmentFormScreen> {
                       const SizedBox(height: 12),
 
                       AppInput(
-                        label: 'اسم القسم بالإنجليزية *',
+                        label: 'اسم القسم بالإنجليزية (اختياري)',
                         hint: 'e.g. Emergency Department (ED)',
                         controller: _nameEnController,
-                        validator: (v) => (v == null || v.trim().isEmpty) ? 'الاسم بالإنجليزية مطلوب' : null,
                       ),
                       const SizedBox(height: 12),
 

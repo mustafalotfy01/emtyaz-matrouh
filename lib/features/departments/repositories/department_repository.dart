@@ -91,17 +91,43 @@ class DepartmentRepository {
   /// Update department details and global capacity
   Future<void> updateDepartment(Department department) async {
     try {
-      await _client.from('departments').update({
-        'name_ar': department.nameAr,
-        'name_en': department.nameEn,
+      // 1. Try secure atomic RPC first
+      try {
+        final rpcRes = await _client.rpc('update_department', params: {
+          'p_department_id': department.id,
+          'p_name_ar': department.nameAr,
+          'p_name_en': department.nameEn.isEmpty ? department.nameAr : department.nameEn,
+          'p_description': department.description,
+          'p_male_capacity': department.maleCapacity,
+          'p_female_capacity': department.femaleCapacity,
+          'p_is_active': department.isActive,
+        });
+        if (rpcRes != null && (rpcRes is Map && rpcRes['success'] == true)) {
+          return;
+        }
+      } catch (rpcErr) {
+        final errStr = rpcErr.toString();
+        if (errStr.contains('Unauthorized') || errStr.contains('غير موجود')) {
+          throw Exception(errStr.replaceAll('Exception: ', ''));
+        }
+      }
+
+      // 2. Direct update with select() verification
+      final res = await _client.from('departments').update({
+        'name_ar': department.nameAr.trim(),
+        'name_en': department.nameEn.trim().isEmpty ? department.nameAr.trim() : department.nameEn.trim(),
         'description': department.description,
         'male_capacity': department.maleCapacity,
         'female_capacity': department.femaleCapacity,
         'is_active': department.isActive,
         'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', department.id);
+      }).eq('id', department.id).select();
+
+      if ((res as List).isEmpty) {
+        throw Exception('تعذر حفظ تعديلات القسم في قاعدة البيانات. يرجى التأكد من تسجيل الدخول بحساب مسؤول (Leader أو Super Admin).');
+      }
     } catch (e) {
-      throw Exception('فشل في تحديث بيانات القسم: $e');
+      throw Exception(e.toString().replaceAll('Exception: ', ''));
     }
   }
 
@@ -111,26 +137,58 @@ class DepartmentRepository {
       await _client.from('departments').update({
         'is_active': isActive,
         'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', departmentId);
+      }).eq('id', departmentId).select();
     } catch (e) {
       throw Exception('فشل في تعديل حالة القسم: $e');
     }
   }
 
-  /// Delete department safely
-  Future<void> deleteDepartment(String departmentId) async {
+  /// Delete department safely with cascade cleaning
+  Future<void> deleteDepartment(String departmentId, {bool forceCascade = false}) async {
     try {
-      // Check if there are active roster entries
+      // 1. Try secure RPC first
+      try {
+        final rpcRes = await _client.rpc('delete_department', params: {
+          'p_department_id': departmentId,
+          'p_force_cascade': forceCascade,
+        });
+        if (rpcRes != null && (rpcRes is Map && rpcRes['success'] == true)) {
+          return;
+        }
+      } catch (rpcErr) {
+        final errStr = rpcErr.toString();
+        if (errStr.contains('لا يمكن حذف') || errStr.contains('Unauthorized') || errStr.contains('شيفت')) {
+          throw Exception(errStr.replaceAll('Exception: ', ''));
+        }
+      }
+
+      // 2. Client-side fallback: check active roster entries
       final countRes = await _client
           .from('roster_entries')
           .select('id')
           .eq('department_id', departmentId);
 
-      if ((countRes as List).isNotEmpty) {
-        throw Exception('لا يمكن حذف هذا القسم لاحتوائه على شيفتات مسجلة للطلاب. يرجى تعطيل القسم بدلاً من حذفه.');
+      if ((countRes as List).isNotEmpty && !forceCascade) {
+        throw Exception('لا يمكن حذف هذا القسم لاحتوائه على ${countRes.length} شيفت مسجل للطلاب. يرجى تعطيل القسم بدلاً من حذفه.');
       }
 
-      await _client.from('departments').delete().eq('id', departmentId);
+      // Clean up supervisor links and monthly assignments to prevent FK violation
+      try {
+        await _client.from('department_supervisors').delete().eq('department_id', departmentId);
+      } catch (_) {}
+
+      try {
+        await _client.from('group_monthly_departments').delete().eq('department_id', departmentId);
+      } catch (_) {}
+
+      try {
+        await _client.from('student_groups').update({'department_id': null}).eq('department_id', departmentId);
+      } catch (_) {}
+
+      final res = await _client.from('departments').delete().eq('id', departmentId).select();
+      if ((res as List).isEmpty) {
+        throw Exception('تعذر حذف القسم. تأكد من امتلاك صلاحية الإدارة أو أن القسم غير مسجل في شيفتات سابقة.');
+      }
     } catch (e) {
       throw Exception(e.toString().replaceAll('Exception: ', ''));
     }

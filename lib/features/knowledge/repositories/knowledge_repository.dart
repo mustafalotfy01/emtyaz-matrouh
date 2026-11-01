@@ -191,13 +191,23 @@ class KnowledgeRepository {
       if (orderIndex != null) updates['order_index'] = orderIndex;
       if (isActive != null) updates['is_active'] = isActive;
 
-      await _client.from('knowledge_categories').update(updates).eq('id', id);
+      final res = await _client.from('knowledge_categories').update(updates).eq('id', id).select();
+      if ((res as List).isEmpty) {
+        throw Exception('تعذر حفظ تعديل القسم في قاعدة البيانات. تأكد من امتلاكك لصلاحية الإدارة.');
+      }
     } catch (e) {
       // If extended columns fail, try updating only name_ar
       if (nameAr != null) {
-        await _client.from('knowledge_categories').update({'name_ar': nameAr.trim()}).eq('id', id);
+        try {
+          final res = await _client.from('knowledge_categories').update({'name_ar': nameAr.trim()}).eq('id', id).select();
+          if ((res as List).isEmpty) {
+            throw Exception('تعذر حفظ تعديل اسم القسم. تأكد من امتلاكك لصلاحية الإدارة.');
+          }
+        } catch (innerErr) {
+          throw Exception('فشل في تعديل القسم: ${innerErr.toString().replaceAll('Exception: ', '')}');
+        }
       } else {
-        throw Exception('فشل في تعديل القسم: $e');
+        throw Exception('فشل في تعديل القسم: ${e.toString().replaceAll('Exception: ', '')}');
       }
     }
   }
@@ -216,9 +226,21 @@ class KnowledgeRepository {
         if ((checkRes as List).isNotEmpty) {
           throw Exception('لا يمكن حذف القسم لوجود مقالات أو ملفات مرتبطة به. يرجى نقلها أولاً.');
         }
+      } catch (checkErr) {
+        if (checkErr.toString().contains('لا يمكن حذف')) {
+          rethrow;
+        }
+      }
+
+      // Clean up child subcategories first if any
+      try {
+        await _client.from('knowledge_categories').delete().eq('parent_id', id);
       } catch (_) {}
 
-      await _client.from('knowledge_categories').delete().eq('id', id);
+      final res = await _client.from('knowledge_categories').delete().eq('id', id).select();
+      if ((res as List).isEmpty) {
+        throw Exception('تعذر حذف القسم. تأكد من امتلاك صلاحية الإدارة أو خلو القسم من الملفات.');
+      }
     } catch (e) {
       throw Exception(e.toString().replaceAll('Exception: ', ''));
     }

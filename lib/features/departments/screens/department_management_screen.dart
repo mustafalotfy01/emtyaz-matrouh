@@ -470,7 +470,7 @@ class _DepartmentManagementScreenState
     final confirmed = await AppDialog.showConfirmation(
       context,
       title: 'حذف قسم ${dept.nameAr}',
-      message: 'هل أنت متأكد من رغبتك في حذف هذا القسم؟ لن يمكن التراجع عن هذه العملية إذا كان القسم خالياً من الشيفتات.',
+      message: 'هل أنت متأكد من رغبتك في حذف هذا القسم؟ إذا كان القسم خالياً من الشيفتات فسيتم حذفه نهائياً.',
       confirmText: 'نعم، حذف القسم',
       cancelText: 'إلغاء',
       isDestructive: true,
@@ -481,13 +481,46 @@ class _DepartmentManagementScreenState
         await ref.read(departmentsProvider.notifier).deleteDepartment(dept.id);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('تم حذف القسم بنجاح')),
+            const SnackBar(
+              content: Text('تم حذف القسم بنجاح ✅'),
+              backgroundColor: AppDesignTokens.success,
+            ),
           );
         }
       } catch (e) {
-        if (mounted) {
+        if (!mounted) return;
+        final errMsg = e.toString().replaceAll('Exception: ', '');
+        
+        // If cannot delete due to shifts, suggest deactivating
+        if (errMsg.contains('شيفت') || errMsg.contains('تعطيل')) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.toString()), backgroundColor: AppDesignTokens.danger),
+            SnackBar(
+              content: Text(errMsg),
+              backgroundColor: AppDesignTokens.warning,
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'تعطيل القسم الآن',
+                textColor: Colors.white,
+                onPressed: () async {
+                  await ref.read(departmentsProvider.notifier).toggleStatus(dept.id, false);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('تم تعطيل القسم بنجاح وإخفاؤه من خيارات التوزيع.'),
+                        backgroundColor: AppDesignTokens.success,
+                      ),
+                    );
+                  }
+                },
+              ),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errMsg),
+              backgroundColor: AppDesignTokens.danger,
+            ),
           );
         }
       }
