@@ -176,7 +176,7 @@ class _GrantEarlyLeaveSheetState extends State<GrantEarlyLeaveSheet> {
 
           AppInput(
             label: 'سبب المغادرة (اختياري)',
-            placeholder: 'مثال: عذر مرضي / استدعاء طارئ...',
+            hint: 'مثال: عذر مرضي / استدعاء طارئ...',
             controller: _reasonController,
             maxLines: 2,
           ),

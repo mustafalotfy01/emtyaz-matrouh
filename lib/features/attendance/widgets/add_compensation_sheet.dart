@@ -290,7 +290,7 @@ class _AddCompensationSheetState extends State<AddCompensationSheet> {
 
             AppInput(
               label: 'سبب التعويض',
-              placeholder: 'مثال: تعويض غياب معتمد / نوبتجية استعاضة...',
+              hint: 'مثال: تعويض غياب معتمد / نوبتجية استعاضة...',
               controller: _reasonController,
             ),
 
@@ -298,7 +298,7 @@ class _AddCompensationSheetState extends State<AddCompensationSheet> {
 
             AppInput(
               label: 'ملاحظات إضافية (اختياري)',
-              placeholder: 'أي توجيهات سريرية تخص نوبتجية التعويض...',
+              hint: 'أي توجيهات سريرية تخص نوبتجية التعويض...',
               controller: _notesController,
               maxLines: 2,
             ),
@@ -320,7 +320,7 @@ class _AddCompensationSheetState extends State<AddCompensationSheet> {
                   child: AppButton(
                     text: _isSubmitting ? 'جاري الحفظ...' : 'تأكيد إضافة التعويض',
                     icon: Icons.check_circle_outline_rounded,
-                    variant: AppButtonVariant.success,
+                    variant: AppButtonVariant.primary,
                     isLoading: _isSubmitting,
                     onPressed: _isSubmitting || _selectedStudentId == null
                         ? null

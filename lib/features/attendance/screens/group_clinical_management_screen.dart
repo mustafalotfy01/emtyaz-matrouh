@@ -832,7 +832,12 @@ class _GroupClinicalManagementScreenState
                         }
                       });
                       ref.read(activeFinalRosterMonthProvider.notifier).state =
-                          RosterMonth(year: _rosterYear, month: _rosterMonth);
+                          RosterMonth(
+                            id: '$_rosterYear-$_rosterMonth',
+                            title: '${arabicMonths[_rosterMonth - 1]} $_rosterYear',
+                            year: _rosterYear,
+                            month: _rosterMonth,
+                          );
                     },
                   ),
                   Text(
@@ -851,7 +856,12 @@ class _GroupClinicalManagementScreenState
                         }
                       });
                       ref.read(activeFinalRosterMonthProvider.notifier).state =
-                          RosterMonth(year: _rosterYear, month: _rosterMonth);
+                          RosterMonth(
+                            id: '$_rosterYear-$_rosterMonth',
+                            title: '${arabicMonths[_rosterMonth - 1]} $_rosterYear',
+                            year: _rosterYear,
+                            month: _rosterMonth,
+                          );
                     },
                   ),
                 ],

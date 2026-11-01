@@ -150,7 +150,7 @@ class _AddClinicalExceptionSheetState extends State<AddClinicalExceptionSheet> {
 
           AppInput(
             label: 'ملاحظة إضافية (اختياري)',
-            placeholder: 'مثال: ظرف طارئ مثبت / إبلاغ مسبق...',
+            hint: 'مثال: ظرف طارئ مثبت / إبلاغ مسبق...',
             controller: _noteController,
             maxLines: 2,
           ),
@@ -172,7 +172,7 @@ class _AddClinicalExceptionSheetState extends State<AddClinicalExceptionSheet> {
                 child: AppButton(
                   text: _isSubmitting ? 'جاري التسجيل...' : 'تأكيد العارضة',
                   icon: Icons.check_rounded,
-                  variant: AppButtonVariant.warning,
+                  variant: AppButtonVariant.primary,
                   isLoading: _isSubmitting,
                   onPressed: _isSubmitting
                       ? null
